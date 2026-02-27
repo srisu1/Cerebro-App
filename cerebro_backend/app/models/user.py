@@ -46,5 +46,13 @@ class User(Base):
     quizzes = relationship("Quiz", back_populates="user", cascade="all, delete-orphan")
     flashcards = relationship("Flashcard", back_populates="user", cascade="all, delete-orphan")
 
+    # health relationships
+    sleep_logs = relationship("SleepLog", back_populates="user", cascade="all, delete-orphan")
+    medications = relationship("Medication", back_populates="user", cascade="all, delete-orphan")
+    medication_logs = relationship("MedicationLog", back_populates="user", cascade="all, delete-orphan")
+    mood_entries = relationship("MoodEntry", back_populates="user", cascade="all, delete-orphan")
+    symptom_logs = relationship("SymptomLog", back_populates="user", cascade="all, delete-orphan")
+    water_logs = relationship("WaterLog", back_populates="user", cascade="all, delete-orphan")
+
     def __repr__(self):
         return f"<User {self.display_name} ({self.email})>"
