@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime
 from sqlalchemy import Column, String, Boolean, DateTime, Integer, Text
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import relationship
 from app.database import Base
 
 
@@ -38,6 +39,12 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
     last_login = Column(DateTime(timezone=True))
+
+    # study relationships
+    subjects = relationship("Subject", back_populates="user", cascade="all, delete-orphan")
+    study_sessions = relationship("StudySession", back_populates="user", cascade="all, delete-orphan")
+    quizzes = relationship("Quiz", back_populates="user", cascade="all, delete-orphan")
+    flashcards = relationship("Flashcard", back_populates="user", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<User {self.display_name} ({self.email})>"

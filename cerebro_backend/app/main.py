@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import engine, Base
-from app.routers import auth
+from app.routers import auth, study
 
 # TODO: use alembic migrations instead of this
 Base.metadata.create_all(bind=engine)
@@ -45,3 +45,4 @@ def health_check():
 
 
 app.include_router(auth.router, prefix="/api/v1")
+app.include_router(study.router, prefix="/api/v1")

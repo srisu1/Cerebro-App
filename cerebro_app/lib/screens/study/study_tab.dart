@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cerebro_app/config/theme.dart';
 
@@ -10,31 +11,123 @@ class StudyTab extends StatelessWidget {
     return Scaffold(
       backgroundColor: CerebroTheme.cream,
       body: SafeArea(
-        child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.menu_book_rounded, size: 56, color: const Color(0xFF5BADF0)),
               const SizedBox(height: 16),
               Text(
                 'Study',
                 style: GoogleFonts.nunito(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
+                  fontSize: 28,
+                  fontWeight: FontWeight.w900,
                   color: CerebroTheme.outline,
                 ),
               ),
-              const SizedBox(height: 8),
-              Text(
-                'Study sessions and flashcards coming soon.',
-                style: GoogleFonts.nunito(
-                  fontSize: 14,
-                  color: CerebroTheme.brown,
-                  fontWeight: FontWeight.w600,
-                ),
+              const SizedBox(height: 24),
+
+              // subjects button
+              _StudyAction(
+                icon: Icons.library_books_rounded,
+                label: 'My Subjects',
+                subtitle: 'Manage your courses',
+                color: const Color(0xFF5BADF0),
+                onTap: () => context.push('/study/subjects'),
+              ),
+              const SizedBox(height: 12),
+
+              // TODO: study session timer
+              _StudyAction(
+                icon: Icons.timer_rounded,
+                label: 'Study Session',
+                subtitle: 'Coming soon',
+                color: const Color(0xFFFF8C6B),
+                onTap: () {},
+              ),
+              const SizedBox(height: 12),
+
+              // TODO: flashcards
+              _StudyAction(
+                icon: Icons.style_rounded,
+                label: 'Flashcards',
+                subtitle: 'Coming soon',
+                color: const Color(0xFFA8D5A3),
+                onTap: () {},
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StudyAction extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String subtitle;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _StudyAction({
+    required this.icon,
+    required this.label,
+    required this.subtitle,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: CerebroTheme.outline, width: 2.5),
+          boxShadow: [CerebroTheme.shadow3DSmall],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: color, size: 24),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: GoogleFonts.nunito(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: CerebroTheme.outline,
+                    ),
+                  ),
+                  Text(
+                    subtitle,
+                    style: GoogleFonts.nunito(
+                      fontSize: 12,
+                      color: CerebroTheme.brown,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right_rounded,
+              color: CerebroTheme.brown.withOpacity(0.3)),
+          ],
         ),
       ),
     );
