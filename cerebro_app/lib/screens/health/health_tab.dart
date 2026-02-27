@@ -43,7 +43,7 @@ class HealthTab extends StatelessWidget {
                 label: 'Mood',
                 subtitle: 'Log how you feel',
                 color: const Color(0xFFFFB347),
-                onTap: () {},
+                onTap: () => context.push('/health/mood'),
               ),
               const SizedBox(height: 12),
 
