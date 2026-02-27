@@ -21,7 +21,7 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="CEREBRO API",
-    description="AI-Powered Student Companion",
+    description="Student Companion Backend",
     version="0.1.0",
 )
 
