@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cerebro_app/config/theme.dart';
 
@@ -32,7 +33,7 @@ class HealthTab extends StatelessWidget {
                 label: 'Sleep',
                 subtitle: 'Track your sleep patterns',
                 color: const Color(0xFF7C83FD),
-                onTap: () {},
+                onTap: () => context.push('/health/sleep'),
               ),
               const SizedBox(height: 12),
 
