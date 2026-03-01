@@ -5,6 +5,7 @@ import 'package:cerebro_app/screens/auth/login_screen.dart';
 import 'package:cerebro_app/screens/auth/register_screen.dart';
 import 'package:cerebro_app/screens/home/home_screen.dart';
 import 'package:cerebro_app/screens/onboarding/onboarding_screen.dart';
+import 'package:cerebro_app/screens/health/medication_screen.dart';
 import 'package:cerebro_app/screens/health/mood_screen.dart';
 import 'package:cerebro_app/screens/health/sleep_screen.dart';
 import 'package:cerebro_app/screens/health/water_screen.dart';
@@ -21,6 +22,7 @@ class Routes {
   static const String healthSleep = '/health/sleep';
   static const String healthMood = '/health/mood';
   static const String healthWater = '/health/water';
+  static const String healthMedications = '/health/medications';
 }
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -62,6 +64,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: Routes.healthWater,
         builder: (context, state) => const WaterScreen(),
+      ),
+      GoRoute(
+        path: Routes.healthMedications,
+        builder: (context, state) => const MedicationScreen(),
       ),
     ],
     errorBuilder: (context, state) => Scaffold(

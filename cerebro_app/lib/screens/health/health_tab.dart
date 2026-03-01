@@ -63,7 +63,7 @@ class HealthTab extends StatelessWidget {
                 label: 'Medications',
                 subtitle: 'Track your meds',
                 color: const Color(0xFF6BBF7A),
-                onTap: () {},
+                onTap: () => context.push('/health/medications'),
               ),
               const SizedBox(height: 12),
 
