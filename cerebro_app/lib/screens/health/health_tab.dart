@@ -53,7 +53,7 @@ class HealthTab extends StatelessWidget {
                 label: 'Water',
                 subtitle: 'Stay hydrated',
                 color: const Color(0xFF5BADF0),
-                onTap: () {},
+                onTap: () => context.push('/health/water'),
               ),
               const SizedBox(height: 12),
 
