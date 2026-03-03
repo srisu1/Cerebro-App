@@ -47,13 +47,13 @@ class StudyTab extends StatelessWidget {
               ),
               const SizedBox(height: 12),
 
-              // TODO: flashcards
+              // flashcards
               _StudyAction(
                 icon: Icons.style_rounded,
                 label: 'Flashcards',
-                subtitle: 'Coming soon',
+                subtitle: 'Review and create cards',
                 color: const Color(0xFFA8D5A3),
-                onTap: () {},
+                onTap: () => context.push('/study/flashcards'),
               ),
             ],
           ),
