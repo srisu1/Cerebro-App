@@ -55,6 +55,46 @@ class StudyTab extends StatelessWidget {
                 color: const Color(0xFFA8D5A3),
                 onTap: () => context.push('/study/flashcards'),
               ),
+              const SizedBox(height: 12),
+
+              // quizzes
+              _StudyAction(
+                icon: Icons.quiz_rounded,
+                label: 'Quizzes',
+                subtitle: 'Test your knowledge',
+                color: const Color(0xFFCDA8D8),
+                onTap: () => context.push('/study/quizzes'),
+              ),
+              const SizedBox(height: 12),
+
+              // calendar
+              _StudyAction(
+                icon: Icons.calendar_month_rounded,
+                label: 'Calendar',
+                subtitle: 'Schedule study events',
+                color: const Color(0xFF9DD4F0),
+                onTap: () => context.push('/study/calendar'),
+              ),
+              const SizedBox(height: 12),
+
+              // analytics
+              _StudyAction(
+                icon: Icons.bar_chart_rounded,
+                label: 'Analytics',
+                subtitle: 'Track your progress',
+                color: const Color(0xFFF0D878),
+                onTap: () => context.push('/study/analytics'),
+              ),
+              const SizedBox(height: 12),
+
+              // resources
+              _StudyAction(
+                icon: Icons.folder_rounded,
+                label: 'Resources',
+                subtitle: 'Links, PDFs and notes',
+                color: const Color(0xFFF0A898),
+                onTap: () => context.push('/study/resources'),
+              ),
             ],
           ),
         ),
