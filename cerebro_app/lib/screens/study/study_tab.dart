@@ -37,13 +37,13 @@ class StudyTab extends StatelessWidget {
               ),
               const SizedBox(height: 12),
 
-              // TODO: study session timer
+              // study session
               _StudyAction(
                 icon: Icons.timer_rounded,
                 label: 'Study Session',
-                subtitle: 'Coming soon',
+                subtitle: 'Focus timer with Pomodoro',
                 color: const Color(0xFFFF8C6B),
-                onTap: () {},
+                onTap: () => context.push('/study/session'),
               ),
               const SizedBox(height: 12),
 

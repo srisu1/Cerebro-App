@@ -12,6 +12,7 @@ import 'package:cerebro_app/screens/health/symptom_screen.dart';
 import 'package:cerebro_app/screens/health/water_screen.dart';
 import 'package:cerebro_app/screens/study/flashcard_screen.dart';
 import 'package:cerebro_app/screens/study/quiz_screen.dart';
+import 'package:cerebro_app/screens/study/study_session_screen.dart';
 import 'package:cerebro_app/screens/study/take_quiz_screen.dart';
 import 'package:cerebro_app/screens/study/subjects_screen.dart';
 import 'package:cerebro_app/screens/title/title_screen.dart';
@@ -26,6 +27,7 @@ class Routes {
   static const String flashcards = '/study/flashcards';
   static const String quizzes = '/study/quizzes';
   static const String takeQuiz = '/study/take-quiz';
+  static const String studySession = '/study/session';
   static const String healthSleep = '/health/sleep';
   static const String healthMood = '/health/mood';
   static const String healthWater = '/health/water';
@@ -72,6 +74,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: Routes.takeQuiz,
         builder: (context, state) => const TakeQuizScreen(),
+      ),
+      GoRoute(
+        path: Routes.studySession,
+        builder: (context, state) => const StudySessionScreen(),
       ),
       GoRoute(
         path: Routes.healthSleep,
