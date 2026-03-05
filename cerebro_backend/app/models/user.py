@@ -53,6 +53,7 @@ class User(Base):
     mood_entries = relationship("MoodEntry", back_populates="user", cascade="all, delete-orphan")
     symptom_logs = relationship("SymptomLog", back_populates="user", cascade="all, delete-orphan")
     water_logs = relationship("WaterLog", back_populates="user", cascade="all, delete-orphan")
+    achievements = relationship("UserAchievement", back_populates="user", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<User {self.display_name} ({self.email})>"
