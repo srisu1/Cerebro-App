@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import engine, Base
 from app.routers import auth, study, health, calendar, analytics
+from app.models import daily  # noqa: F401 - register model with SQLAlchemy
 
 # TODO: use alembic migrations instead of this
 Base.metadata.create_all(bind=engine)
