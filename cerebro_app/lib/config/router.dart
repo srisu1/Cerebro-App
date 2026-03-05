@@ -18,11 +18,13 @@ import 'package:cerebro_app/screens/study/quiz_screen.dart';
 import 'package:cerebro_app/screens/study/study_session_screen.dart';
 import 'package:cerebro_app/screens/study/take_quiz_screen.dart';
 import 'package:cerebro_app/screens/study/subjects_screen.dart';
+import 'package:cerebro_app/screens/onboarding/setup_flow_screen.dart';
 import 'package:cerebro_app/screens/title/title_screen.dart';
 
 class Routes {
   static const String splash = '/';
   static const String onboarding = '/onboarding';
+  static const String setup = '/setup';
   static const String login = '/login';
   static const String register = '/register';
   static const String home = '/home';
@@ -52,6 +54,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: Routes.onboarding,
         builder: (context, state) => const OnboardingScreen(),
+      ),
+      GoRoute(
+        path: Routes.setup,
+        builder: (context, state) => const SetupFlowScreen(),
       ),
       GoRoute(
         path: Routes.login,
