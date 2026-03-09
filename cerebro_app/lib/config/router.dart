@@ -11,6 +11,7 @@ import 'package:cerebro_app/screens/health/sleep_screen.dart';
 import 'package:cerebro_app/screens/health/symptom_screen.dart';
 import 'package:cerebro_app/screens/health/water_screen.dart';
 import 'package:cerebro_app/screens/study/subjects_screen.dart';
+import 'package:cerebro_app/screens/avatar/avatar_customization_screen.dart';
 import 'package:cerebro_app/screens/title/title_screen.dart';
 
 class Routes {
@@ -25,6 +26,7 @@ class Routes {
   static const String healthWater = '/health/water';
   static const String healthMedications = '/health/medications';
   static const String healthSymptoms = '/health/symptoms';
+  static const String avatar = '/avatar';
 }
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -74,6 +76,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: Routes.healthSymptoms,
         builder: (context, state) => const SymptomScreen(),
+      ),
+      GoRoute(
+        path: Routes.avatar,
+        builder: (context, state) => const AvatarCustomizationScreen(),
       ),
     ],
     errorBuilder: (context, state) => Scaffold(
