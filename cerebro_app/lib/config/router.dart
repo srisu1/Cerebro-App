@@ -10,33 +10,17 @@ import 'package:cerebro_app/screens/health/mood_screen.dart';
 import 'package:cerebro_app/screens/health/sleep_screen.dart';
 import 'package:cerebro_app/screens/health/symptom_screen.dart';
 import 'package:cerebro_app/screens/health/water_screen.dart';
-import 'package:cerebro_app/screens/study/flashcard_screen.dart';
-import 'package:cerebro_app/screens/study/resource_screen.dart';
-import 'package:cerebro_app/screens/study/study_analytics_screen.dart';
-import 'package:cerebro_app/screens/study/study_calendar_screen.dart';
-import 'package:cerebro_app/screens/study/quiz_screen.dart';
-import 'package:cerebro_app/screens/study/study_session_screen.dart';
-import 'package:cerebro_app/screens/study/take_quiz_screen.dart';
 import 'package:cerebro_app/screens/study/subjects_screen.dart';
-import 'package:cerebro_app/screens/onboarding/setup_flow_screen.dart';
 import 'package:cerebro_app/screens/avatar/avatar_customization_screen.dart';
 import 'package:cerebro_app/screens/title/title_screen.dart';
 
 class Routes {
   static const String splash = '/';
   static const String onboarding = '/onboarding';
-  static const String setup = '/setup';
   static const String login = '/login';
   static const String register = '/register';
   static const String home = '/home';
   static const String subjects = '/study/subjects';
-  static const String flashcards = '/study/flashcards';
-  static const String quizzes = '/study/quizzes';
-  static const String takeQuiz = '/study/take-quiz';
-  static const String studySession = '/study/session';
-  static const String studyCalendar = '/study/calendar';
-  static const String studyAnalytics = '/study/analytics';
-  static const String studyResources = '/study/resources';
   static const String healthSleep = '/health/sleep';
   static const String healthMood = '/health/mood';
   static const String healthWater = '/health/water';
@@ -58,10 +42,6 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const OnboardingScreen(),
       ),
       GoRoute(
-        path: Routes.setup,
-        builder: (context, state) => const SetupFlowScreen(),
-      ),
-      GoRoute(
         path: Routes.login,
         builder: (context, state) => const LoginScreen(),
       ),
@@ -76,34 +56,6 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: Routes.subjects,
         builder: (context, state) => const SubjectsScreen(),
-      ),
-      GoRoute(
-        path: Routes.flashcards,
-        builder: (context, state) => const FlashcardScreen(),
-      ),
-      GoRoute(
-        path: Routes.quizzes,
-        builder: (context, state) => const QuizScreen(),
-      ),
-      GoRoute(
-        path: Routes.takeQuiz,
-        builder: (context, state) => const TakeQuizScreen(),
-      ),
-      GoRoute(
-        path: Routes.studySession,
-        builder: (context, state) => const StudySessionScreen(),
-      ),
-      GoRoute(
-        path: Routes.studyCalendar,
-        builder: (context, state) => const StudyCalendarScreen(),
-      ),
-      GoRoute(
-        path: Routes.studyAnalytics,
-        builder: (context, state) => const StudyAnalyticsScreen(),
-      ),
-      GoRoute(
-        path: Routes.studyResources,
-        builder: (context, state) => const ResourceScreen(),
       ),
       GoRoute(
         path: Routes.healthSleep,

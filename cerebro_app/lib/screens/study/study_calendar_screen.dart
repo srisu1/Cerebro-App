@@ -1,7 +1,3 @@
-//  CEREBRO — Study Calendar Screen v2
-//  Monthly calendar · event list · Google Calendar sync
-//  Cozy Pocket Love aesthetic (pawprint bg, 3D cards, warm tones)
-
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -15,6 +11,7 @@ import 'package:cerebro_app/providers/auth_provider.dart';
 import 'package:cerebro_app/services/api_service.dart';
 import 'package:cerebro_app/config/constants.dart';
 
+// palette
 const _ombre1   = Color(0xFFFFFBF7);
 const _ombre2   = Color(0xFFFFF8F3);
 const _ombre3   = Color(0xFFFFF3EF);
@@ -47,21 +44,26 @@ class StudyCalendarScreen extends ConsumerStatefulWidget {
 
 class _StudyCalendarScreenState extends ConsumerState<StudyCalendarScreen>
     with SingleTickerProviderStateMixin {
-    late AnimationController _enterCtrl;
+  // animation
+  late AnimationController _enterCtrl;
 
-    DateTime _focusedDay = DateTime.now();
+  // calendar state
+  DateTime _focusedDay = DateTime.now();
   DateTime _selectedDay = DateTime.now();
   CalendarFormat _calendarFormat = CalendarFormat.month;
 
-    List<Map<String, dynamic>> _events = [];
+  // events
+  List<Map<String, dynamic>> _events = [];
   Map<DateTime, List<Map<String, dynamic>>> _eventsByDay = {};
   bool _loading = true;
   String? _error;
 
-    bool _gcalConnected = false;
+  // google calendar
+  bool _gcalConnected = false;
   bool _syncing = false;
 
-    bool _generating = false;
+  // ai schedule
+  bool _generating = false;
 
   @override
   void initState() {
@@ -78,8 +80,10 @@ class _StudyCalendarScreenState extends ConsumerState<StudyCalendarScreen>
     super.dispose();
   }
 
-    //  API CALLS
-  
+  // ═══════════════════════════════════════════════
+  //  API CALLS
+  // ═══════════════════════════════════════════════
+
   Future<void> _loadEvents() async {
     setState(() { _loading = true; _error = null; });
     final api = ref.read(apiServiceProvider);
@@ -301,7 +305,8 @@ class _StudyCalendarScreenState extends ConsumerState<StudyCalendarScreen>
     ));
   }
 
-    Widget _stag(double delay, Widget child) {
+  // entrance animation helper
+  Widget _stag(double delay, Widget child) {
     return AnimatedBuilder(
       animation: _enterCtrl,
       builder: (_, __) {
@@ -313,8 +318,10 @@ class _StudyCalendarScreenState extends ConsumerState<StudyCalendarScreen>
     );
   }
 
-    //  BUILD
-  
+  // ═══════════════════════════════════════════════
+  //  BUILD
+  // ═══════════════════════════════════════════════
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -374,8 +381,10 @@ class _StudyCalendarScreenState extends ConsumerState<StudyCalendarScreen>
     );
   }
 
-    //  HEADER — warm with back button + sync
-  
+  // ═══════════════════════════════════════════════
+  //  HEADER — warm with back button + sync
+  // ═══════════════════════════════════════════════
+
   Widget _buildHeader() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(6, 6, 16, 2),
@@ -426,8 +435,10 @@ class _StudyCalendarScreenState extends ConsumerState<StudyCalendarScreen>
     );
   }
 
-    //  CALENDAR CARD — 3D Pocket Love box
-  
+  // ═══════════════════════════════════════════════
+  //  CALENDAR CARD — 3D Pocket Love box
+  // ═══════════════════════════════════════════════
+
   Widget _buildCalendarCard() {
     return Container(
       decoration: BoxDecoration(
@@ -597,8 +608,10 @@ class _StudyCalendarScreenState extends ConsumerState<StudyCalendarScreen>
     );
   }
 
-    //  QUICK STATS — total events this month, today's count
-  
+  // ═══════════════════════════════════════════════
+  //  QUICK STATS — total events this month, today's count
+  // ═══════════════════════════════════════════════
+
   Widget _buildQuickStats() {
     final todayCount = _eventsForDay(_selectedDay).length;
     final monthEvents = _events.where((e) {
@@ -635,7 +648,10 @@ class _StudyCalendarScreenState extends ConsumerState<StudyCalendarScreen>
     ));
   }
 
-      
+  // ═══════════════════════════════════════════════
+  //  ACTION STRIP — AI Schedule + GCal connect
+  // ═══════════════════════════════════════════════
+
   Widget _buildActionStrip() {
     return Row(children: [
       Expanded(child: _GameBtn(
@@ -668,8 +684,10 @@ class _StudyCalendarScreenState extends ConsumerState<StudyCalendarScreen>
     ]);
   }
 
-    //  GOOGLE CALENDAR CARD — connected status
-  
+  // ═══════════════════════════════════════════════
+  //  GOOGLE CALENDAR CARD — connected status
+  // ═══════════════════════════════════════════════
+
   Widget _buildGcalCard() {
     if (!_gcalConnected) return const SizedBox.shrink();
     return Container(
@@ -715,8 +733,10 @@ class _StudyCalendarScreenState extends ConsumerState<StudyCalendarScreen>
     );
   }
 
-    //  DAY EVENTS LIST
-  
+  // ═══════════════════════════════════════════════
+  //  DAY EVENTS LIST
+  // ═══════════════════════════════════════════════
+
   Widget _buildDayEvents() {
     final dayEvents = _eventsForDay(_selectedDay);
     final isToday = isSameDay(_selectedDay, DateTime.now());
@@ -930,8 +950,10 @@ class _StudyCalendarScreenState extends ConsumerState<StudyCalendarScreen>
     );
   }
 
-    //  FAB — 3D game button style
-  
+  // ═══════════════════════════════════════════════
+  //  FAB — 3D game button style
+  // ═══════════════════════════════════════════════
+
   Widget _buildFab() {
     return GestureDetector(
       onTap: _showCreateDialog,
@@ -950,8 +972,10 @@ class _StudyCalendarScreenState extends ConsumerState<StudyCalendarScreen>
     );
   }
 
-    //  CREATE EVENT DIALOG
-  
+  // ═══════════════════════════════════════════════
+  //  CREATE EVENT DIALOG
+  // ═══════════════════════════════════════════════
+
   void _showCreateDialog() {
     final titleCtrl = TextEditingController();
     final descCtrl = TextEditingController();
@@ -1155,8 +1179,10 @@ class _StudyCalendarScreenState extends ConsumerState<StudyCalendarScreen>
     );
   }
 
-    //  DELETE CONFIRM
-  
+  // ═══════════════════════════════════════════════
+  //  DELETE CONFIRM
+  // ═══════════════════════════════════════════════
+
   void _confirmDelete(Map<String, dynamic> event) {
     showDialog(context: context, builder: (ctx) => AlertDialog(
       backgroundColor: _cardFill,
@@ -1190,8 +1216,10 @@ class _StudyCalendarScreenState extends ConsumerState<StudyCalendarScreen>
     ));
   }
 
-    //  LOADING SKELETON
-  
+  // ═══════════════════════════════════════════════
+  //  LOADING SKELETON
+  // ═══════════════════════════════════════════════
+
   Widget _buildLoadingSkeleton() {
     return Padding(
       padding: const EdgeInsets.all(20),
@@ -1223,8 +1251,10 @@ class _StudyCalendarScreenState extends ConsumerState<StudyCalendarScreen>
     );
   }
 
-    //  ERROR STATE
-  
+  // ═══════════════════════════════════════════════
+  //  ERROR STATE
+  // ═══════════════════════════════════════════════
+
   Widget _buildError() {
     return Center(child: Column(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -1260,8 +1290,10 @@ class _StudyCalendarScreenState extends ConsumerState<StudyCalendarScreen>
     ));
   }
 
-    //  HELPERS
-  
+  // ═══════════════════════════════════════════════
+  //  HELPERS
+  // ═══════════════════════════════════════════════
+
   Color _parseColor(String? hex) {
     if (hex == null || hex.length < 7) return _skyHdr;
     try {
@@ -1304,7 +1336,9 @@ class _TypeVisual {
   const _TypeVisual(this.icon, this.color);
 }
 
+
 //  GAME BUTTON — chunky 3D (matching study_tab exactly)
+
 class _GameBtn extends StatefulWidget {
   final IconData icon;
   final String label;
@@ -1350,7 +1384,9 @@ class _GameBtnState extends State<_GameBtn> {
   }
 }
 
+
 //  PAWPRINT BACKGROUND
+
 class _PawPrintBg extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {

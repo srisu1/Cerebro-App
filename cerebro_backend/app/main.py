@@ -14,8 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import engine, Base
-from app.routers import auth, study, health, calendar, analytics
-from app.models import daily, gamification  # noqa: F401 - register models with SQLAlchemy
+from app.routers import auth, study, health, quiz_engine
 
 # TODO: use alembic migrations instead of this
 Base.metadata.create_all(bind=engine)
@@ -48,5 +47,4 @@ def health_check():
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(study.router, prefix="/api/v1")
 app.include_router(health.router, prefix="/api/v1")
-app.include_router(calendar.router, prefix="/api/v1")
-app.include_router(analytics.router, prefix="/api/v1")
+app.include_router(quiz_engine.router, prefix="/api/v1")
