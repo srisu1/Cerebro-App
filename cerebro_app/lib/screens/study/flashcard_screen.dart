@@ -1,10 +1,9 @@
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cerebro_app/providers/auth_provider.dart';
 
-// colors
+// palette
 const _ombre1   = Color(0xFFFFFBF7);
 const _ombre2   = Color(0xFFFFF8F3);
 const _ombre3   = Color(0xFFFFF3EF);
@@ -41,27 +40,41 @@ class FlashcardScreen extends ConsumerStatefulWidget {
 class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
     with TickerProviderStateMixin {
   late TabController _tabCtrl;
+
+  // deck state
   List<Map<String, dynamic>> _decks = [];
   String? _selectedDeckId;
   String _selectedDeckName = 'All Cards';
+
+  // data
   List<Map<String, dynamic>> _allCards = [];
   List<Map<String, dynamic>> _dueCards = [];
+  List<Map<String, dynamic>> _materials = [];
   List<Map<String, dynamic>> _subjects = [];
   bool _loading = true;
+
+  // review state
   int _reviewIdx = 0;
   bool _isFlipped = false;
   bool _showResult = false;
   int _sessionCorrect = 0;
   int _sessionTotal = 0;
   bool _reviewDone = false;
+
+  // create state
   final _frontCtrl = TextEditingController();
   final _backCtrl = TextEditingController();
   String? _selectedSubjectId;
 
+  // generate state
+  bool _generating = false;
+  List<String> _selectedMaterialIds = [];
+  int _genCount = 10;
+
   @override
   void initState() {
     super.initState();
-    _tabCtrl = TabController(length: 2, vsync: this);
+    _tabCtrl = TabController(length: 3, vsync: this);
     _loadDecks();
   }
 
@@ -129,7 +142,9 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
 
       setState(() {
         _allCards = all;
-        _dueCards = due;        _subjects = subs;
+        _dueCards = due;
+        _materials = mats;
+        _subjects = subs;
         _loading = false;
         _reviewIdx = 0;
         _isFlipped = false;
@@ -141,9 +156,9 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
     }
   }
 
-  // 
+  // ═══════════════════════════════════════════════
   //  BUILD
-  // 
+  // ═══════════════════════════════════════════════
 
   @override
   Widget build(BuildContext context) {
@@ -165,7 +180,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
                 ? const Center(child: CircularProgressIndicator(color: _outline))
                 : TabBarView(
                     controller: _tabCtrl,
-                    children: [_reviewTab(), _allCardsTab()],
+                    children: [_reviewTab(), _allCardsTab(), _generateTab()],
                   ),
             ),
           ]),
@@ -173,6 +188,8 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
       ),
     );
   }
+
+  // header
   Widget _header() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
@@ -217,9 +234,9 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
     ]),
   );
 
-  // 
+  // ═══════════════════════════════════════════════
   //  DECK SELECTOR — horizontal scrolling chips
-  // 
+  // ═══════════════════════════════════════════════
 
   Widget _deckSelector() {
     return Container(
@@ -314,9 +331,9 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
     return Color(int.parse(hex, radix: 16));
   }
 
-  // 
+  // ═══════════════════════════════════════════════
   //  DECK MANAGER — create / edit / delete decks
-  // 
+  // ═══════════════════════════════════════════════
 
   void _showDeckManager() {
     showModalBottomSheet(
@@ -637,6 +654,8 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
       }
     }
   }
+
+  // tab bar
   Widget _tabBar() {
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 10, 16, 4),
@@ -661,21 +680,23 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
         tabs: const [
           Tab(text: 'Review'),
           Tab(text: 'All Cards'),
+          Tab(text: 'Generate'),
         ],
       ),
     );
   }
 
-  // 
+
+  // ═══════════════════════════════════════════════
   //  TAB 1: REVIEW (flip cards + grade)
-  // 
+  // ═══════════════════════════════════════════════
 
   Widget _reviewTab() {
     if (_dueCards.isEmpty && _allCards.isEmpty) {
       return _emptyState(
         icon: Icons.style_rounded,
         title: 'No flashcards yet',
-        subtitle: 'Create flashcards manually or generate them from study materials!',
+        subtitle: 'Go to the Generate tab to create cards from your study materials!',
       );
     }
 
@@ -914,9 +935,10 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
     );
   }
 
-  // 
+
+  // ═══════════════════════════════════════════════
   //  TAB 2: ALL CARDS (browse + create + delete)
-  // 
+  // ═══════════════════════════════════════════════
 
   Widget _allCardsTab() {
     return Column(children: [
@@ -1106,13 +1128,180 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
     )));
   }
 
-  // 
-  //  TAB 3: GENERATE (AI from study materials)
-  // 
 
-  // 
+  // ═══════════════════════════════════════════════
+  //  TAB 3: GENERATE (AI from study materials)
+  // ═══════════════════════════════════════════════
+
+  Widget _generateTab() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // Header
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(colors: [_purpleHdr, _purpleLt]),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: _outline, width: 2.5),
+            boxShadow: const [BoxShadow(color: _outline, offset: Offset(0, 4), blurRadius: 0)],
+          ),
+          child: Column(children: [
+            const Icon(Icons.auto_awesome_rounded, size: 32, color: _brown),
+            const SizedBox(height: 4),
+            Text('AI Flashcard Generator', style: GoogleFonts.gaegu(
+              fontSize: 22, fontWeight: FontWeight.w700, color: _brown)),
+            Text(
+              _selectedDeckId != null
+                ? 'Cards will be added to "$_selectedDeckName"'
+                : 'Select study materials and generate smart flashcards',
+              style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w600, color: _brownLt),
+              textAlign: TextAlign.center),
+          ]),
+        ),
+        const SizedBox(height: 16),
+
+        // Materials selection
+        Text('Select Materials:', style: GoogleFonts.gaegu(
+          fontSize: 20, fontWeight: FontWeight.w700, color: _brown)),
+        const SizedBox(height: 8),
+
+        if (_materials.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: _cardFill,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: _outline, width: 2),
+            ),
+            child: Text(
+              'No study materials uploaded yet.\nGo to Quizzes → Materials tab to upload PDFs or notes.',
+              style: GoogleFonts.nunito(fontSize: 13, fontWeight: FontWeight.w600, color: _brownLt),
+              textAlign: TextAlign.center,
+            ),
+          )
+        else
+          ..._materials.map((m) => _materialCheckbox(m)),
+
+        const SizedBox(height: 16),
+
+        // Count selector
+        Text('Number of cards:', style: GoogleFonts.gaegu(
+          fontSize: 20, fontWeight: FontWeight.w700, color: _brown)),
+        const SizedBox(height: 8),
+        Row(children: [5, 10, 15, 20].map((n) => Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: GestureDetector(
+            onTap: () => setState(() => _genCount = n),
+            child: Container(
+              width: 48, height: 40,
+              decoration: BoxDecoration(
+                color: _genCount == n ? _purpleHdr.withOpacity(0.5) : _cardFill,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: _outline, width: _genCount == n ? 3 : 2),
+                boxShadow: [BoxShadow(color: _outline, offset: Offset(0, _genCount == n ? 2 : 1), blurRadius: 0)],
+              ),
+              child: Center(child: Text('$n', style: GoogleFonts.gaegu(
+                fontSize: 20, fontWeight: FontWeight.w700, color: _brown))),
+            ),
+          ),
+        )).toList()),
+
+        const SizedBox(height: 20),
+
+        // Generate button
+        _bigButton(
+          _generating ? 'Generating...' : 'Generate Flashcards',
+          _generating ? _brownLt.withOpacity(0.3) : _greenHdr,
+          _generating || _selectedMaterialIds.isEmpty ? null : _generateCards,
+        ),
+
+        if (_selectedMaterialIds.isEmpty && _materials.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text('Select at least one material above',
+              style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w600, color: _coralHdr)),
+          ),
+      ]),
+    );
+  }
+
+  Widget _materialCheckbox(Map<String, dynamic> m) {
+    final id = m['id']?.toString() ?? '';
+    final selected = _selectedMaterialIds.contains(id);
+    return GestureDetector(
+      onTap: () => setState(() {
+        if (selected) _selectedMaterialIds.remove(id);
+        else _selectedMaterialIds.add(id);
+      }),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: selected ? _purpleHdr.withOpacity(0.15) : _cardFill,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: selected ? _purpleHdr : _outline, width: selected ? 3 : 2),
+          boxShadow: [BoxShadow(color: _outline, offset: Offset(0, selected ? 2 : 1), blurRadius: 0)],
+        ),
+        child: Row(children: [
+          Icon(
+            selected ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
+            color: selected ? _purpleHdr : _brownLt, size: 22,
+          ),
+          const SizedBox(width: 10),
+          Expanded(child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(m['title'] ?? 'Untitled', style: GoogleFonts.nunito(
+                fontSize: 14, fontWeight: FontWeight.w700, color: _brown),
+                maxLines: 1, overflow: TextOverflow.ellipsis),
+              Text('${m['word_count'] ?? 0} words · ${m['source_type'] ?? 'notes'}',
+                style: GoogleFonts.nunito(fontSize: 11, fontWeight: FontWeight.w500, color: _brownLt)),
+            ],
+          )),
+        ]),
+      ),
+    );
+  }
+
+  Future<void> _generateCards() async {
+    setState(() => _generating = true);
+    final api = ref.read(apiServiceProvider);
+    try {
+      final resp = await api.post('/study/flashcards/generate', data: {
+        'material_ids': _selectedMaterialIds,
+        'count': _genCount,
+        if (_selectedDeckId != null) 'deck_id': _selectedDeckId,
+      });
+      final generated = resp.data['generated'] ?? 0;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Generated $generated flashcards!'),
+            backgroundColor: _greenDk,
+          ),
+        );
+      }
+      _selectedMaterialIds.clear();
+      await _loadData();
+      _tabCtrl.animateTo(1); // Switch to All Cards tab
+    } catch (e) {
+      if (mounted) {
+        String msg = 'Generation failed';
+        if (e.toString().contains('422')) msg = 'Set up GROQ_API_KEY in .env (free at console.groq.com)';
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red.shade400));
+      }
+    } finally {
+      if (mounted) setState(() => _generating = false);
+    }
+  }
+
+
+  // ═══════════════════════════════════════════════
   //  SHARED WIDGETS
-  // 
+  // ═══════════════════════════════════════════════
 
   Widget _bigButton(String label, Color color, VoidCallback? onTap) {
     return GestureDetector(

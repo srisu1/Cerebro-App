@@ -1,12 +1,10 @@
-// Interactive quiz-taking with MCQ, T/F, Fill-in-blank
-// Pre-quiz → Question-by-question → Results
-
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cerebro_app/providers/auth_provider.dart';
 
+// palette
 const _ombre1   = Color(0xFFFFFBF7);
 const _cardFill = Color(0xFFFFF8F4);
 const _outline  = Color(0xFF6E5848);
@@ -44,6 +42,7 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
   bool _answered = false;
   bool _loading = false;
 
+  // Results
   int _correct = 0;
   int _total = 0;
   int _xpEarned = 0;
@@ -60,7 +59,7 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
         .map((e) => Map<String, dynamic>.from(e))
         .toList();
 
-    // Ifquestions are missing (came from list view), fetch full detail
+    // If questions are missing (came from list view), fetch full detail
     if (_questions.isEmpty && _quiz['id'] != null) {
       _fetchQuizDetail();
     } else {
@@ -120,7 +119,9 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
     );
   }
 
-  // PRE-QUIZ
+  // ═══════════════════════════════════════════════════
+  //  PRE-QUIZ
+  // ═══════════════════════════════════════════════════
   Widget _preQuizView() {
     final topics = (_quiz['topic_focus'] as List?)?.cast<String>() ?? [];
     final totalQ = _quiz['total_questions'] ?? _questions.length;
@@ -129,7 +130,7 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
       padding: const EdgeInsets.all(24),
       child: Column(children: [
         const Spacer(),
-        // Quizicon
+        // Quiz icon
         Container(
           width: 80, height: 80,
           decoration: BoxDecoration(
@@ -143,7 +144,7 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
           fontSize: 28, fontWeight: FontWeight.w700, color: _brown),
           textAlign: TextAlign.center),
         const SizedBox(height: 8),
-        // Statsrow
+        // Stats row
         Row(mainAxisAlignment: MainAxisAlignment.center, children: [
           _infoPill(Icons.help_outline_rounded, '$totalQ questions', _skyHdr),
           const SizedBox(width: 8),
@@ -168,7 +169,7 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
             )).toList()),
         ],
         const Spacer(),
-        // Startbutton
+        // Start button
         GestureDetector(
           onTap: _loading ? null : _startQuiz,
           child: Container(
@@ -236,7 +237,9 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
     }
   }
 
-  // QUIZTAKING
+  // ═══════════════════════════════════════════════════
+  //  QUIZ TAKING
+  // ═══════════════════════════════════════════════════
   Widget _takingView() {
     if (_questions.isEmpty) return const Center(child: Text('No questions'));
     final q = _questions[_currentIdx];
@@ -245,7 +248,7 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
       child: Column(children: [
-        // Progressbar + counter
+        // Progress bar + counter
         Row(children: [
           IconButton(
             icon: const Icon(Icons.close_rounded, color: _brownLt, size: 22),
@@ -268,7 +271,7 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
           const SizedBox(width: 40),
         ]),
         const SizedBox(height: 20),
-        // Questiontype badge
+        // Question type badge
         Row(mainAxisAlignment: MainAxisAlignment.center, children: [
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
@@ -292,7 +295,7 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
           ],
         ]),
         const SizedBox(height: 16),
-        // Questiontext
+        // Question text
         Container(
           width: double.infinity,
           padding: const EdgeInsets.all(16),
@@ -306,12 +309,12 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
             textAlign: TextAlign.center),
         ),
         const SizedBox(height: 16),
-        // Answerarea
+        // Answer area
         Expanded(child: _buildAnswerArea(q)),
-        // Feedback+ Next
+        // Feedback + Next
         if (_answered) _feedbackBar(q),
         const SizedBox(height: 8),
-        // Next/ Submit button
+        // Next / Submit button
         SizedBox(width: double.infinity, child: GestureDetector(
           onTap: _loading ? null : (_answered ? _nextQuestion : _submitAnswer),
           child: Container(
@@ -347,7 +350,7 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
     }
   }
 
-  // MCQOptions 
+  // mcq options
   Widget _mcqOptions(Map<String, dynamic> q) {
     final options = (q['options'] as List?)?.cast<String>() ?? [];
     return ListView(
@@ -375,7 +378,7 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: border, width: 2)),
             child: Row(children: [
-              // Radiocircle
+              // Radio circle
               Container(
                 width: 22, height: 22,
                 decoration: BoxDecoration(
@@ -399,7 +402,7 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
     );
   }
 
-  // True/False Options 
+  // ── True/False Options ──
   Widget _trueFalseOptions(Map<String, dynamic> q) {
     return Row(children: ['True', 'False'].map((opt) {
       final isSelected = _selectedAnswer == opt;
@@ -439,7 +442,7 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
     }).toList());
   }
 
-  // Fill-in-blank 
+  // ── Fill-in-blank ──
   final _fillCtrl = TextEditingController();
 
   Widget _fillBlankField(Map<String, dynamic> q) {
@@ -604,6 +607,9 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
     }
   }
 
+  // ═══════════════════════════════════════════════════
+  //  RESULTS
+  // ═══════════════════════════════════════════════════
   Widget _resultsView() {
     final pct = _total > 0 ? (_correct / _total * 100) : 0.0;
     final grade = _gradeLabel(pct);
@@ -612,7 +618,7 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
       padding: const EdgeInsets.all(24),
       child: Column(children: [
         const SizedBox(height: 20),
-        // Gradecircle
+        // Grade circle
         Container(
           width: 100, height: 100,
           decoration: BoxDecoration(
@@ -631,7 +637,7 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
           fontSize: 24, fontWeight: FontWeight.w700, color: _brown),
           textAlign: TextAlign.center),
         const SizedBox(height: 8),
-        // Statsrow
+        // Stats row
         Row(mainAxisAlignment: MainAxisAlignment.center, children: [
           _resultStat('Correct', '$_correct', _greenHdr),
           const SizedBox(width: 16),
@@ -640,7 +646,7 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
           _resultStat('XP', '+$_xpEarned', _goldHdr),
         ]),
         const SizedBox(height: 20),
-        // Reviewanswers
+        // Review answers
         Text('Review Answers', style: GoogleFonts.gaegu(
           fontSize: 20, fontWeight: FontWeight.w700, color: _brown)),
         const SizedBox(height: 8),
@@ -702,6 +708,7 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
           );
         }),
         const SizedBox(height: 16),
+        // Buttons
         Row(children: [
           Expanded(child: GestureDetector(
             onTap: () => Navigator.pop(context),
@@ -774,7 +781,9 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
   }
 }
 
-// PAWPRINTBACKGROUND
+
+//  PAWPRINT BACKGROUND
+
 class _PawBgPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {

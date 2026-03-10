@@ -4,7 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cerebro_app/providers/auth_provider.dart';
 
-// Palette
+// palette
 const _ombre1   = Color(0xFFFFFBF7);
 const _ombre2   = Color(0xFFFFF8F3);
 const _ombre3   = Color(0xFFFFF3EF);
@@ -22,7 +22,7 @@ const _purpleLt = Color(0xFFD8C0E8);
 const _skyHdr   = Color(0xFF9DD4F0);
 const _sageHdr  = Color(0xFF90C8A0);
 
-// Filter types
+// filter types
 enum _FilterType { all, video, article, practice, technique }
 
 class ResourceScreen extends ConsumerStatefulWidget {
@@ -32,7 +32,7 @@ class ResourceScreen extends ConsumerStatefulWidget {
 
 class _ResourceScreenState extends ConsumerState<ResourceScreen> {
   Map<String, dynamic> _data = {};
-  List<Map<String, dynamic>> _allResources = [];
+  List<Map<String, dynamic>> _allRecs = [];
   List<Map<String, dynamic>> _weakAreas = [];
   bool _loading = true;
   bool _refreshing = false;
@@ -42,30 +42,30 @@ class _ResourceScreenState extends ConsumerState<ResourceScreen> {
   @override
   void initState() {
     super.initState();
-    _loadResources();
+    _loadRecommendations();
   }
 
-  Future<void> _loadResources() async {
+  Future<void> _loadRecommendations() async {
     setState(() { _loading = true; _error = null; });
     final api = ref.read(apiServiceProvider);
     try {
-      final res = await api.get('/study/resources');
+      final res = await api.get('/study/recommendations');
       _parseData(res.data);
     } catch (e) {
       setState(() {
         _error = e.toString().contains('422')
-            ? 'Failed to load resources'
-            : 'Failed to load resources';
+            ? 'Set up GROQ_API_KEY in .env (free at console.groq.com)'
+            : 'Failed to load recommendations';
         _loading = false;
       });
     }
   }
 
-  Future<void> _refreshResources() async {
+  Future<void> _refreshRecommendations() async {
     setState(() => _refreshing = true);
     final api = ref.read(apiServiceProvider);
     try {
-      final res = await api.post('/study/resources/refresh', data: {});
+      final res = await api.post('/study/recommendations/refresh', data: {});
       _parseData(res.data);
     } catch (e) {
       if (mounted) {
@@ -80,27 +80,30 @@ class _ResourceScreenState extends ConsumerState<ResourceScreen> {
 
   void _parseData(dynamic raw) {
     final d = raw as Map<String, dynamic>? ?? {};
-    final resources = (d['resources'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+    final recs = (d['recommendations'] as List?)?.cast<Map<String, dynamic>>() ?? [];
     final weak = (d['weak_areas'] as List?)?.cast<Map<String, dynamic>>() ?? [];
     setState(() {
       _data = d;
-      _allResources = resources;
+      _allRecs = recs;
       _weakAreas = weak;
       _loading = false;
     });
   }
 
-  List<Map<String, dynamic>> get _filteredResources {
-    if (_activeFilter == _FilterType.all) return _allResources;
-    final type = _activeFilter.name;
-    return _allResources.where((r) {
+  List<Map<String, dynamic>> get _filteredRecs {
+    if (_activeFilter == _FilterType.all) return _allRecs;
+    final type = _activeFilter.name; // "video", "article", "practice", "technique"
+    return _allRecs.where((r) {
       final rt = r['resource_type']?.toString() ?? '';
       if (_activeFilter == _FilterType.article) return rt == 'article' || rt == 'textbook';
       return rt == type;
     }).toList();
   }
 
-  // Build
+  // ═══════════════════════════════════════════════
+  //  BUILD
+  // ═══════════════════════════════════════════════
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -123,7 +126,7 @@ class _ResourceScreenState extends ConsumerState<ResourceScreen> {
     );
   }
 
-  // Header
+  // header
   Widget _header() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
@@ -148,7 +151,7 @@ class _ResourceScreenState extends ConsumerState<ResourceScreen> {
             ),
           ),
         GestureDetector(
-          onTap: _refreshing ? null : _refreshResources,
+          onTap: _refreshing ? null : _refreshRecommendations,
           child: Container(
             width: 36, height: 36,
             decoration: BoxDecoration(
@@ -182,7 +185,7 @@ class _ResourceScreenState extends ConsumerState<ResourceScreen> {
     ),
   );
 
-  // Weak areas strip
+  // weak areas strip
   Widget _weakAreasStrip() {
     return Container(
       height: 38,
@@ -228,7 +231,7 @@ class _ResourceScreenState extends ConsumerState<ResourceScreen> {
     );
   }
 
-  // Filter chips
+  // filter chips
   Widget _filterChips() {
     final filters = [
       (_FilterType.all, 'All', Icons.auto_awesome_rounded, _purpleHdr),
@@ -282,14 +285,14 @@ class _ResourceScreenState extends ConsumerState<ResourceScreen> {
     );
   }
 
-  // Body
+  // body
   Widget _body() {
     if (_loading) return _loadingState();
     if (_error != null) return _errorState();
-    if (_allResources.isEmpty) return _emptyState();
+    if (_allRecs.isEmpty) return _emptyState();
 
-    final resources = _filteredResources;
-    if (resources.isEmpty) {
+    final recs = _filteredRecs;
+    if (recs.isEmpty) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(32),
@@ -307,17 +310,17 @@ class _ResourceScreenState extends ConsumerState<ResourceScreen> {
     }
 
     return RefreshIndicator(
-      onRefresh: _refreshResources,
+      onRefresh: _refreshRecommendations,
       color: _purpleHdr,
       child: ListView.builder(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-        itemCount: resources.length,
-        itemBuilder: (ctx, i) => _resourceCard(resources[i]),
+        itemCount: recs.length,
+        itemBuilder: (ctx, i) => _resourceCard(recs[i]),
       ),
     );
   }
 
-  // Resource card
+  // resource card
   Widget _resourceCard(Map<String, dynamic> rec) {
     final type = rec['resource_type']?.toString() ?? 'article';
     final typeInfo = _typeVisuals(type);
@@ -343,6 +346,7 @@ class _ResourceScreenState extends ConsumerState<ResourceScreen> {
           boxShadow: const [BoxShadow(color: _outline, offset: Offset(0, 3), blurRadius: 0)],
         ),
         child: Column(children: [
+          // Colour header strip
           Container(
             height: 6,
             decoration: BoxDecoration(
@@ -393,7 +397,7 @@ class _ResourceScreenState extends ConsumerState<ResourceScreen> {
 
               const SizedBox(height: 8),
 
-              // Description
+              // Why recommended
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(10),
@@ -402,11 +406,11 @@ class _ResourceScreenState extends ConsumerState<ResourceScreen> {
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Icon(Icons.info_outline, size: 14, color: _purpleHdr),
+                  const Icon(Icons.auto_awesome, size: 14, color: _purpleHdr),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      rec['description'] ?? '',
+                      rec['why_recommended'] ?? rec['description'] ?? '',
                       style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w600, color: _brown, height: 1.3),
                       maxLines: 3, overflow: TextOverflow.ellipsis,
                     ),
@@ -468,7 +472,7 @@ class _ResourceScreenState extends ConsumerState<ResourceScreen> {
                       color: _goldHdr.withOpacity(0.25),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: Text('View', style: GoogleFonts.nunito(
+                    child: Text('View tip', style: GoogleFonts.nunito(
                       fontSize: 10, fontWeight: FontWeight.w700, color: _brown)),
                   ),
                 ],
@@ -537,6 +541,16 @@ class _ResourceScreenState extends ConsumerState<ResourceScreen> {
           const SizedBox(height: 12),
           Text(rec['description'] ?? '', style: GoogleFonts.nunito(
             fontSize: 14, fontWeight: FontWeight.w600, color: _brown, height: 1.4)),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: _purpleHdr.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(rec['why_recommended'] ?? '', style: GoogleFonts.nunito(
+              fontSize: 12, fontWeight: FontWeight.w600, color: _brown)),
+          ),
         ],
       )),
       actions: [TextButton(
@@ -547,7 +561,7 @@ class _ResourceScreenState extends ConsumerState<ResourceScreen> {
     ));
   }
 
-  // States
+  // states
   Widget _loadingState() {
     return Padding(
       padding: const EdgeInsets.all(16),
@@ -555,12 +569,13 @@ class _ResourceScreenState extends ConsumerState<ResourceScreen> {
         const SizedBox(height: 24),
         const CircularProgressIndicator(color: _purpleHdr),
         const SizedBox(height: 16),
-        Text('Loading resources...', style: GoogleFonts.gaegu(
+        Text('Analysing your study data...', style: GoogleFonts.gaegu(
           fontSize: 20, fontWeight: FontWeight.w700, color: _brownLt)),
         const SizedBox(height: 4),
-        Text('Getting your study materials', style: GoogleFonts.nunito(
+        Text('AI is finding the best resources for you', style: GoogleFonts.nunito(
           fontSize: 13, fontWeight: FontWeight.w600, color: _brownLt)),
         const SizedBox(height: 24),
+        // Skeleton cards
         ...List.generate(3, (_) => _skeletonCard()),
       ]),
     );
@@ -603,7 +618,7 @@ class _ResourceScreenState extends ConsumerState<ResourceScreen> {
           textAlign: TextAlign.center),
         const SizedBox(height: 16),
         GestureDetector(
-          onTap: _loadResources,
+          onTap: _loadRecommendations,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
             decoration: BoxDecoration(
@@ -626,11 +641,11 @@ class _ResourceScreenState extends ConsumerState<ResourceScreen> {
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         Icon(Icons.auto_stories_rounded, size: 64, color: _outline.withOpacity(0.3)),
         const SizedBox(height: 12),
-        Text('No resources yet', style: GoogleFonts.gaegu(
+        Text('No recommendations yet', style: GoogleFonts.gaegu(
           fontSize: 24, fontWeight: FontWeight.w700, color: _brownLt)),
         const SizedBox(height: 4),
         Text(
-          'Add study materials to your subjects!',
+          'Take some quizzes or review flashcards first!\nThe AI needs data about your strengths and weak areas.',
           style: GoogleFonts.nunito(fontSize: 13, fontWeight: FontWeight.w600, color: _brownLt),
           textAlign: TextAlign.center,
         ),

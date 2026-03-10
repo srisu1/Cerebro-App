@@ -1,6 +1,3 @@
-//  CEREBRO — Study Analytics Dashboard  (v2 – Pocket Love)
-//  Knowledge Map · Gap Detection · Predictions · Smart Schedule
-
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:cerebro_app/providers/auth_provider.dart';
 import 'package:cerebro_app/config/router.dart';
 
+// palette
 const _ombre1   = Color(0xFFFFFBF7);
 const _ombre2   = Color(0xFFFFF8F3);
 const _ombre3   = Color(0xFFFFF3EF);
@@ -43,6 +41,7 @@ Color _heatColor(double v) {
   return Color.lerp(const Color(0xFFF0D878), const Color(0xFF70B868), (c - 70) / 30)!;
 }
 
+// ── Shared 3D card decoration ──
 BoxDecoration _pocketCard({Color? fill, Color? borderColor, double radius = 16}) {
   return BoxDecoration(
     color: fill ?? _cardFill,
@@ -60,7 +59,10 @@ BoxDecoration _softCard({Color? fill, double radius = 14}) {
   );
 }
 
+
+
 //  MAIN SCREEN
+
 class StudyAnalyticsScreen extends ConsumerStatefulWidget {
   const StudyAnalyticsScreen({Key? key}) : super(key: key);
   @override
@@ -127,6 +129,7 @@ class _StudyAnalyticsScreenState extends ConsumerState<StudyAnalyticsScreen>
     );
   }
 
+  // header
   Widget _header() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
@@ -169,6 +172,7 @@ class _StudyAnalyticsScreenState extends ConsumerState<StudyAnalyticsScreen>
     );
   }
 
+  // quick stats strip
   Widget _quickStats() {
     final pred = _data?['predictions'] as Map<String, dynamic>? ?? {};
     final readiness = (pred['exam_readiness'] as num?)?.toDouble() ?? 0;
@@ -219,6 +223,7 @@ class _StudyAnalyticsScreenState extends ConsumerState<StudyAnalyticsScreen>
     );
   }
 
+  // tab bar
   Widget _tabBar() {
     final tabs = [
       (Icons.grid_view_rounded, 'Map', _sageHdr),
@@ -273,6 +278,7 @@ class _StudyAnalyticsScreenState extends ConsumerState<StudyAnalyticsScreen>
     );
   }
 
+  // body
   Widget _body() {
     if (_loading) return _loadingState();
     if (_error != null) return _errorState();
@@ -343,7 +349,10 @@ class _StudyAnalyticsScreenState extends ConsumerState<StudyAnalyticsScreen>
   }
 }
 
+
+
 //  TAB 1: KNOWLEDGE MAP
+
 class _KnowledgeMapTab extends StatelessWidget {
   final Map<String, dynamic> data;
   const _KnowledgeMapTab({required this.data});
@@ -533,7 +542,10 @@ class _KnowledgeMapTab extends StatelessWidget {
   }
 }
 
+
+
 //  TAB 2: KNOWLEDGE GAPS
+
 class _GapsTab extends StatelessWidget {
   final Map<String, dynamic> data;
   const _GapsTab({required this.data});
@@ -721,7 +733,10 @@ class _GapsTab extends StatelessWidget {
   }
 }
 
+
+
 //  TAB 3: PREDICTIONS
+
 class _PredictionsTab extends StatelessWidget {
   final Map<String, dynamic> data;
   const _PredictionsTab({required this.data});
@@ -932,7 +947,10 @@ class _PredictionsTab extends StatelessWidget {
   }
 }
 
+
+
 //  TAB 4: SMART SCHEDULE
+
 class _ScheduleTab extends StatelessWidget {
   final Map<String, dynamic> data;
   const _ScheduleTab({required this.data});
@@ -1106,7 +1124,10 @@ class _ScheduleTab extends StatelessWidget {
   }
 }
 
+
+
 //  SHARED EMPTY STATE
+
 Widget _emptyState(IconData icon, Color color, String message) {
   return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
     Container(
