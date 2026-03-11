@@ -1,10 +1,3 @@
-/// CEREBRO – Dashboard State Provider
-/// Manages all dashboard data: profile, stats, habits, mood.
-/// Dual currency: XP (star) earned by actions, Cash (green) exchanged from XP.
-/// 20 XP = 1 Cash. Cash is spent in the store.
-/// Pulls from API when available, caches locally in SharedPreferences.
-/// Reactive via Riverpod — all screens watch this.
-
 import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -16,7 +9,7 @@ import 'package:cerebro_app/providers/auth_provider.dart';
 const int xpPerCash = 20; // 20 XP = 1 Cash
 const int startingXp = 20; // new users start with 20 XP
 
-/// Icon string mapping for habit presets (used by onboarding + quest mgmt)
+/// icon string mapping for habit presets (used by onboarding + quest mgmt)
 const Map<String, String> habitIconMap = {
   'Drink Water': 'water',
   'Exercise': 'fitness',
@@ -64,7 +57,6 @@ class DashboardState {
   int get xpForNext => level * AppConstants.xpPerLevel;
   double get xpProgress => (totalXp / xpForNext).clamp(0.0, 1.0);
 
-  /// How many cash the user can exchange right now
   int get exchangeableCash => totalXp ~/ xpPerCash;
 
   DashboardState copyWith({
@@ -112,12 +104,10 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
     state = state.copyWith(isLoading: true);
     await _loadFromCache();
     state = state.copyWith(isLoading: false);
-    // Then try API in background (non-blocking)
     _syncFromApi();
   }
 
   Future<void> refresh() async {
-    // Re-read avatar from cache (may have been changed on avatar screen)
     final prefs = await SharedPreferences.getInstance();
     final avatarJson = prefs.getString(AppConstants.avatarConfigKey);
     if (avatarJson != null) {
@@ -146,14 +136,13 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
       } catch (_) {}
     }
 
-    // We store the user's quest *definitions* in 'quest_definitions'
-    // and the daily completion state in 'habits_date' key.
-    // If the date has changed, we reset all 'done' flags.
+    // daily reset logic: store quest definitions in 'quest_definitions'
+    // and daily completion state in 'habits_date' key.
+    // if the date changed, reset all 'done' flags.
     final today = _todayKey();
     final lastHabitDate = prefs.getString('habits_date');
     final needsReset = lastHabitDate != today;
 
-    // Load quest definitions (the quests themselves, without done state)
     List<Map<String, dynamic>> questDefs = [];
     final questDefsJson = prefs.getString('quest_definitions');
     if (questDefsJson != null) {
@@ -163,7 +152,7 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
       } catch (_) {}
     }
 
-    // If no quest definitions exist, check if onboarding set habits
+    // if no quest definitions, check if onboarding set habits
     if (questDefs.isEmpty) {
       final onboardingHabits = prefs.getStringList('cerebro_initial_habits');
       if (onboardingHabits != null && onboardingHabits.isNotEmpty) {
@@ -174,7 +163,7 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
       }
     }
 
-    // If still empty, fall back to old daily_habits format (migration)
+    // fallback to old daily_habits format (migration)
     if (questDefs.isEmpty) {
       final oldJson = prefs.getString('daily_habits');
       if (oldJson != null) {
@@ -188,18 +177,14 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
       }
     }
 
-    // If STILL empty, use defaults
     if (questDefs.isEmpty) {
       questDefs = _defaultQuestDefs();
     }
 
-    // Save quest definitions
     await prefs.setString('quest_definitions', jsonEncode(questDefs));
 
-    // Now build the habits list with done state
     List<Map<String, dynamic>> habits;
     if (needsReset) {
-      // New day — reset all done flags
       habits = questDefs.map((q) => {
         'name': q['name'],
         'icon': q['icon'],
@@ -208,7 +193,6 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
       await prefs.setString('habits_date', today);
       await prefs.setString('daily_habits', jsonEncode(habits));
     } else {
-      // Same day — load today's progress
       final habitsJson = prefs.getString('daily_habits');
       if (habitsJson != null) {
         try {
@@ -226,7 +210,7 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
       }
     }
 
-    // New user detection: if no XP was ever saved, give starting XP
+    // new user detection: if no XP was ever saved, give starting XP
     final hasPlayed = prefs.containsKey('total_xp');
     final defaultXp = hasPlayed ? 0 : startingXp;
 
@@ -243,7 +227,6 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
       avatarConfig: avatarConfig,
     );
 
-    // Persist starting XP for new users
     if (!hasPlayed) {
       await prefs.setInt('total_xp', defaultXp);
     }
@@ -251,7 +234,6 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
 
   Future<void> _syncFromApi() async {
     try {
-      // Fetch user profile
       final profileRes = await _api.get('/auth/me');
       if (profileRes.statusCode == 200) {
         final data = profileRes.data;
@@ -267,7 +249,6 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
     }
 
     try {
-      // Fetch today's study sessions
       final today = DateTime.now();
       final dateStr =
           '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
@@ -288,7 +269,6 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
     } catch (_) {}
 
     try {
-      // Fetch today's mood
       final today = DateTime.now();
       final dateStr =
           '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
@@ -310,7 +290,6 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
     } catch (_) {}
 
     try {
-      // Fetch today's sleep
       final today = DateTime.now();
       final dateStr =
           '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
@@ -334,15 +313,12 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
   }
 
   Future<void> logMood(String mood) async {
-    // Update local state immediately
     state = state.copyWith(todayMood: mood);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('today_mood', mood);
 
-    // Award XP
     await _addXp(AppConstants.xpPerMoodLog);
 
-    // Sync to API
     try {
       await _api.post('/health/moods', data: {'mood_type': mood});
     } catch (_) {}
@@ -359,20 +335,18 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
 
     state = state.copyWith(habits: updated);
 
-    // Persist to cache
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('daily_habits', jsonEncode(updated));
 
-    // Award XP if completing (not uncompleting)
     if (!wasDone) {
       await _addXp(AppConstants.xpPerHabitComplete);
     }
   }
 
-  /// Add a new quest. Returns true if added.
+  // quest management
+
   Future<bool> addQuest(String name, {String icon = 'check'}) async {
     if (name.trim().isEmpty) return false;
-    // Don't allow duplicates
     if (state.habits.any((h) =>
         (h['name'] as String).toLowerCase() == name.trim().toLowerCase())) {
       return false;
@@ -384,12 +358,10 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('daily_habits', jsonEncode(updated));
-    // Also update definitions
     await _saveQuestDefs(updated);
     return true;
   }
 
-  /// Update quest name/icon at [index].
   Future<void> updateQuest(int index, {String? name, String? icon}) async {
     if (index < 0 || index >= state.habits.length) return;
     final updated = List<Map<String, dynamic>>.from(
@@ -405,7 +377,6 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
     await _saveQuestDefs(updated);
   }
 
-  /// Delete quest at [index].
   Future<void> deleteQuest(int index) async {
     if (index < 0 || index >= state.habits.length) return;
     final updated = List<Map<String, dynamic>>.from(
@@ -420,7 +391,6 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
     await _saveQuestDefs(updated);
   }
 
-  /// Persist quest definitions (name + icon only, no done state).
   Future<void> _saveQuestDefs(List<Map<String, dynamic>> habits) async {
     final defs = habits.map((h) => {
       'name': h['name'],
@@ -430,8 +400,6 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
     await prefs.setString('quest_definitions', jsonEncode(defs));
   }
 
-  /// Exchange XP for cash. [amount] = number of cash to buy.
-  /// Each cash costs 20 XP. Returns true if successful.
   Future<bool> exchangeXpToCash(int amount) async {
     final xpCost = amount * xpPerCash;
     if (state.totalXp < xpCost || amount <= 0) return false;
@@ -448,7 +416,6 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
     return true;
   }
 
-  /// Spend cash in the store. Returns true if successful.
   Future<bool> spendCash(int amount) async {
     if (state.cash < amount || amount <= 0) return false;
 
@@ -465,7 +432,6 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
     int newXp = state.totalXp + amount;
     int newLevel = state.level;
 
-    // Level up check — awards bonus XP (not cash directly)
     while (newXp >= newLevel * AppConstants.xpPerLevel) {
       newXp -= newLevel * AppConstants.xpPerLevel;
       newLevel++;
@@ -476,7 +442,6 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
       level: newLevel,
     );
 
-    // Persist
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('total_xp', newXp);
     await prefs.setInt('level', newLevel);
@@ -489,7 +454,6 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
         AppConstants.avatarConfigKey, jsonEncode(config.toJson()));
   }
 
-  /// Default quests — NO Journal
   static List<Map<String, dynamic>> _defaultQuestDefs() => [
         {'name': 'Drink Water', 'icon': 'water'},
         {'name': 'Read 15 min', 'icon': 'book'},
@@ -497,7 +461,6 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
         {'name': 'Stretch', 'icon': 'fitness'},
       ];
 
-  // Keep for backward compat but delegates to new system
   static List<Map<String, dynamic>> _defaultHabits() =>
       _defaultQuestDefs().map((q) => {...q, 'done': false}).toList();
 }

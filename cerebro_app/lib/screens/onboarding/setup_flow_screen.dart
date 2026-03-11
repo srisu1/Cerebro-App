@@ -1,4 +1,3 @@
-/// CEREBRO - Comprehensive Post-Registration Setup Flow (Toca Boca Aesthetic)
 /// 7-step onboarding: University, Year, Subjects, Goals, Sleep, Habits, Mood.
 /// Collects all info needed for the full app to work from day one.
 

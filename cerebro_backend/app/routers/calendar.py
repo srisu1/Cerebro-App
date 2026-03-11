@@ -10,10 +10,10 @@ from app.models.user import User
 from app.models.calendar import StudyEvent, GoogleCalendarToken
 from app.utils.auth import get_current_user
 
-router = APIRouter(prefix="/study/calendar", tags=["calendar"])
+router = APIRouter(prefix="/study/calendar", tags=["study-calendar"])
 
 
-#  SCHEMAS
+# schemas
 
 class EventCreate(BaseModel):
     title: str
@@ -43,7 +43,7 @@ class EventUpdate(BaseModel):
     recurrence_rule: Optional[str] = None
 
 
-#  CRUD ENDPOINTS
+# crud endpoints
 
 @router.get("/events")
 def list_events(
@@ -52,7 +52,6 @@ def list_events(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """List study events, optionally filtered by date range."""
     q = db.query(StudyEvent).filter(StudyEvent.user_id == current_user.id)
 
     if start:
@@ -78,7 +77,6 @@ def create_event(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Create a new study event."""
     duration = int((body.end_time - body.start_time).total_seconds() / 60)
     event = StudyEvent(
         user_id=current_user.id,
@@ -100,7 +98,7 @@ def create_event(
     db.commit()
     db.refresh(event)
 
-    # Sync to Google Calendar if connected
+    # sync to google calendar if connected
     _try_gcal_push(current_user, event, db)
 
     return _event_to_dict(event)
@@ -113,7 +111,6 @@ def update_event(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Update an existing study event."""
     event = (
         db.query(StudyEvent)
         .filter(StudyEvent.id == event_id, StudyEvent.user_id == current_user.id)
@@ -144,7 +141,6 @@ def delete_event(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Delete a study event."""
     event = (
         db.query(StudyEvent)
         .filter(StudyEvent.id == event_id, StudyEvent.user_id == current_user.id)
@@ -153,7 +149,6 @@ def delete_event(
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
 
-    # Remove from Google Calendar if synced
     if event.gcal_event_id:
         _try_gcal_delete(current_user, event, db)
 
@@ -162,6 +157,7 @@ def delete_event(
     return {"deleted": True}
 
 
+# ai smart schedule
 
 @router.post("/generate-schedule")
 def generate_smart_schedule(
@@ -169,7 +165,6 @@ def generate_smart_schedule(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Auto-generate study events from analytics gaps for the next N days."""
     from app.routers.analytics import _compute_analytics
 
     try:
@@ -187,15 +182,13 @@ def generate_smart_schedule(
     now = datetime.now(timezone.utc)
     events_created = []
 
-    # Distribute recommendations across the next N days
-    # Prefer morning/afternoon slots, avoid weekends for heavy sessions
     study_hours = [9, 11, 14, 16]  # preferred start hours
 
     for day_offset in range(days):
         day = now + timedelta(days=day_offset)
-        day_of_week = day.weekday()  # 0=Mon, 6=Sun
+        day_of_week = day.weekday()
 
-        # Fewer sessions on weekends
+        # fewer sessions on weekends
         max_sessions = 2 if day_of_week >= 5 else 3
         day_recs = recs[:max_sessions]
 
@@ -205,7 +198,6 @@ def generate_smart_schedule(
             duration = rec.get("recommended_mins", 45)
             end = start + timedelta(minutes=duration)
 
-            # Check for existing events at this time
             existing = (
                 db.query(StudyEvent)
                 .filter(
@@ -216,7 +208,7 @@ def generate_smart_schedule(
                 .first()
             )
             if existing:
-                continue  # skip — slot occupied
+                continue
 
             event = StudyEvent(
                 user_id=current_user.id,
@@ -234,12 +226,10 @@ def generate_smart_schedule(
             db.add(event)
             events_created.append(event)
 
-        # Rotate recs so different topics get scheduled on different days
         recs = recs[max_sessions:] + recs[:max_sessions]
 
     db.commit()
 
-    # Batch sync to Google Calendar
     for event in events_created:
         db.refresh(event)
         _try_gcal_push(current_user, event, db)
@@ -251,12 +241,11 @@ def generate_smart_schedule(
     }
 
 
-#  GOOGLE CALENDAR OAUTH2
+# google calendar oauth2
 
-# Use the same Google OAuth credentials as the main app auth
 from app.config import settings as _app_settings
 GCAL_CLIENT_ID = getattr(_app_settings, "GOOGLE_CLIENT_ID", "") or os.environ.get("GOOGLE_CLIENT_ID", "")
-GCAL_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "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")
+GCAL_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
 
 
 @router.get("/gcal/status")
@@ -264,7 +253,6 @@ def gcal_status(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Check if Google Calendar is connected."""
     token = db.query(GoogleCalendarToken).filter(
         GoogleCalendarToken.user_id == current_user.id
     ).first()
@@ -288,11 +276,6 @@ def gcal_connect(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """
-    Store Google Calendar tokens from the Flutter client-side OAuth flow.
-    The Flutter app runs the same OAuth dance (same client ID) but with
-    the calendar scope, then sends the tokens here.
-    """
     existing = db.query(GoogleCalendarToken).filter(
         GoogleCalendarToken.user_id == current_user.id
     ).first()
@@ -320,7 +303,6 @@ def gcal_disconnect(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Disconnect Google Calendar."""
     db.query(GoogleCalendarToken).filter(
         GoogleCalendarToken.user_id == current_user.id
     ).delete()
@@ -334,7 +316,6 @@ def gcal_sync(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Sync events between Cerebro and Google Calendar."""
     token = _get_valid_token(current_user, db)
     if not token:
         raise HTTPException(status_code=401, detail="Google Calendar not connected")
@@ -342,12 +323,11 @@ def gcal_sync(
     results = {"pushed": 0, "pulled": 0, "errors": []}
 
     if direction in ("push", "both"):
-        # Push all local events that aren't synced yet (no date filter — push everything)
         local_events = (
             db.query(StudyEvent)
             .filter(
                 StudyEvent.user_id == current_user.id,
-                StudyEvent.gcal_event_id.is_(None),  # not yet synced
+                StudyEvent.gcal_event_id.is_(None),
             )
             .all()
         )
@@ -360,7 +340,6 @@ def gcal_sync(
                 results["errors"].append(f"Push {event.title}: {e}")
 
     if direction in ("pull", "both"):
-        # Pull events from Google Calendar
         try:
             pulled = _pull_events_from_gcal(token, current_user, db)
             results["pulled"] = pulled
@@ -370,7 +349,7 @@ def gcal_sync(
     return results
 
 
-#  GOOGLE CALENDAR HELPERS
+# google calendar helpers
 
 def _get_valid_token(user: User, db: Session) -> Optional[GoogleCalendarToken]:
     token = db.query(GoogleCalendarToken).filter(
@@ -379,7 +358,6 @@ def _get_valid_token(user: User, db: Session) -> Optional[GoogleCalendarToken]:
     if not token:
         return None
 
-    # Refresh if expired
     if token.token_expiry and token.token_expiry < datetime.now(timezone.utc):
         if token.refresh_token:
             try:
@@ -413,7 +391,6 @@ def _push_event_to_gcal(token: GoogleCalendarToken, event: StudyEvent, db: Sessi
 
     cal_id = token.calendar_id or "primary"
 
-    # Ensure timestamps have timezone info (Google requires it)
     start_dt = event.start_time
     end_dt = event.end_time
     if start_dt and start_dt.tzinfo is None:
@@ -423,7 +400,7 @@ def _push_event_to_gcal(token: GoogleCalendarToken, event: StudyEvent, db: Sessi
 
     gcal_body = {
         "summary": event.title,
-        "description": event.description or f"CEREBRO study session\nType: {event.event_type}\nTopic: {event.topic or 'General'}",
+        "description": event.description or f"Study session\nType: {event.event_type}\nTopic: {event.topic or 'General'}",
         "start": {"dateTime": start_dt.isoformat(), "timeZone": "UTC"},
         "end": {"dateTime": end_dt.isoformat(), "timeZone": "UTC"},
         "colorId": _gcal_color_id(event.event_type),
@@ -519,13 +496,11 @@ def _pull_events_from_gcal(token: GoogleCalendarToken, user: User, db: Session) 
     imported = 0
     for ge in gcal_events:
         gcal_id = ge["id"]
-        # Skip if already imported
         existing = db.query(StudyEvent).filter(
             StudyEvent.user_id == user.id,
             StudyEvent.gcal_event_id == gcal_id,
         ).first()
         if existing:
-            # Update existing
             existing.title = ge.get("summary", existing.title)
             existing.description = ge.get("description", existing.description)
             start_str = ge.get("start", {}).get("dateTime") or ge.get("start", {}).get("date")
@@ -536,7 +511,6 @@ def _pull_events_from_gcal(token: GoogleCalendarToken, user: User, db: Session) 
                 existing.end_time = datetime.fromisoformat(end_str.replace("Z", "+00:00"))
             continue
 
-        # Create new local event from Google Calendar
         start_str = ge.get("start", {}).get("dateTime") or ge.get("start", {}).get("date")
         end_str = ge.get("end", {}).get("dateTime") or ge.get("end", {}).get("date")
         if not start_str or not end_str:
@@ -569,7 +543,6 @@ def _pull_events_from_gcal(token: GoogleCalendarToken, user: User, db: Session) 
 
 
 def _gcal_color_id(event_type: str) -> str:
-    # Google Calendar color IDs: 1-11
     return {
         "study": "9",       # blueberry
         "review": "2",      # sage
@@ -581,7 +554,7 @@ def _gcal_color_id(event_type: str) -> str:
     }.get(event_type, "9")
 
 
-#  HELPERS
+# helpers
 
 def _event_to_dict(e: StudyEvent) -> dict:
     return {

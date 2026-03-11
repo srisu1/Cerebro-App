@@ -9,6 +9,7 @@ from sqlalchemy.orm import relationship
 
 from app.database import Base
 
+
 class PasswordEntry(Base):
     __tablename__ = "password_entries"
 
@@ -27,6 +28,7 @@ class PasswordEntry(Base):
     def __repr__(self):
         return f"<PasswordEntry {self.site_name}>"
 
+
 class HabitEntry(Base):
     __tablename__ = "habit_entries"
 
@@ -35,7 +37,7 @@ class HabitEntry(Base):
     name = Column(String(100), nullable=False)
     description = Column(Text)
     frequency = Column(String(50), default="daily")  # daily, weekdays, weekly
-    target_count = Column(Integer, default=1)  # How many times per frequency period
+    target_count = Column(Integer, default=1)
     color = Column(String(7), default="#10B981")
     icon = Column(String(50), default="check_circle")
     is_active = Column(Boolean, default=True)
@@ -45,11 +47,11 @@ class HabitEntry(Base):
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Relationships
     completions = relationship("HabitCompletion", back_populates="habit", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<HabitEntry {self.name} (streak: {self.streak_days})>"
+
 
 class HabitCompletion(Base):
     __tablename__ = "habit_completions"
@@ -61,11 +63,11 @@ class HabitCompletion(Base):
     date = Column(Date, default=date.today)
     notes = Column(Text)
 
-    # Relationships
     habit = relationship("HabitEntry", back_populates="completions")
 
     def __repr__(self):
         return f"<HabitCompletion {self.date}>"
+
 
 class ScheduleEntry(Base):
     __tablename__ = "schedule_entries"

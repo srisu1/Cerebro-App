@@ -12,19 +12,20 @@ from app.models.user import User
 from app.models.study import Subject, StudySession, Quiz, Flashcard
 from app.utils.auth import get_current_user
 
-router = APIRouter(prefix="/study", tags=["analytics"])
+router = APIRouter(prefix="/study", tags=["study-analytics"])
+
 
 def _safe_mean(values: list) -> float:
-    """Mean of a list, returns 0.0 if empty."""
     return sum(values) / len(values) if values else 0.0
 
+
 def _aware(dt):
-    """Make a datetime timezone-aware (UTC) if it's naive."""
     if dt is None:
         return None
     if dt.tzinfo is None:
         return dt.replace(tzinfo=timezone.utc)
     return dt
+
 
 def _severity(proficiency: float) -> str:
     if proficiency < 40:
@@ -34,6 +35,7 @@ def _severity(proficiency: float) -> str:
     elif proficiency < 75:
         return "medium"
     return "ok"
+
 
 def _recommended_action(severity: str, quiz_avg: float, focus_avg: float, card_acc: float) -> str:
     if severity == "critical":
@@ -50,17 +52,18 @@ def _recommended_action(severity: str, quiz_avg: float, focus_avg: float, card_a
         return "Light review to reinforce concepts"
     return "On track — maintain your pace"
 
+
 @router.get("/analytics")
 def get_study_analytics(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Aggregated analytics: knowledge map, gaps, predictions, schedule."""
     try:
         return _compute_analytics(current_user, db)
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
 
 def _compute_analytics(current_user: User, db: Session):
     user_id = current_user.id
@@ -79,7 +82,6 @@ def _compute_analytics(current_user: User, db: Session):
         "last_studied": None,
     })
 
-    # Index sessions by subject_id for quick lookup
     sessions_by_subject: Dict[str, list] = defaultdict(list)
     for s in sessions:
         if s.subject_id:
@@ -95,7 +97,7 @@ def _compute_analytics(current_user: User, db: Session):
         if c.subject_id:
             cards_by_subject[str(c.subject_id)].append(c)
 
-    #  KNOWLEDGE MAP
+    # knowledge map
     km_subjects = []
     all_topics_set = set()
 
@@ -105,7 +107,6 @@ def _compute_analytics(current_user: User, db: Session):
         subj_quizzes = quizzes_by_subject.get(sid, [])
         subj_cards = cards_by_subject.get(sid, [])
 
-        # Collect all topics for this subject
         topics_map: Dict[str, Dict] = defaultdict(lambda: {
             "quiz_scores": [], "focus_scores": [], "card_correct": 0,
             "card_total": 0, "session_count": 0, "last_studied": None,
@@ -136,7 +137,6 @@ def _compute_analytics(current_user: User, db: Session):
                     t_lower = t.strip()
                     if t_lower:
                         topics_map[t_lower]["quiz_scores"].append(pct)
-            # Also mark weak topics with penalty
             if quiz.weak_topics:
                 for t in quiz.weak_topics:
                     t_lower = t.strip()
@@ -151,7 +151,7 @@ def _compute_analytics(current_user: User, db: Session):
                         topics_map[t_lower]["card_correct"] += (card.correct_reviews or 0)
                         topics_map[t_lower]["card_total"] += (card.total_reviews or 0)
 
-        # Build per-topic proficiency
+        # per-topic proficiency
         subj_topics = []
         for topic_name, td in topics_map.items():
             all_topics_set.add(topic_name)
@@ -159,11 +159,9 @@ def _compute_analytics(current_user: User, db: Session):
             focus_avg = _safe_mean(td["focus_scores"])
             card_acc = (td["card_correct"] / td["card_total"]) if td["card_total"] > 0 else 0.5
 
-            # Weighted proficiency
             proficiency = (quiz_avg * 0.5) + (focus_avg * 0.3) + (card_acc * 100 * 0.2)
             proficiency = max(0, min(100, proficiency))
 
-            # Also populate global topic_data for gap detection
             key = f"{topic_name}|{subj.name}"
             topic_data[key] = {
                 "topic": topic_name, "subject_name": subj.name,
@@ -186,7 +184,6 @@ def _compute_analytics(current_user: User, db: Session):
                 "session_count": td["session_count"],
             })
 
-        # Sort topics by proficiency ascending (weakest first)
         subj_topics.sort(key=lambda x: x["proficiency"])
 
         km_subjects.append({
@@ -198,8 +195,7 @@ def _compute_analytics(current_user: User, db: Session):
             "topics": subj_topics,
         })
 
-    #  FALLBACK: Build topics from GeneratedQuiz questions directly
-    #  (catches quizzes not linked to subjects or with missing topics)
+    # fallback: build topics from generated quiz questions
     if not all_topics_set:
         try:
             from app.models.quiz_engine import GeneratedQuiz, QuizQuestion
@@ -244,7 +240,6 @@ def _compute_analytics(current_user: User, db: Session):
                             if existing is None or ca > _aware(existing):
                                 fb_topics_map[t]["last_studied"] = ca
 
-            # Also pull flashcard tags
             for card in flashcards:
                 if card.tags:
                     for t in card.tags:
@@ -254,7 +249,6 @@ def _compute_analytics(current_user: User, db: Session):
                             fb_topics_map[t]["card_correct"] += (card.correct_reviews or 0)
                             fb_topics_map[t]["card_total"] += (card.total_reviews or 0)
 
-            # Build a pseudo-subject for the knowledge map
             if fb_topics_map:
                 fb_subj_topics = []
                 for topic_name, td in fb_topics_map.items():
@@ -264,7 +258,6 @@ def _compute_analytics(current_user: User, db: Session):
                     proficiency = (quiz_avg * 0.5) + (focus_avg * 0.3) + (card_acc * 100 * 0.2)
                     proficiency = max(0, min(100, proficiency))
 
-                    # Add to global topic_data for gap detection
                     key = f"{topic_name}|Quiz Topics"
                     topic_data[key] = {
                         "topic": topic_name, "subject_name": "Quiz Topics",
@@ -302,7 +295,7 @@ def _compute_analytics(current_user: User, db: Session):
             print(f"[ANALYTICS] Fallback topic scan failed: {e}")
             import traceback; traceback.print_exc()
 
-    #  KNOWLEDGE GAPS
+    # knowledge gaps
     gaps = []
     for key, td in topic_data.items():
         sev = _severity(td["proficiency"])
@@ -321,11 +314,9 @@ def _compute_analytics(current_user: User, db: Session):
                     sev, td["quiz_avg"], td["focus_avg"], td["card_accuracy"]),
             })
 
-    # Sort by severity (critical first), then by proficiency ascending
     severity_order = {"critical": 0, "high": 1, "medium": 2}
     gaps.sort(key=lambda x: (severity_order.get(x["severity"], 3), x["proficiency"]))
 
-    # Also flag subjects that are far below target
     flagged_subjects = []
     for subj in subjects:
         current = float(str(subj.current_proficiency or 0))
@@ -341,9 +332,7 @@ def _compute_analytics(current_user: User, db: Session):
                 "gap_percentage": round(gap_pct, 1),
             })
 
-    #  PREDICTIONS
-
-    # Exam readiness (weighted average of recent performance)
+    # predictions
     recent_quiz_scores = []
     for q in sorted(quizzes, key=lambda x: _aware(x.created_at) if x.created_at else now, reverse=True)[:10]:
         try:
@@ -371,7 +360,6 @@ def _compute_analytics(current_user: User, db: Session):
     exam_readiness = max(0, min(100, exam_readiness))
     confidence = round(min(0.95, 0.5 + len(recent_quiz_scores) / 20), 2)
 
-    # Subject predictions (simple linear projection)
     subject_predictions = []
     for subj in subjects:
         sid = str(subj.id)
@@ -381,11 +369,9 @@ def _compute_analytics(current_user: User, db: Session):
         )
         current_prof = float(str(subj.current_proficiency or 0))
 
-        # Calculate trend from last 4 weeks of sessions
         if len(subj_sessions_sorted) >= 2:
             recent = [s for s in subj_sessions_sorted if _aware(s.start_time) >= month_ago]
             if recent:
-                # Simple growth rate based on focus score improvement
                 first_half = recent[:len(recent)//2] if len(recent) > 1 else recent
                 second_half = recent[len(recent)//2:] if len(recent) > 1 else recent
                 early_focus = _safe_mean([s.focus_score for s in first_half if s.focus_score])
@@ -410,12 +396,12 @@ def _compute_analytics(current_user: User, db: Session):
             "trend": trend,
         })
 
-    # Weekly study minutes & focus (last 7 days)
+    # weekly study minutes and focus (last 7 days)
     weekly_minutes = [0] * 7
     weekly_focus_scores: List[List[float]] = [[] for _ in range(7)]
     for s in sessions:
         if s.start_time and _aware(s.start_time) >= week_ago:
-            day_idx = (s.start_time.weekday())  # 0=Mon, 6=Sun
+            day_idx = (s.start_time.weekday())
             weekly_minutes[day_idx] += (s.duration_minutes or 0)
             if s.focus_score and s.focus_score > 0:
                 weekly_focus_scores[day_idx].append(s.focus_score)
@@ -423,9 +409,9 @@ def _compute_analytics(current_user: User, db: Session):
     weekly_focus = [round(_safe_mean(day_scores)) if day_scores else 0
                     for day_scores in weekly_focus_scores]
 
-    #  SMART SCHEDULE
+    # smart schedule recommendations
     recommendations = []
-    for g in gaps[:8]:  # Top 8 gaps
+    for g in gaps[:8]:
         severity_weight = {"critical": 1.5, "high": 1.2, "medium": 1.0}.get(g["severity"], 1.0)
         urgency = round(
             (1 - g["proficiency"] / 100) *
@@ -433,7 +419,6 @@ def _compute_analytics(current_user: User, db: Session):
             severity_weight,
             2
         )
-        # Recommend duration based on severity
         rec_mins = {"critical": 90, "high": 60, "medium": 45}.get(g["severity"], 30)
 
         recommendations.append({
@@ -449,10 +434,9 @@ def _compute_analytics(current_user: User, db: Session):
 
     recommendations.sort(key=lambda x: -x["urgency"])
 
-    # Flashcard due counts
+    # flashcard due counts
     today = date.today()
     def _card_date(c):
-        """Safely get next_review_date as a date object."""
         d = c.next_review_date
         if d is None:
             return None
