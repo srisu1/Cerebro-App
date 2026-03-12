@@ -16,7 +16,7 @@ from app.config import settings
 from app.database import engine, Base
 from app.routers import auth, study, health, quiz_engine, calendar, analytics
 
-# TODO: use alembic migrations instead of this
+# fallback: create tables if alembic hasn't run yet (dev convenience)
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
