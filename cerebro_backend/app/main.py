@@ -16,13 +16,13 @@ from app.config import settings
 from app.database import engine, Base
 from app.routers import auth, study, health, quiz_engine, calendar, analytics
 
-# TODO: use alembic migrations instead of this
+# fallback: create tables if alembic hasn't run yet (dev convenience)
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="CEREBRO API",
     description="Student Companion Backend",
-    version="0.1.0",
+    version="0.2.0",
 )
 
 app.add_middleware(
@@ -36,7 +36,7 @@ app.add_middleware(
 
 @app.get("/")
 def root():
-    return {"app": settings.APP_NAME, "status": "running", "version": "0.1.0"}
+    return {"app": settings.APP_NAME, "status": "running", "version": "0.2.0"}
 
 
 @app.get("/health")
