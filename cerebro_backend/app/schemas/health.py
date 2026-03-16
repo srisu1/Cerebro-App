@@ -107,7 +107,8 @@ class AdherenceStatsResponse(BaseModel):
 
 # mood
 class MoodEntryCreate(BaseModel):
-    mood_id: UUID
+    mood_id: Optional[UUID] = None
+    mood_type: Optional[str] = None       # accept mood by name (e.g. "happy")
     note: Optional[str] = None
     energy_level: Optional[int] = Field(None, ge=1, le=5)
     context_tags: List[str] = []
@@ -191,3 +192,26 @@ class WaterLogResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# health insights
+class HealthInsight(BaseModel):
+    type: str          # correlation, streak, trend, tip, warning
+    icon: str          # bulb, fire, chart_up, chart_down, water, moon, pill, heart
+    text: str
+    priority: int = 0  # higher = show first
+
+
+class WeeklySummary(BaseModel):
+    avg_sleep: float = 0.0
+    avg_mood_score: float = 0.0
+    med_adherence_pct: float = 0.0
+    water_avg: float = 0.0
+    symptom_count: int = 0
+    days_tracked: int = 0
+
+
+class HealthInsightsResponse(BaseModel):
+    wellness_score: int = 0  # 0-100
+    insights: List[HealthInsight] = []
+    weekly_summary: WeeklySummary = WeeklySummary()
