@@ -144,3 +144,22 @@ class Flashcard(Base):
 
     def __repr__(self):
         return f"<Flashcard {self.front_text[:30]}...>"
+
+
+class Resource(Base):
+    __tablename__ = "resources"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    title = Column(String(200), nullable=False)
+    url = Column(String(500), nullable=False)
+    resource_type = Column(String(50))  # video, article, tutorial, practice
+    subject = Column(String(100))
+    topics = Column(ARRAY(String(200)), default=[])
+    difficulty = Column(String(20))  # beginner, intermediate, advanced
+    description = Column(Text)
+    opened_count = Column(Integer, default=0)
+    helpful_rating = Column(DECIMAL(3, 2), default=0.0)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<Resource {self.title}>"
