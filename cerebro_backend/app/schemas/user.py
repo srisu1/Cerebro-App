@@ -43,6 +43,8 @@ class UserResponse(BaseModel):
     level: int
     streak_days: int
     coins: int
+    auth_provider: Optional[str] = "email"
+    has_password: bool = True
     created_at: datetime
 
     class Config:
