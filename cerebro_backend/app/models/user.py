@@ -35,6 +35,10 @@ class User(Base):
     streak_days = Column(Integer, default=0)
     coins = Column(Integer, default=0)
 
+    # password reset
+    reset_token = Column(String(255), nullable=True)
+    reset_token_expires = Column(DateTime(timezone=True), nullable=True)
+
     # timestamps
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -49,11 +53,19 @@ class User(Base):
     # health relationships
     sleep_logs = relationship("SleepLog", back_populates="user", cascade="all, delete-orphan")
     medications = relationship("Medication", back_populates="user", cascade="all, delete-orphan")
-    medication_logs = relationship("MedicationLog", back_populates="user", cascade="all, delete-orphan")
     mood_entries = relationship("MoodEntry", back_populates="user", cascade="all, delete-orphan")
     symptom_logs = relationship("SymptomLog", back_populates="user", cascade="all, delete-orphan")
     water_logs = relationship("WaterLog", back_populates="user", cascade="all, delete-orphan")
     achievements = relationship("UserAchievement", back_populates="user", cascade="all, delete-orphan")
+
+    # gamification relationships
+    avatar = relationship("UserAvatar", back_populates="user", uselist=False, cascade="all, delete-orphan")
+    achievements = relationship("UserAchievement", back_populates="user", cascade="all, delete-orphan")
+    xp_transactions = relationship("XPTransaction", back_populates="user", cascade="all, delete-orphan")
+
+    @property
+    def has_password(self) -> bool:
+        return self.hashed_password is not None
 
     def __repr__(self):
         return f"<User {self.display_name} ({self.email})>"
