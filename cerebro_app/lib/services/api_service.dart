@@ -1,4 +1,5 @@
-// Using SharedPreferences for token storage (macOS Keychain has issues)
+/// Central HTTP client using Dio with JWT token management.
+/// Uses SharedPreferences for token storage (macOS Keychain has issues).
 
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -20,6 +21,7 @@ class ApiService {
       ),
     );
 
+    
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) async {
@@ -28,13 +30,14 @@ class ApiService {
           if (token != null && token.isNotEmpty) {
             options.headers['Authorization'] = 'Bearer $token';
           }
+          // Let Dio set the correct Content-Type for FormData (multipart)
           if (options.data is FormData) {
             options.headers.remove('Content-Type');
           }
           return handler.next(options);
         },
         onError: (error, handler) async {
-          // auto-refresh on 401 (skip for auth endpoints themselves)
+          // Auto-refresh token on 401 (but NOT for auth endpoints)
           final path = error.requestOptions.path;
           final isAuthEndpoint = path.contains('/auth/login') ||
               path.contains('/auth/register') ||
@@ -43,6 +46,7 @@ class ApiService {
           if (error.response?.statusCode == 401 && !isAuthEndpoint) {
             final refreshed = await _refreshToken();
             if (refreshed) {
+              // Retry the failed request
               final retryResponse = await _dio.fetch(error.requestOptions);
               return handler.resolve(retryResponse);
             }
@@ -53,9 +57,10 @@ class ApiService {
     );
   }
 
+  /// Refresh the access token using the refresh token
   Future<bool> _refreshToken() async {
+    final prefs = await SharedPreferences.getInstance();
     try {
-      final prefs = await SharedPreferences.getInstance();
       final refreshToken = prefs.getString(AppConstants.refreshTokenKey);
       if (refreshToken == null || refreshToken.isEmpty) return false;
 
@@ -65,15 +70,25 @@ class ApiService {
       );
 
       if (response.statusCode == 200) {
-        await prefs.setString(AppConstants.accessTokenKey, response.data['access_token']);
-        await prefs.setString(AppConstants.refreshTokenKey, response.data['refresh_token']);
+        await prefs.setString(
+          AppConstants.accessTokenKey,
+          response.data['access_token'],
+        );
+        await prefs.setString(
+          AppConstants.refreshTokenKey,
+          response.data['refresh_token'],
+        );
         return true;
       }
     } catch (e) {
-      // refresh failed, user needs to login again
+      // Refresh failed - clear tokens so user gets redirected to login
+      await prefs.remove(AppConstants.accessTokenKey);
+      await prefs.remove(AppConstants.refreshTokenKey);
     }
     return false;
   }
+
+  
 
   Future<Response> get(String path, {Map<String, dynamic>? queryParams}) {
     return _dio.get(path, queryParameters: queryParams);
