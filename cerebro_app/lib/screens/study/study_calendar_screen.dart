@@ -1,3 +1,7 @@
+//  Monthly calendar · event list · Google Calendar sync
+//  AI smart schedule · create/edit events
+//  Cozy Pocket Love aesthetic (pawprint bg, 3D cards, warm tones)
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -11,7 +15,6 @@ import 'package:cerebro_app/providers/auth_provider.dart';
 import 'package:cerebro_app/services/api_service.dart';
 import 'package:cerebro_app/config/constants.dart';
 
-// palette
 const _ombre1   = Color(0xFFFFFBF7);
 const _ombre2   = Color(0xFFFFF8F3);
 const _ombre3   = Color(0xFFFFF3EF);
@@ -44,25 +47,20 @@ class StudyCalendarScreen extends ConsumerStatefulWidget {
 
 class _StudyCalendarScreenState extends ConsumerState<StudyCalendarScreen>
     with SingleTickerProviderStateMixin {
-  // animation
   late AnimationController _enterCtrl;
 
-  // calendar state
   DateTime _focusedDay = DateTime.now();
   DateTime _selectedDay = DateTime.now();
   CalendarFormat _calendarFormat = CalendarFormat.month;
 
-  // events
   List<Map<String, dynamic>> _events = [];
   Map<DateTime, List<Map<String, dynamic>>> _eventsByDay = {};
   bool _loading = true;
   String? _error;
 
-  // google calendar
   bool _gcalConnected = false;
   bool _syncing = false;
 
-  // ai schedule
   bool _generating = false;
 
   @override
@@ -80,9 +78,7 @@ class _StudyCalendarScreenState extends ConsumerState<StudyCalendarScreen>
     super.dispose();
   }
 
-  // ═══════════════════════════════════════════════
   //  API CALLS
-  // ═══════════════════════════════════════════════
 
   Future<void> _loadEvents() async {
     setState(() { _loading = true; _error = null; });
@@ -305,7 +301,6 @@ class _StudyCalendarScreenState extends ConsumerState<StudyCalendarScreen>
     ));
   }
 
-  // entrance animation helper
   Widget _stag(double delay, Widget child) {
     return AnimatedBuilder(
       animation: _enterCtrl,
@@ -318,9 +313,7 @@ class _StudyCalendarScreenState extends ConsumerState<StudyCalendarScreen>
     );
   }
 
-  // ═══════════════════════════════════════════════
   //  BUILD
-  // ═══════════════════════════════════════════════
 
   @override
   Widget build(BuildContext context) {
@@ -381,9 +374,7 @@ class _StudyCalendarScreenState extends ConsumerState<StudyCalendarScreen>
     );
   }
 
-  // ═══════════════════════════════════════════════
   //  HEADER — warm with back button + sync
-  // ═══════════════════════════════════════════════
 
   Widget _buildHeader() {
     return Padding(
@@ -435,9 +426,7 @@ class _StudyCalendarScreenState extends ConsumerState<StudyCalendarScreen>
     );
   }
 
-  // ═══════════════════════════════════════════════
   //  CALENDAR CARD — 3D Pocket Love box
-  // ═══════════════════════════════════════════════
 
   Widget _buildCalendarCard() {
     return Container(
@@ -608,9 +597,7 @@ class _StudyCalendarScreenState extends ConsumerState<StudyCalendarScreen>
     );
   }
 
-  // ═══════════════════════════════════════════════
   //  QUICK STATS — total events this month, today's count
-  // ═══════════════════════════════════════════════
 
   Widget _buildQuickStats() {
     final todayCount = _eventsForDay(_selectedDay).length;
@@ -648,9 +635,7 @@ class _StudyCalendarScreenState extends ConsumerState<StudyCalendarScreen>
     ));
   }
 
-  // ═══════════════════════════════════════════════
   //  ACTION STRIP — AI Schedule + GCal connect
-  // ═══════════════════════════════════════════════
 
   Widget _buildActionStrip() {
     return Row(children: [
@@ -684,9 +669,7 @@ class _StudyCalendarScreenState extends ConsumerState<StudyCalendarScreen>
     ]);
   }
 
-  // ═══════════════════════════════════════════════
   //  GOOGLE CALENDAR CARD — connected status
-  // ═══════════════════════════════════════════════
 
   Widget _buildGcalCard() {
     if (!_gcalConnected) return const SizedBox.shrink();
@@ -733,9 +716,7 @@ class _StudyCalendarScreenState extends ConsumerState<StudyCalendarScreen>
     );
   }
 
-  // ═══════════════════════════════════════════════
   //  DAY EVENTS LIST
-  // ═══════════════════════════════════════════════
 
   Widget _buildDayEvents() {
     final dayEvents = _eventsForDay(_selectedDay);
@@ -950,9 +931,7 @@ class _StudyCalendarScreenState extends ConsumerState<StudyCalendarScreen>
     );
   }
 
-  // ═══════════════════════════════════════════════
   //  FAB — 3D game button style
-  // ═══════════════════════════════════════════════
 
   Widget _buildFab() {
     return GestureDetector(
@@ -972,9 +951,7 @@ class _StudyCalendarScreenState extends ConsumerState<StudyCalendarScreen>
     );
   }
 
-  // ═══════════════════════════════════════════════
   //  CREATE EVENT DIALOG
-  // ═══════════════════════════════════════════════
 
   void _showCreateDialog() {
     final titleCtrl = TextEditingController();
@@ -1179,9 +1156,7 @@ class _StudyCalendarScreenState extends ConsumerState<StudyCalendarScreen>
     );
   }
 
-  // ═══════════════════════════════════════════════
   //  DELETE CONFIRM
-  // ═══════════════════════════════════════════════
 
   void _confirmDelete(Map<String, dynamic> event) {
     showDialog(context: context, builder: (ctx) => AlertDialog(
@@ -1216,9 +1191,7 @@ class _StudyCalendarScreenState extends ConsumerState<StudyCalendarScreen>
     ));
   }
 
-  // ═══════════════════════════════════════════════
   //  LOADING SKELETON
-  // ═══════════════════════════════════════════════
 
   Widget _buildLoadingSkeleton() {
     return Padding(
@@ -1251,9 +1224,7 @@ class _StudyCalendarScreenState extends ConsumerState<StudyCalendarScreen>
     );
   }
 
-  // ═══════════════════════════════════════════════
   //  ERROR STATE
-  // ═══════════════════════════════════════════════
 
   Widget _buildError() {
     return Center(child: Column(
@@ -1290,9 +1261,7 @@ class _StudyCalendarScreenState extends ConsumerState<StudyCalendarScreen>
     ));
   }
 
-  // ═══════════════════════════════════════════════
   //  HELPERS
-  // ═══════════════════════════════════════════════
 
   Color _parseColor(String? hex) {
     if (hex == null || hex.length < 7) return _skyHdr;
@@ -1336,9 +1305,7 @@ class _TypeVisual {
   const _TypeVisual(this.icon, this.color);
 }
 
-
 //  GAME BUTTON — chunky 3D (matching study_tab exactly)
-
 class _GameBtn extends StatefulWidget {
   final IconData icon;
   final String label;
@@ -1384,9 +1351,7 @@ class _GameBtnState extends State<_GameBtn> {
   }
 }
 
-
 //  PAWPRINT BACKGROUND
-
 class _PawPrintBg extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {

@@ -1,9 +1,13 @@
+//  3 Tabs: Review · All Cards · Generate
+//  Flip animation · SM-2 spaced repetition · AI generation
+//  + Deck management (create/switch/edit/delete decks)
+//  Cozy Pocket Love aesthetic
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cerebro_app/providers/auth_provider.dart';
 
-// palette
 const _ombre1   = Color(0xFFFFFBF7);
 const _ombre2   = Color(0xFFFFF8F3);
 const _ombre3   = Color(0xFFFFF3EF);
@@ -41,19 +45,16 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
     with TickerProviderStateMixin {
   late TabController _tabCtrl;
 
-  // deck state
   List<Map<String, dynamic>> _decks = [];
   String? _selectedDeckId;
   String _selectedDeckName = 'All Cards';
 
-  // data
   List<Map<String, dynamic>> _allCards = [];
   List<Map<String, dynamic>> _dueCards = [];
   List<Map<String, dynamic>> _materials = [];
   List<Map<String, dynamic>> _subjects = [];
   bool _loading = true;
 
-  // review state
   int _reviewIdx = 0;
   bool _isFlipped = false;
   bool _showResult = false;
@@ -61,12 +62,10 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
   int _sessionTotal = 0;
   bool _reviewDone = false;
 
-  // create state
   final _frontCtrl = TextEditingController();
   final _backCtrl = TextEditingController();
   String? _selectedSubjectId;
 
-  // generate state
   bool _generating = false;
   List<String> _selectedMaterialIds = [];
   int _genCount = 10;
@@ -156,9 +155,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
     }
   }
 
-  // ═══════════════════════════════════════════════
   //  BUILD
-  // ═══════════════════════════════════════════════
 
   @override
   Widget build(BuildContext context) {
@@ -189,7 +186,6 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
     );
   }
 
-  // header
   Widget _header() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
@@ -234,9 +230,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
     ]),
   );
 
-  // ═══════════════════════════════════════════════
   //  DECK SELECTOR — horizontal scrolling chips
-  // ═══════════════════════════════════════════════
 
   Widget _deckSelector() {
     return Container(
@@ -331,9 +325,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
     return Color(int.parse(hex, radix: 16));
   }
 
-  // ═══════════════════════════════════════════════
   //  DECK MANAGER — create / edit / delete decks
-  // ═══════════════════════════════════════════════
 
   void _showDeckManager() {
     showModalBottomSheet(
@@ -655,7 +647,6 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
     }
   }
 
-  // tab bar
   Widget _tabBar() {
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 10, 16, 4),
@@ -687,9 +678,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
   }
 
 
-  // ═══════════════════════════════════════════════
   //  TAB 1: REVIEW (flip cards + grade)
-  // ═══════════════════════════════════════════════
 
   Widget _reviewTab() {
     if (_dueCards.isEmpty && _allCards.isEmpty) {
@@ -936,9 +925,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
   }
 
 
-  // ═══════════════════════════════════════════════
   //  TAB 2: ALL CARDS (browse + create + delete)
-  // ═══════════════════════════════════════════════
 
   Widget _allCardsTab() {
     return Column(children: [
@@ -1129,9 +1116,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
   }
 
 
-  // ═══════════════════════════════════════════════
   //  TAB 3: GENERATE (AI from study materials)
-  // ═══════════════════════════════════════════════
 
   Widget _generateTab() {
     return SingleChildScrollView(
@@ -1299,9 +1284,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
   }
 
 
-  // ═══════════════════════════════════════════════
   //  SHARED WIDGETS
-  // ═══════════════════════════════════════════════
 
   Widget _bigButton(String label, Color color, VoidCallback? onTap) {
     return GestureDetector(

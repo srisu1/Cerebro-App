@@ -1,3 +1,6 @@
+//  My Quizzes · Study Materials · Schedule
+//  Cozy Pocket Love aesthetic · Dynamic quiz generation
+
 import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
@@ -10,7 +13,6 @@ import 'package:dio/dio.dart';
 import 'package:cerebro_app/providers/auth_provider.dart';
 import 'package:cerebro_app/config/router.dart';
 
-// palette
 const _ombre1   = Color(0xFFFFFBF7);
 const _ombre2   = Color(0xFFFFF8F3);
 const _ombre3   = Color(0xFFFFF3EF);
@@ -42,7 +44,6 @@ class _QuizScreenState extends ConsumerState<QuizScreen>
     with TickerProviderStateMixin {
   late TabController _tabCtrl;
 
-  // data
   List<Map<String, dynamic>> _quizzes = [];
   List<Map<String, dynamic>> _materials = [];
   List<Map<String, dynamic>> _subjects = [];
@@ -212,7 +213,6 @@ class _QuizScreenState extends ConsumerState<QuizScreen>
     );
   }
 
-  // ── Navigation & Generation ──
   void _navigateToQuiz(Map<String, dynamic> quiz) {
     context.push(Routes.takeQuiz, extra: quiz);
   }
@@ -277,9 +277,7 @@ class _QuizScreenState extends ConsumerState<QuizScreen>
 }
 
 
-
 //  TAB 1: MY QUIZZES
-
 class _QuizzesTab extends StatelessWidget {
   final List<Map<String, dynamic>> quizzes;
   final List<Map<String, dynamic>> subjects;
@@ -450,9 +448,7 @@ class _QuizzesTab extends StatelessWidget {
 }
 
 
-
 //  TAB 2: STUDY MATERIALS
-
 class _MaterialsTab extends StatefulWidget {
   final List<Map<String, dynamic>> materials;
   final List<Map<String, dynamic>> subjects;
@@ -1076,9 +1072,7 @@ class _MaterialsTabState extends State<_MaterialsTab> {
 }
 
 
-
 //  TAB 3: QUIZ SCHEDULE
-
 class _ScheduleTab extends StatefulWidget {
   final Map<String, dynamic>? schedule;
   final List<Map<String, dynamic>> subjects;
@@ -1314,9 +1308,7 @@ class _ScheduleTabState extends State<_ScheduleTab> {
 }
 
 
-
 //  PAWPRINT BACKGROUND
-
 class _PawBgPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {

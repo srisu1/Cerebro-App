@@ -1,10 +1,13 @@
+//  Personalised learning resources from AI analysis
+//  Filter chips: All · Videos · Articles · Practice · Techniques
+//  Cozy Pocket Love aesthetic
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cerebro_app/providers/auth_provider.dart';
 
-// palette
 const _ombre1   = Color(0xFFFFFBF7);
 const _ombre2   = Color(0xFFFFF8F3);
 const _ombre3   = Color(0xFFFFF3EF);
@@ -22,7 +25,6 @@ const _purpleLt = Color(0xFFD8C0E8);
 const _skyHdr   = Color(0xFF9DD4F0);
 const _sageHdr  = Color(0xFF90C8A0);
 
-// filter types
 enum _FilterType { all, video, article, practice, technique }
 
 class ResourceScreen extends ConsumerStatefulWidget {
@@ -100,9 +102,7 @@ class _ResourceScreenState extends ConsumerState<ResourceScreen> {
     }).toList();
   }
 
-  // ═══════════════════════════════════════════════
   //  BUILD
-  // ═══════════════════════════════════════════════
 
   @override
   Widget build(BuildContext context) {
@@ -126,7 +126,6 @@ class _ResourceScreenState extends ConsumerState<ResourceScreen> {
     );
   }
 
-  // header
   Widget _header() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
@@ -185,7 +184,6 @@ class _ResourceScreenState extends ConsumerState<ResourceScreen> {
     ),
   );
 
-  // weak areas strip
   Widget _weakAreasStrip() {
     return Container(
       height: 38,
@@ -231,7 +229,6 @@ class _ResourceScreenState extends ConsumerState<ResourceScreen> {
     );
   }
 
-  // filter chips
   Widget _filterChips() {
     final filters = [
       (_FilterType.all, 'All', Icons.auto_awesome_rounded, _purpleHdr),
@@ -285,7 +282,6 @@ class _ResourceScreenState extends ConsumerState<ResourceScreen> {
     );
   }
 
-  // body
   Widget _body() {
     if (_loading) return _loadingState();
     if (_error != null) return _errorState();
@@ -320,7 +316,6 @@ class _ResourceScreenState extends ConsumerState<ResourceScreen> {
     );
   }
 
-  // resource card
   Widget _resourceCard(Map<String, dynamic> rec) {
     final type = rec['resource_type']?.toString() ?? 'article';
     final typeInfo = _typeVisuals(type);
@@ -561,7 +556,6 @@ class _ResourceScreenState extends ConsumerState<ResourceScreen> {
     ));
   }
 
-  // states
   Widget _loadingState() {
     return Padding(
       padding: const EdgeInsets.all(16),
