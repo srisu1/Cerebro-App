@@ -1,3 +1,5 @@
+//  Cozy Pocket Love aesthetic · Full CRUD · Proficiency tracking
+
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -65,6 +67,7 @@ Color _colorFromHex(String hex) {
 }
 
 
+//  MAIN SCREEN
 class SubjectsScreen extends ConsumerStatefulWidget {
   const SubjectsScreen({Key? key}) : super(key: key);
   @override
@@ -267,6 +270,7 @@ class _SubjectsScreenState extends ConsumerState<SubjectsScreen>
               borderRadius: BorderRadius.circular(20)),
             child: SingleChildScrollView(
               child: Column(mainAxisSize: MainAxisSize.min, children: [
+                // Header
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.fromLTRB(20, 18, 14, 14),
@@ -307,22 +311,26 @@ class _SubjectsScreenState extends ConsumerState<SubjectsScreen>
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    // Subject Name
                     _fieldLabel('Subject Name *'),
                     const SizedBox(height: 6),
                     _textField(nameCtrl, 'e.g. Calculus II', maxLength: 100),
                     const SizedBox(height: 14),
 
+                    // Course Code
                     _fieldLabel('Course Code'),
                     const SizedBox(height: 6),
                     _textField(codeCtrl, 'e.g. MATH 202', maxLength: 50),
                     const SizedBox(height: 14),
 
+                    // Target Proficiency
                     _fieldLabel('Target Proficiency (%)'),
                     const SizedBox(height: 6),
                     _textField(targetCtrl, '100', maxLength: 3,
                       keyboardType: TextInputType.number),
                     const SizedBox(height: 16),
 
+                    // Color Picker
                     _fieldLabel('Color'),
                     const SizedBox(height: 8),
                     Wrap(spacing: 8, runSpacing: 8, children: _presetColors.map((hex) {
@@ -348,6 +356,7 @@ class _SubjectsScreenState extends ConsumerState<SubjectsScreen>
                     }).toList()),
                     const SizedBox(height: 16),
 
+                    // Icon Picker
                     _fieldLabel('Icon'),
                     const SizedBox(height: 8),
                     Wrap(spacing: 8, runSpacing: 8, children: _iconMap.entries.map((e) {
@@ -375,6 +384,7 @@ class _SubjectsScreenState extends ConsumerState<SubjectsScreen>
                     }).toList()),
                     const SizedBox(height: 20),
 
+                    // Actions
                     Row(children: [
                       if (isEdit) ...[
                         Expanded(child: GestureDetector(
@@ -507,8 +517,10 @@ class _SubjectsScreenState extends ConsumerState<SubjectsScreen>
     return Scaffold(
       backgroundColor: _ombre1,
       body: Stack(children: [
+        // Pawprint ombré background
         Positioned.fill(child: CustomPaint(painter: _PawBgPainter())),
 
+        // Content
         SafeArea(
           child: RefreshIndicator(
             color: _outline,
@@ -541,6 +553,7 @@ class _SubjectsScreenState extends ConsumerState<SubjectsScreen>
                           style: GoogleFonts.nunito(fontSize: 12, color: _brownLt)),
                       ],
                     )),
+                    // Add button
                     GestureDetector(
                       onTap: () => _showSubjectDialog(),
                       child: Container(
@@ -566,6 +579,7 @@ class _SubjectsScreenState extends ConsumerState<SubjectsScreen>
                 SliverToBoxAdapter(child: _stag(0.08, Padding(
                   padding: const EdgeInsets.fromLTRB(28, 14, 28, 0),
                   child: Row(children: [
+                    // Search bar
                     Expanded(child: Container(
                       height: 38,
                       decoration: BoxDecoration(
@@ -592,6 +606,7 @@ class _SubjectsScreenState extends ConsumerState<SubjectsScreen>
                       ),
                     )),
                     const SizedBox(width: 8),
+                    // Sort chips
                     _sortChip('name', 'A-Z', Icons.sort_by_alpha_rounded),
                     const SizedBox(width: 4),
                     _sortChip('recent', 'New', Icons.schedule_rounded),
@@ -685,6 +700,7 @@ class _SubjectsScreenState extends ConsumerState<SubjectsScreen>
 }
 
 
+//  SUBJECT CARD
 class _SubjectCard extends StatelessWidget {
   final Map<String, dynamic> subject;
   final VoidCallback onTap;
@@ -714,6 +730,7 @@ class _SubjectCard extends StatelessWidget {
         child: ClipRRect(
           borderRadius: BorderRadius.circular(16),
           child: Column(children: [
+            // Color header strip
             Container(
               width: double.infinity,
               padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
@@ -740,6 +757,7 @@ class _SubjectCard extends StatelessWidget {
                         color: _brownLt.withOpacity(0.6))),
                   ],
                 )),
+                // Menu
                 PopupMenuButton<String>(
                   icon: Icon(Icons.more_vert_rounded, size: 16,
                     color: _brownLt.withOpacity(0.4)),
@@ -772,11 +790,13 @@ class _SubjectCard extends StatelessWidget {
               ]),
             ),
 
+            // Body
             Expanded(child: Padding(
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Progress ring + stats
                   Row(children: [
                     SizedBox(
                       width: 46, height: 46,
@@ -797,6 +817,7 @@ class _SubjectCard extends StatelessWidget {
                         Text('Proficiency', style: GoogleFonts.nunito(
                           fontSize: 10, color: _brownLt.withOpacity(0.5))),
                         const SizedBox(height: 2),
+                        // Progress bar
                         ClipRRect(
                           borderRadius: BorderRadius.circular(4),
                           child: LinearProgressIndicator(
@@ -814,6 +835,7 @@ class _SubjectCard extends StatelessWidget {
                     )),
                   ]),
                   const Spacer(),
+                  // Bottom status
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
@@ -849,6 +871,7 @@ class _SubjectCard extends StatelessWidget {
 }
 
 
+//  PAWPRINT BACKGROUND PAINTER
 class _PawBgPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
