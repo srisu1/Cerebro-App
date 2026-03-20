@@ -1,3 +1,9 @@
+/// Cozy study room, 3/4 corner perspective.
+/// Big window (orb clipped inside). 3D bookshelf. Chair.
+/// Desk with depth + items. No sparkles/pennant clutter.
+/// 4 time-of-day themes · chunky game title · quest vibes.
+/// _testMode = true → theme picker pills at bottom.
+
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,6 +15,7 @@ import 'package:cerebro_app/config/constants.dart';
 const _testMode = false;
 const _ol = Color(0xFF3A3230);
 
+// PALETTE
 class _Pal {
   final Color skyA, skyB, skyC;
   final Color orb, orbGlow;
@@ -134,6 +141,7 @@ int _timeIdx() {
   return 3;
 }
 
+// WIDGET
 class TitleScreen extends ConsumerStatefulWidget {
   const TitleScreen({super.key});
   @override
@@ -361,6 +369,7 @@ class _Star {
     required this.ph, required this.sp, required this.op});
 }
 
+// STAR FIELD
 class _StarFieldP extends CustomPainter {
   final List<_Star> stars; final double t;
   const _StarFieldP(this.stars, this.t);
@@ -379,6 +388,7 @@ class _StarFieldP extends CustomPainter {
   @override bool shouldRepaint(_StarFieldP o) => true;
 }
 
+// CLOUDS
 class _CloudP extends CustomPainter {
   final Color tint; final double t; final bool isNight;
   const _CloudP(this.tint, this.t, this.isNight);
@@ -411,6 +421,7 @@ class _CloudP extends CustomPainter {
   @override bool shouldRepaint(_CloudP o) => true;
 }
 
+// 3/4 CORNER ROOM  (v8.2 – polished)
 class _RoomP extends CustomPainter {
   final _Pal p; final double sway; final double tick;
   const _RoomP(this.p, this.sway, this.tick);
@@ -419,24 +430,20 @@ class _RoomP extends CustomPainter {
   void paint(Canvas c, Size s) {
     final w = s.width, h = s.height;
 
-    //  GEOMETRY 
     final cx = w * 0.35;
     final cL = h * 0.04, cC = h * 0.008, cR = h * 0.025;
     final fL = h * 0.68, fC = h * 0.62, fR = h * 0.65;
 
-    //  CEILING (tiny strip) 
     final ceil = Path()
       ..moveTo(0, 0)..lineTo(w, 0)
       ..lineTo(w, cR)..lineTo(cx, cC)..lineTo(0, cL)..close();
     c.drawPath(ceil, Paint()..color = Color.lerp(p.trim, p.wallA, 0.35)!);
 
-    //  SIDE WALL 
     final sideW = Path()
       ..moveTo(0, cL)..lineTo(cx, cC)
       ..lineTo(cx, fC)..lineTo(0, fL)..close();
     c.drawPath(sideW, Paint()..color = p.wallA);
 
-    //  BACK WALL with window cutout 
     final backW = Path()
       ..moveTo(cx, cC)..lineTo(w, cR)
       ..lineTo(w, fR)..lineTo(cx, fC)..close();
@@ -458,13 +465,11 @@ class _RoomP extends CustomPainter {
     final wallHole = Path.combine(PathOperation.difference, backW, win);
     c.drawPath(wallHole, Paint()..color = p.wallB);
 
-    //  ORB inside window (CLIPPED) 
     c.save();
     c.clipPath(win);
     _drawOrb(c, wL, wR, wTL, wTR, wBL, wBR);
     c.restore();
 
-    //  WINDOW FRAME 
     c.drawPath(win, Paint()..color = p.trim..style = PaintingStyle.stroke
       ..strokeWidth = 5..strokeJoin = StrokeJoin.round);
     // Cross bars
@@ -476,13 +481,10 @@ class _RoomP extends CustomPainter {
     c.drawLine(Offset(wL - 4, wBL + 3), Offset(wR + 4, wBR + 3),
         Paint()..color = p.trim..strokeWidth = 7..strokeCap = StrokeCap.round);
 
-    //  WINDOW SILL PLANT 
     _drawSillPlant(c, wL, wR, wBL, wBR);
 
-    //  FAIRY LIGHTS (string lights) 
     _drawFairyLights(c, wL, wR, wTL, wTR, wBL, wBR);
 
-    //  FLOOR 
     final floor = Path()
       ..moveTo(0, fL)..lineTo(cx, fC)..lineTo(w, fR)
       ..lineTo(w, h)..lineTo(0, h)..close();
@@ -494,10 +496,8 @@ class _RoomP extends CustomPainter {
           Paint()..color = p.floorH..strokeWidth = 1);
     }
 
-    //  RUG on floor 
     _drawRug(c, w, h, cx, fC, fR);
 
-    //  LIGHT BEAM (natural downward fall from window, day only) 
     if (!p.showStars) {
       // Light falls mostly straight down from window, spreading slightly
       final bSpread = (wR - wL) * 0.12;
@@ -508,7 +508,6 @@ class _RoomP extends CustomPainter {
       c.drawPath(beam, Paint()..color = p.orb.withOpacity(0.06));
     }
 
-    //  STRUCTURAL LINES 
     c.drawLine(Offset(cx, cC), Offset(cx, fC),
         Paint()..color = p.trim..strokeWidth = 3.5);
     final bsP = Paint()..color = p.trim..strokeWidth = 4.5;
@@ -519,14 +518,11 @@ class _RoomP extends CustomPainter {
     c.drawLine(Offset(cx, cC), Offset(w, cR),
         Paint()..color = p.trim..strokeWidth = 3);
 
-    //  BOOKSHELF on side wall 
     _drawShelf(c, w, h, cx, cL, cC, fL, fC);
 
-    //  DESK 
     _drawDesk(c, w, h, cx, fC, fL, fR);
   }
 
-  //  WINDOW SILL PLANT 
   void _drawSillPlant(Canvas c, double wL, double wR,
       double wBL, double wBR) {
     final px = wL + (wR - wL) * 0.15;
@@ -547,7 +543,6 @@ class _RoomP extends CustomPainter {
         width: 5, height: 5), Paint()..color = p.plant);
   }
 
-  //  ORB (sun/moon inside window) 
   void _drawOrb(Canvas c, double wL, double wR,
       double wTL, double wTR, double wBL, double wBR) {
     final ox = wL + (wR - wL) * 0.62;
@@ -593,7 +588,6 @@ class _RoomP extends CustomPainter {
       ..style = PaintingStyle.stroke..strokeWidth = 1.2);
   }
 
-  //  FAIRY LIGHTS (string lights draped along window top) 
   void _drawFairyLights(Canvas c, double wL, double wR,
       double wTL, double wTR, double wBL, double wBR) {
     const nLights = 11;
@@ -629,7 +623,6 @@ class _RoomP extends CustomPainter {
     }
   }
 
-  //  RUG on floor (large circular with concentric ring pattern) 
   void _drawRug(Canvas c, double w, double h, double cx,
       double fC, double fR) {
     // Big circular rug on the floor, in front of desk
@@ -667,7 +660,6 @@ class _RoomP extends CustomPainter {
         Paint()..color = p.bookC.withOpacity(0.10));
   }
 
-  //  FLOOR PLANT (tall potted, between shelf and corner on side wall) 
   void _drawCornerPlant(Canvas c, double cx, double fC, double fL, double h) {
     // Position on side wall floor, between bookshelf right edge and corner
     final px = cx * 0.82;
@@ -698,7 +690,6 @@ class _RoomP extends CustomPainter {
     _leaf(c, px, py - potH + 2, 0.42 + la, 34, p.plant);
   }
 
-  //  BOOKSHELF (wall-mounted rectangular unit with thick packed books) 
   void _drawShelf(Canvas c, double w, double h, double cx,
       double cL, double cC, double fL, double fC) {
     // Position shelf on the side wall — a rectangular unit with perspective
@@ -720,13 +711,11 @@ class _RoomP extends CustomPainter {
     final woodL = Color.lerp(p.trim, p.wallA, 0.25)!;
     final backC = Color.lerp(p.wallA, p.trim, 0.40)!;
 
-    //  BACK PANEL 
     final back = Path()
       ..moveTo(shL, topL)..lineTo(shR, topR)
       ..lineTo(shR, botR)..lineTo(shL, botL)..close();
     c.drawPath(back, Paint()..color = backC);
 
-    //  OUTER FRAME (thick wood) 
     final fP = Paint()..color = woodD..strokeWidth = 5
       ..strokeCap = StrokeCap.round..strokeJoin = StrokeJoin.round;
     c.drawLine(Offset(shL, topL), Offset(shL, botL), fP); // left
@@ -734,7 +723,6 @@ class _RoomP extends CustomPainter {
     c.drawLine(Offset(shL, topL), Offset(shR, topR), fP); // top
     c.drawLine(Offset(shL, botL), Offset(shR, botR), fP); // bottom
 
-    //  3 SHELVES with packed thick books 
     const nS = 3;
     final cols = [p.bookA, p.bookB, p.bookC, p.bookD];
     final rng = math.Random(42);
@@ -809,7 +797,6 @@ class _RoomP extends CustomPainter {
       }
     }
 
-    //  Shelf 3D: shadow + side face 
     final sideDepth = 12.0;
     // Shadow behind shelf
     c.drawPath(Path()
@@ -835,7 +822,6 @@ class _RoomP extends CustomPainter {
     }
   }
 
-  //  DESK (angled toward window, 3/4 perspective) 
   void _drawDesk(Canvas c, double w, double h, double cx,
       double fC, double fL, double fR) {
     // Desk fully in back wall area, under the window
@@ -846,7 +832,6 @@ class _RoomP extends CustomPainter {
     final dFrontH = h * 0.14;
     final tilt = -4.0;
 
-    //  TOP SURFACE (parallelogram with perspective tilt) 
     final surf = Path()
       ..moveTo(dx, dy)
       ..lineTo(dx + dw, dy + tilt)
@@ -866,7 +851,6 @@ class _RoomP extends CustomPainter {
     c.drawPath(surf, Paint()..color = _ol.withOpacity(0.22)
       ..style = PaintingStyle.stroke..strokeWidth = 2.5);
 
-    //  FRONT FACE 
     final fY1L = dy + dDepth + 4;
     final fY1R = dy + dDepth + tilt;
     final front = Path()
@@ -899,7 +883,6 @@ class _RoomP extends CustomPainter {
     c.drawCircle(Offset(dPanelL + (dPanelR - dPanelL) * 0.65, knobY), 3,
         Paint()..color = Color.lerp(p.trim, _ol, 0.15)!);
 
-    //  SIDE FACE (left, visible in 3/4 view) 
     final side = Path()
       ..moveTo(dx, dy)
       ..lineTo(dx + dDepth, fY1L)
@@ -910,7 +893,6 @@ class _RoomP extends CustomPainter {
     c.drawPath(side, Paint()..color = _ol.withOpacity(0.15)
       ..style = PaintingStyle.stroke..strokeWidth = 1.5);
 
-    //  LEGS 
     final legP = Paint()..color = Color.lerp(p.desk, _ol, 0.35)!
       ..strokeWidth = 5..strokeCap = StrokeCap.round;
     c.drawLine(Offset(dx + dDepth + 16, fY1L + dFrontH),
@@ -918,10 +900,8 @@ class _RoomP extends CustomPainter {
     c.drawLine(Offset(dx + dw + dDepth - 10, fY1R + dFrontH),
         Offset(dx + dw + dDepth - 8, h - 4), legP);
 
-    //  ITEMS ON DESK 
     final iy = dy + (dDepth / 2) + 3;
 
-    //  DESK LAMP (left) 
     final lampX = dx + dw * 0.05 + dDepth;
     c.drawOval(Rect.fromCenter(center: Offset(lampX, iy + 1),
         width: 22, height: 9), Paint()..color = p.trim);
@@ -950,7 +930,6 @@ class _RoomP extends CustomPainter {
     c.drawOval(Rect.fromCenter(center: Offset(lampX + 8, iy + 2),
         width: 44, height: 12), Paint()..color = p.lampCol.withOpacity(0.06));
 
-    //  LAPTOP (detailed, centered on desk) 
     final lapX = dx + dw * 0.40 + dDepth;
     // Screen frame (bezel)
     final scr = Path()
@@ -1017,7 +996,6 @@ class _RoomP extends CustomPainter {
         const Radius.circular(1)),
         Paint()..color = _ol.withOpacity(0.06));
 
-    //  POTTED PLANT (right of laptop, bigger) 
     final plX = dx + dw * 0.72 + dDepth;
     final plY = iy;
     final pot = Path()
@@ -1037,7 +1015,6 @@ class _RoomP extends CustomPainter {
     _leaf(c, plX, plY - 16, 0.0 + la * 0.5, 22, p.plant);
     _leaf(c, plX, plY - 16, -0.15 + la, 19, Color.lerp(p.plant, Colors.green, 0.15)!);
 
-    //  COFFEE MUG (far right, bigger) 
     final mx = dx + dw * 0.88 + dDepth;
     final my = iy;
     final mug = Path()
@@ -1061,7 +1038,6 @@ class _RoomP extends CustomPainter {
     c.drawLine(Offset(mx + 0.5, my - 22), Offset(mx + 0.5 - sd * 0.4, my - 32),
         Paint()..color = Colors.white.withOpacity(0.08)..strokeWidth = 1..strokeCap = StrokeCap.round);
 
-    //  STACKED BOOKS (between lamp and laptop, bigger) 
     final sbx = dx + dw * 0.20 + dDepth;
     _stackBook(c, sbx, iy, 34, 8, p.bookD, -0.03);
     _stackBook(c, sbx + 1, iy - 8, 30, 7, p.bookB.withOpacity(0.9), 0.02);

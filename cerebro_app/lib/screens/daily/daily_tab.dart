@@ -396,7 +396,7 @@ class _DailyTabState extends ConsumerState<DailyTab>
                     0.05,
                     _buildGoalsCard(),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 20),
 
                   // MORNING & EVENING ROUTINES
                   _stag(
@@ -413,28 +413,28 @@ class _DailyTabState extends ConsumerState<DailyTab>
                       ],
                     ),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 20),
 
                   // ACTIVITY TRACKER
                   _stag(
                     0.15,
                     _buildActivityTracker(),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 20),
 
                   // MANAGE DAILY QUESTS
                   _stag(
                     0.2,
                     _buildQuestManager(),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 20),
 
                   // QUICK ACTIONS
                   _stag(
                     0.25,
                     _buildQuickActions(),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 20),
 
                   // DAILY SCORE BREAKDOWN
                   _stag(
@@ -483,18 +483,13 @@ class _DailyTabState extends ConsumerState<DailyTab>
     return Container(
       decoration: BoxDecoration(
         color: _cardFill,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: _outline.withOpacity(0.25), width: 2.5),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _outline, width: 3),
         boxShadow: [
           BoxShadow(
-            color: _outline.withOpacity(0.08),
-            offset: const Offset(0, 5),
+            color: _outline.withOpacity(0.3),
+            offset: const Offset(0, 4),
             blurRadius: 0,
-          ),
-          BoxShadow(
-            color: _goldGlow.withOpacity(0.15),
-            offset: const Offset(0, 0),
-            blurRadius: 20,
           ),
         ],
       ),
@@ -511,8 +506,8 @@ class _DailyTabState extends ConsumerState<DailyTab>
                 colors: [_coralHdr, _coralLt],
               ),
               borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(20),
-                topRight: Radius.circular(20),
+                topLeft: Radius.circular(17),
+                topRight: Radius.circular(17),
               ),
             ),
             child: Row(
@@ -719,13 +714,13 @@ class _DailyTabState extends ConsumerState<DailyTab>
     return Container(
       decoration: BoxDecoration(
         color: _cardFill,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: _outline.withOpacity(0.2), width: 2),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _outline, width: 3),
         boxShadow: [
           BoxShadow(
-            color: _outline.withOpacity(0.06),
+            color: _outline.withOpacity(0.3),
             offset: const Offset(0, 4),
-            blurRadius: 12,
+            blurRadius: 0,
           ),
         ],
       ),
@@ -740,8 +735,8 @@ class _DailyTabState extends ConsumerState<DailyTab>
                 colors: [headerColor, headerColor.withOpacity(0.8)],
               ),
               borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(16),
-                topRight: Radius.circular(16),
+                topLeft: Radius.circular(17),
+                topRight: Radius.circular(17),
               ),
             ),
             child: Row(
@@ -828,13 +823,13 @@ class _DailyTabState extends ConsumerState<DailyTab>
     return Container(
       decoration: BoxDecoration(
         color: _cardFill,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: _outline.withOpacity(0.2), width: 2),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _outline, width: 3),
         boxShadow: [
           BoxShadow(
-            color: _outline.withOpacity(0.06),
+            color: _outline.withOpacity(0.3),
             offset: const Offset(0, 4),
-            blurRadius: 12,
+            blurRadius: 0,
           ),
         ],
       ),
@@ -1236,9 +1231,7 @@ class _DailyTabState extends ConsumerState<DailyTab>
   }
 
   Widget _buildQuickActions() {
-    return Wrap(
-      spacing: 10,
-      runSpacing: 10,
+    return Row(
       children: [
         Expanded(
           child: _GameBtn(
@@ -1250,6 +1243,7 @@ class _DailyTabState extends ConsumerState<DailyTab>
             onTap: _addGoal,
           ),
         ),
+        const SizedBox(width: 10),
         Expanded(
           child: _GameBtn(
             icon: Icons.checklist_rounded,
@@ -1268,6 +1262,7 @@ class _DailyTabState extends ConsumerState<DailyTab>
             },
           ),
         ),
+        const SizedBox(width: 10),
         Expanded(
           child: _GameBtn(
             icon: Icons.play_circle_outlined,
@@ -1428,9 +1423,9 @@ class _PawPrintBg extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final paint = Paint()..color = _pawClr.withOpacity(0.12);
     const r = 5.0;
-    for (double y = -10; y < size.height + 40; y += 55) {
-      for (double x = -10; x < size.width + 40; x += 55) {
-        final ox = (y ~/ 55).isOdd ? 25.0 : 0.0;
+    for (double y = -10; y < size.height + 40; y += 90) {
+      for (double x = -10; x < size.width + 40; x += 90) {
+        final ox = (y ~/ 90).isOdd ? 45.0 : 0.0;
         _drawPaw(canvas, Offset(x + ox, y), r, paint);
       }
     }

@@ -1,4 +1,3 @@
-/// CEREBRO – Game Store  (v9 · all feedback applied)
 /// Fixes from v8 feedback:
 ///  1. Removed nav arrows
 ///  2. Close button matches warm theme (not grey)
@@ -15,7 +14,10 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:go_router/go_router.dart';
 import 'package:cerebro_app/screens/home/home_screen.dart';
+import 'package:cerebro_app/providers/auth_provider.dart';
 import 'package:cerebro_app/providers/dashboard_provider.dart';
 
 // Background ombré (from avatar page)
@@ -82,6 +84,7 @@ class _StoreTabState extends ConsumerState<StoreTab>
     with TickerProviderStateMixin {
   int _sel = 0;
   final Set<String> _owned = {};  // tracks purchased item names
+  final Set<String> _ownedBackendIds = {};  // backend item IDs
 
   late final AnimationController _ac;
   late final Animation<double> _fade;
@@ -101,6 +104,37 @@ class _StoreTabState extends ConsumerState<StoreTab>
     _pulseAc = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 1400))
       ..repeat(reverse: true);
+    _loadOwnedItems();
+  }
+
+  /// Load owned items from backend inventory + local cache
+  Future<void> _loadOwnedItems() async {
+    // Load from local cache first (instant UI)
+    final prefs = await SharedPreferences.getInstance();
+    final cached = prefs.getStringList('store_owned') ?? [];
+    if (cached.isNotEmpty) {
+      setState(() => _owned.addAll(cached));
+    }
+
+    // Then sync from backend
+    try {
+      final api = ref.read(apiServiceProvider);
+      final res = await api.get('/gamification/store/inventory');
+      if (res.statusCode == 200) {
+        final items = (res.data['items'] as List?) ?? [];
+        for (final item in items) {
+          final id = item['id'] as String? ?? '';
+          if (id.isNotEmpty) {
+            _owned.add(id);
+            _ownedBackendIds.add(id);
+          }
+        }
+        setState(() {});
+        await prefs.setStringList('store_owned', _owned.toList());
+      }
+    } catch (_) {
+      // Offline — local cache is fine
+    }
   }
 
   @override
@@ -108,66 +142,47 @@ class _StoreTabState extends ConsumerState<StoreTab>
 
   static final _cats = <_Cat>[
     _Cat(n: 'Clothing', items: [
-      _It(n: 'Off Shoulder', a: 'assets/avatar/female/clothes/off-shoulder-blue.png', p: 0),
-      _It(n: 'Night Dress', a: 'assets/avatar/female/clothes/night-dress-red.png', p: 5),
-      _It(n: 'Sweater', a: 'assets/avatar/female/clothes/sweater-green.png', p: 5),
-      _It(n: 'Tank Top', a: 'assets/avatar/female/clothes/tank-top-red.png', p: 5),
-      _It(n: 'C-Neck', a: 'assets/avatar/female/clothes/c-neck-blue.png', p: 3),
-      _It(n: 'V-Neck', a: 'assets/avatar/female/clothes/v-neck-sweater-red.png', p: 5),
-      _It(n: 'Uniform', a: 'assets/avatar/female/clothes/uniform-blue.png', p: 8),
-      _It(n: 'Night Dress G', a: 'assets/avatar/female/clothes/night-dress-green.png', p: 5),
-      _It(n: 'Red Sweater', a: 'assets/avatar/female/clothes/sweater-red.png', p: 5),
-      _It(n: 'Off Shoulder R', a: 'assets/avatar/female/clothes/off-shoulder-red.png', p: 5),
+      _It(id: 'clothes_sweater_babypink', n: 'Pink Sweater', a: 'assets/store/Store_items/sweater-babypink.png', p: 15, rarity: 'uncommon'),
+      _It(id: 'clothes_sweater_brown', n: 'Brown Sweater', a: 'assets/store/Store_items/sweater-brown.png', p: 12, rarity: 'common'),
+      _It(id: 'clothes_cneck_brown', n: 'Brown C-Neck', a: 'assets/store/Store_items/c-neck-brown.png', p: 10, rarity: 'common'),
+      _It(id: 'clothes_cneck_olive', n: 'Olive C-Neck', a: 'assets/store/Store_items/c-neck-olive.png', p: 12, rarity: 'common'),
+      _It(id: 'clothes_nightdress_babypink', n: 'Pink Night Dress', a: 'assets/store/Store_items/night-dress-babypink.png', p: 18, rarity: 'uncommon'),
+      _It(id: 'clothes_nightdress_brown', n: 'Brown Night Dress', a: 'assets/store/Store_items/night-dress-brown.png', p: 15, rarity: 'common'),
+      _It(id: 'clothes_offshoulder_olive', n: 'Olive Off-Shoulder', a: 'assets/store/Store_items/offshoulder-olive.png', p: 18, rarity: 'uncommon'),
+      _It(id: 'clothes_tanktop_babypink', n: 'Pink Tank Top', a: 'assets/store/Store_items/tank-top-babypink.png', p: 10, rarity: 'common'),
+      _It(id: 'clothes_tanktop_brown', n: 'Brown Tank Top', a: 'assets/store/Store_items/tank-top-brown.png', p: 8, rarity: 'common'),
+      _It(id: 'clothes_vneck_brown', n: 'Brown V-Neck', a: 'assets/store/Store_items/v-neck-sweater-brown.png', p: 12, rarity: 'common'),
+      _It(id: 'clothes_vneck_olive', n: 'Olive V-Neck', a: 'assets/store/Store_items/v-neck-sweater-olive.png', p: 15, rarity: 'uncommon'),
     ]),
     _Cat(n: 'Hair', items: [
-      _It(n: 'Anime Hair', a: 'assets/avatar/female/hair/anime-hair-pink.png', p: 10),
-      _It(n: 'Bangs', a: 'assets/avatar/female/hair/bangs-blonde.png', p: 5),
-      _It(n: 'Medium Curl', a: 'assets/avatar/female/hair/medium-curl-brown.png', p: 5),
-      _It(n: 'Pigtails', a: 'assets/avatar/female/hair/pigtails-red.png', p: 8),
-      _It(n: 'Side Pony', a: 'assets/avatar/female/hair/side-pony-silver.png', p: 8),
-      _It(n: 'Bun', a: 'assets/avatar/female/hair/bun-black.png', p: 5),
-      _It(n: 'Granny Hair', a: 'assets/avatar/female/hair/granny-hair-silver.png', p: 12),
-      _It(n: 'Boys Cut', a: 'assets/avatar/female/hair/boys-cut-orange.png', p: 5),
-      _It(n: 'To The Side', a: 'assets/avatar/female/hair/to-the-side-pink.png', p: 8),
-      _It(n: 'Bangs Short', a: 'assets/avatar/female/hair/bangs-short-red.png', p: 5),
+      _It(id: 'hair_pink', n: 'Pink Hair Dye', a: 'assets/avatar/female/hair/anime-hair-pink.png', p: 25, rarity: 'rare'),
+      _It(id: 'hair_silver', n: 'Silver Hair Dye', a: 'assets/avatar/female/hair/granny-hair-silver.png', p: 25, rarity: 'rare'),
+      _It(id: 'hair_darkblue', n: 'Blue Hair Dye', a: 'assets/avatar/female/hair/to-the-side-darkblue.png', p: 30, rarity: 'rare'),
     ]),
     _Cat(n: 'Glasses', items: [
-      _It(n: 'Circular', a: 'assets/avatar/female/accessories/circular-glasses.png', p: 5),
-      _It(n: 'Sunglasses', a: 'assets/avatar/female/accessories/sunglasses.png', p: 5),
-      _It(n: 'Square', a: 'assets/avatar/female/accessories/square-glasses.png', p: 5),
-      _It(n: 'Heart', a: 'assets/avatar/female/accessories/heart-glasses.png', p: 8),
-      _It(n: 'Star', a: 'assets/avatar/female/accessories/star-glasses.png', p: 8),
-      _It(n: 'Stripped', a: 'assets/avatar/female/accessories/stripped-glasses.png', p: 5),
-      _It(n: 'Bottomless', a: 'assets/avatar/female/accessories/bottomless-glasses.png', p: 3),
+      _It(id: 'glasses_star', n: 'Star Glasses', a: 'assets/avatar/female/accessories/star-glasses.png', p: 20, rarity: 'rare'),
+      _It(id: 'glasses_heart', n: 'Heart Glasses', a: 'assets/avatar/female/accessories/heart-glasses.png', p: 20, rarity: 'rare'),
+      _It(id: 'sunglasses', n: 'Cool Sunglasses', a: 'assets/avatar/female/accessories/sunglasses.png', p: 25, rarity: 'rare'),
     ]),
     _Cat(n: 'Hats', items: [
-      _It(n: 'Baseball Cap', a: 'assets/avatar/female/accessories/basketball-cap-red.png', p: 5),
-      _It(n: 'French Cap', a: 'assets/avatar/female/accessories/french-cap-blue.png', p: 5),
-      _It(n: 'Hat', a: 'assets/avatar/female/accessories/hat-green.png', p: 8),
-      _It(n: 'Winter Cap', a: 'assets/avatar/female/accessories/winter-cap-red.png', p: 5),
-      _It(n: 'Magician Hat', a: 'assets/avatar/female/accessories/magician-hat-blue.png', p: 10),
-      _It(n: 'Sideways Cap', a: 'assets/avatar/female/accessories/sideways-baseball-cap-green.png', p: 5),
-      _It(n: 'Hairband', a: 'assets/avatar/female/accessories/hairband1-red.png', p: 3),
-      _It(n: 'Lady Hat', a: 'assets/avatar/female/accessories/lady-hat-red.png', p: 8),
+      _It(id: 'hat_magician', n: 'Magician Hat', a: 'assets/avatar/female/accessories/magician-hat-blue.png', p: 40, rarity: 'epic'),
+      _It(id: 'hat_french', n: 'French Beret', a: 'assets/avatar/female/accessories/french-cap-blue.png', p: 30, rarity: 'rare'),
+      _It(id: 'winter_cap', n: 'Winter Cap', a: 'assets/avatar/female/accessories/winter-cap-red.png', p: 15, rarity: 'uncommon'),
     ]),
     _Cat(n: 'Extras', items: [
-      _It(n: 'Flower', a: 'assets/avatar/female/accessories/flower-red.png', p: 5),
-      _It(n: 'Side Bow', a: 'assets/avatar/female/accessories/side-bow-red.png', p: 5),
-      _It(n: 'Boy Tie', a: 'assets/avatar/female/accessories/boy-tie-red.png', p: 3),
-      _It(n: 'Straight Tie', a: 'assets/avatar/female/accessories/straight-tie-blue.png', p: 5),
-      // Eye colors from avatar assets
-      _It(n: 'Blue Eyes', a: 'assets/avatar/female/eyes/eyes20.png', p: 8),
-      _It(n: 'Green Eyes', a: 'assets/avatar/female/eyes/eyes25.png', p: 8),
-      _It(n: 'Ruby Eyes', a: 'assets/avatar/female/eyes/eyes30.png', p: 10),
-      _It(n: 'Rose Eyes', a: 'assets/avatar/female/eyes/eyes35.png', p: 10),
-      _It(n: 'Cat Eyes', a: 'assets/avatar/female/eyes/eyes40.png', p: 12),
-      _It(n: 'Classic Eyes', a: 'assets/avatar/female/eyes/eyes01.png', p: 0),
+      _It(id: 'tie_bowtie', n: 'Bow Tie', a: 'assets/avatar/female/accessories/boy-tie-green.png', p: 10, rarity: 'common'),
+      _It(id: 'flower_red', n: 'Red Flower', a: 'assets/avatar/female/accessories/flower-red.png', p: 8, rarity: 'common'),
+      _It(id: 'hairband_blue', n: 'Blue Hairband', a: 'assets/avatar/female/accessories/hairband1-blue.png', p: 12, rarity: 'common'),
+      _It(id: 'eyes_20', n: 'Blue Eyes', a: 'assets/avatar/female/eyes/eyes20.png', p: 8, rarity: 'common'),
+      _It(id: 'eyes_25', n: 'Green Eyes', a: 'assets/avatar/female/eyes/eyes25.png', p: 8, rarity: 'common'),
+      _It(id: 'eyes_30', n: 'Ruby Eyes', a: 'assets/avatar/female/eyes/eyes30.png', p: 12, rarity: 'uncommon'),
+      _It(id: 'eyes_35', n: 'Rose Eyes', a: 'assets/avatar/female/eyes/eyes35.png', p: 12, rarity: 'uncommon'),
+      _It(id: 'eyes_40', n: 'Cat Eyes', a: 'assets/avatar/female/eyes/eyes40.png', p: 15, rarity: 'rare'),
     ]),
     _Cat(n: 'Boosts', items: [
-      _It(n: '2x XP', a: '', p: 15, ic: Icons.bolt_rounded),
-      _It(n: 'Focus Boost', a: '', p: 10, ic: Icons.psychology_rounded),
-      _It(n: 'Streak Shield', a: '', p: 20, ic: Icons.shield_rounded),
-      _It(n: 'Lucky Charm', a: '', p: 25, ic: Icons.auto_awesome),
+      _It(id: 'boost_2x_xp', n: '2x XP', a: '', p: 30, ic: Icons.bolt_rounded, rarity: 'epic'),
+      _It(id: 'boost_focus', n: 'Focus Boost', a: '', p: 20, ic: Icons.psychology_rounded, rarity: 'rare'),
+      _It(id: 'boost_streak', n: 'Streak Shield', a: '', p: 35, ic: Icons.shield_rounded, rarity: 'epic'),
     ]),
   ];
 
@@ -312,7 +327,10 @@ class _StoreTabState extends ConsumerState<StoreTab>
 
   Widget _currency() {
     final dash = ref.watch(dashboardProvider);
-    return _CurPill(amt: dash.cash, isCoin: false);
+    return _CurPill(amt: dash.cash, isCoin: false, onPlusTap: () {
+      // Close store, go to profile tab (index 5) where the cash converter is
+      ref.read(selectedTabProvider.notifier).state = 5;
+    });
   }
 
   Widget _grid(_Cat cat) {
@@ -338,7 +356,7 @@ class _StoreTabState extends ConsumerState<StoreTab>
                 child: Transform.scale(scale: 0.85 + 0.15 * v, child: child),
               ),
             ),
-            child: _Card(item: cat.items[i], sold: _owned.contains(cat.items[i].n),
+            child: _Card(item: cat.items[i], sold: _owned.contains(cat.items[i].id),
                 onBuy: () => _buy(cat.items[i])),
           ),
         )),
@@ -452,22 +470,69 @@ class _StoreTabState extends ConsumerState<StoreTab>
     );
   }
 
-  void _freeTap() {
-    _showPurchasePopup('Random Item', 'assets/avatar/female/clothes/off-shoulder-blue.png',
-        'Surprise! You got a cute random item!');
+  bool _freeUsedThisSession = false;
+
+  void _freeTap() async {
+    // Check if already used this week
+    final prefs = await SharedPreferences.getInstance();
+    final lastFreeStr = prefs.getString('last_free_item_date');
+    if (lastFreeStr != null) {
+      final lastFree = DateTime.tryParse(lastFreeStr);
+      if (lastFree != null && DateTime.now().difference(lastFree).inDays < 7) {
+        final daysLeft = 7 - DateTime.now().difference(lastFree).inDays;
+        _showPurchasePopup('Weekly Gift', 'assets/store/gift_box.png',
+            'Come back in $daysLeft day${daysLeft == 1 ? '' : 's'} for another free item!', canWear: false);
+        return;
+      }
+    }
+
+    // Pick a random clothing item from the store's exclusive clothing
+    final clothingItems = _cats.first.items.where((i) => !_owned.contains(i.id)).toList();
+    if (clothingItems.isEmpty) {
+      _showPurchasePopup('All Collected!', 'assets/store/gift_box.png',
+          'You already own all the clothing! Amazing!', canWear: false);
+      return;
+    }
+    final random = clothingItems[math.Random().nextInt(clothingItems.length)];
+
+    // Save the timestamp
+    await prefs.setString('last_free_item_date', DateTime.now().toIso8601String());
+
+    // Add to owned
+    setState(() {
+      _owned.add(random.id);
+      _ownedBackendIds.add(random.id);
+    });
+    await prefs.setStringList('store_owned', _owned.toList());
+
+    _showPurchasePopup(random.n, random.a,
+        'Surprise! You got ${random.n}!', itemId: random.id);
   }
 
   void _buy(_It item) {
-    if (_owned.contains(item.n)) return; // already owned
+    if (_owned.contains(item.id)) return; // already owned
     final cash = ref.read(dashboardProvider).cash;
     if (cash >= item.p) {
-      ref.read(dashboardProvider.notifier).spendCash(item.p);
-      setState(() { _owned.add(item.n); });
+      // Deduct coins — syncs to backend with item ID
+      ref.read(dashboardProvider.notifier).spendCash(item.p, itemId: item.id);
+      setState(() {
+        _owned.add(item.id);
+        _ownedBackendIds.add(item.id);
+      });
+
+      // Persist to local cache
+      SharedPreferences.getInstance().then((prefs) {
+        prefs.setStringList('store_owned', _owned.toList());
+      });
+
+      // Check achievements after purchase
+      ref.read(dashboardProvider.notifier).checkAchievements();
+
       _showPurchasePopup(item.n, item.a,
-          _purchaseQuotes[(item.n.hashCode % _purchaseQuotes.length).abs()]);
+          _purchaseQuotes[(item.n.hashCode % _purchaseQuotes.length).abs()], itemId: item.id);
     } else {
       _showPurchasePopup(item.n, item.a,
-          'Need ${item.p - cash} more cash!', canWear: false);
+          'Need ${item.p - cash} more coins!', canWear: false);
     }
   }
 
@@ -482,7 +547,22 @@ class _StoreTabState extends ConsumerState<StoreTab>
     'Style level: maximum cuteness!',
   ];
 
-  void _showPurchasePopup(String name, String asset, String quote, {bool canWear = true}) {
+  /// Maps store item IDs to clothes style+color for avatar pre-selection
+  static const _storeIdToClothes = <String, Map<String, String>>{
+    'clothes_sweater_babypink': {'style': 'sweater', 'color': 'babypink'},
+    'clothes_sweater_brown': {'style': 'sweater', 'color': 'brown'},
+    'clothes_cneck_brown': {'style': 'c-neck', 'color': 'brown'},
+    'clothes_cneck_olive': {'style': 'c-neck', 'color': 'olive'},
+    'clothes_nightdress_babypink': {'style': 'night-dress', 'color': 'babypink'},
+    'clothes_nightdress_brown': {'style': 'night-dress', 'color': 'brown'},
+    'clothes_offshoulder_olive': {'style': 'off-shoulder', 'color': 'olive'},
+    'clothes_tanktop_babypink': {'style': 'tank-top', 'color': 'babypink'},
+    'clothes_tanktop_brown': {'style': 'tank-top', 'color': 'brown'},
+    'clothes_vneck_brown': {'style': 'v-neck-sweater', 'color': 'brown'},
+    'clothes_vneck_olive': {'style': 'v-neck-sweater', 'color': 'olive'},
+  };
+
+  void _showPurchasePopup(String name, String asset, String quote, {bool canWear = true, String? itemId}) {
     showGeneralDialog(
       context: context,
       barrierDismissible: true,
@@ -524,10 +604,18 @@ class _StoreTabState extends ConsumerState<StoreTab>
                             fontSize: 24, fontWeight: FontWeight.w700,
                             color: _brown, height: 1.3)),
                         const SizedBox(height: 20),
-                        // "Wear" button (only if purchased)
+                        // "Wear" button → navigate to avatar customization with item pre-selected
                         if (canWear)
                           GestureDetector(
-                            onTap: () => Navigator.of(ctx).pop(),
+                            onTap: () {
+                              Navigator.of(ctx).pop();
+                              final clothesInfo = itemId != null ? _storeIdToClothes[itemId] : null;
+                              if (clothesInfo != null) {
+                                context.push('/avatar?style=${clothesInfo['style']}&color=${clothesInfo['color']}');
+                              } else {
+                                context.push('/avatar');
+                              }
+                            },
                             child: Container(
                               padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 48),
                               decoration: BoxDecoration(
@@ -905,7 +993,8 @@ class _CurPill extends StatelessWidget {
   final int amt;
   final bool isCoin;
   final bool isXp;
-  const _CurPill({required this.amt, required this.isCoin, this.isXp = false});
+  final VoidCallback? onPlusTap;
+  const _CurPill({required this.amt, required this.isCoin, this.isXp = false, this.onPlusTap});
   @override
   Widget build(BuildContext ctx) {
     // Pill colors based on type
@@ -957,21 +1046,24 @@ class _CurPill extends StatelessWidget {
                 filterQuality: FilterQuality.medium,
                 errorBuilder: (_, __, ___) => _fallbackCoin())
             : _billIcon()),
-        // "+" button
-        Positioned(right: 0, top: 4, child: Container(
-          width: 28, height: 28,
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              begin: Alignment.topCenter, end: Alignment.bottomCenter,
-              colors: [Color(0xFFFFF0A0), _goldGlow],
+        // "+" button — tappable, navigates to cash converter
+        Positioned(right: 0, top: 4, child: GestureDetector(
+          onTap: onPlusTap,
+          child: Container(
+            width: 28, height: 28,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                colors: [Color(0xFFFFF0A0), _goldGlow],
+              ),
+              shape: BoxShape.circle,
+              border: Border.all(color: const Color(0xFFD0B050), width: 2),
+              boxShadow: [BoxShadow(color: const Color(0xFFD0B050).withOpacity(0.3),
+                  offset: const Offset(0, 2), blurRadius: 0)],
             ),
-            shape: BoxShape.circle,
-            border: Border.all(color: const Color(0xFFD0B050), width: 2),
-            boxShadow: [BoxShadow(color: const Color(0xFFD0B050).withOpacity(0.3),
-                offset: const Offset(0, 2), blurRadius: 0)],
+            child: const Center(child: Icon(Icons.add_rounded, size: 16,
+                color: Color(0xFF8A6820))),
           ),
-          child: const Center(child: Icon(Icons.add_rounded, size: 16,
-              color: Color(0xFF8A6820))),
         )),
       ],
     ));
@@ -1153,8 +1245,10 @@ class _Cat {
 }
 
 class _It {
+  final String id; // backend item ID
   final String n, a;
   final int p;
   final IconData? ic;
-  const _It({required this.n, required this.a, required this.p, this.ic});
+  final String? rarity; // common, uncommon, rare, epic
+  const _It({required this.id, required this.n, required this.a, required this.p, this.ic, this.rarity});
 }

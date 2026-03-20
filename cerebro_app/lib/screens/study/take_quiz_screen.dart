@@ -1,10 +1,12 @@
+//  Interactive quiz-taking with MCQ, T/F, Fill-in-blank
+//  Pre-quiz → Question-by-question → Results
+
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cerebro_app/providers/auth_provider.dart';
 
-// palette
 const _ombre1   = Color(0xFFFFFBF7);
 const _cardFill = Color(0xFFFFF8F4);
 const _outline  = Color(0xFF6E5848);
@@ -119,9 +121,7 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
     );
   }
 
-  // ═══════════════════════════════════════════════════
   //  PRE-QUIZ
-  // ═══════════════════════════════════════════════════
   Widget _preQuizView() {
     final topics = (_quiz['topic_focus'] as List?)?.cast<String>() ?? [];
     final totalQ = _quiz['total_questions'] ?? _questions.length;
@@ -237,9 +237,7 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
     }
   }
 
-  // ═══════════════════════════════════════════════════
   //  QUIZ TAKING
-  // ═══════════════════════════════════════════════════
   Widget _takingView() {
     if (_questions.isEmpty) return const Center(child: Text('No questions'));
     final q = _questions[_currentIdx];
@@ -350,7 +348,6 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
     }
   }
 
-  // mcq options
   Widget _mcqOptions(Map<String, dynamic> q) {
     final options = (q['options'] as List?)?.cast<String>() ?? [];
     return ListView(
@@ -402,7 +399,6 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
     );
   }
 
-  // ── True/False Options ──
   Widget _trueFalseOptions(Map<String, dynamic> q) {
     return Row(children: ['True', 'False'].map((opt) {
       final isSelected = _selectedAnswer == opt;
@@ -442,7 +438,6 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
     }).toList());
   }
 
-  // ── Fill-in-blank ──
   final _fillCtrl = TextEditingController();
 
   Widget _fillBlankField(Map<String, dynamic> q) {
@@ -607,9 +602,7 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
     }
   }
 
-  // ═══════════════════════════════════════════════════
   //  RESULTS
-  // ═══════════════════════════════════════════════════
   Widget _resultsView() {
     final pct = _total > 0 ? (_correct / _total * 100) : 0.0;
     final grade = _gradeLabel(pct);
@@ -781,9 +774,7 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
   }
 }
 
-
 //  PAWPRINT BACKGROUND
-
 class _PawBgPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {

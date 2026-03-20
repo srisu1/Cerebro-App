@@ -1,3 +1,16 @@
+/// Rich Pomodoro timer with REAL ambient audio (just_audio),
+/// clean modern notes, distraction counter, searchable past sessions,
+/// milestone celebrations, XP animations, and breathing ring.
+///
+/// v3 changes from v2:
+///  • Real audio playback via just_audio (rain, lofi, café, ocean, fire, birds)
+///  • Completely redesigned notes section — clean, always-visible during timer
+///  • Past sessions: search bar, type filter chips, expandable details
+///  • Distraction counter button during focus sessions
+///  • Streak tracker for consecutive focus blocks
+///  • Session mood tag (optional emoji mood at completion)
+///  • Compact layout — no chunky oversized elements
+
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
@@ -10,8 +23,9 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:path_provider/path_provider.dart';
 import 'package:cerebro_app/providers/auth_provider.dart';
+import 'package:cerebro_app/providers/dashboard_provider.dart';
+import 'package:cerebro_app/screens/study/study_tab.dart';
 
-// palette
 const _ombre1  = Color(0xFFFFFBF7);
 const _ombre2  = Color(0xFFFFF8F3);
 const _ombre3  = Color(0xFFFFF3EF);
@@ -40,10 +54,8 @@ const _purpleDk = Color(0xFFAA88C0);
 const _skyHdr   = Color(0xFF9DD4F0);
 const _skyLt    = Color(0xFFC0E0F8);
 
-// timer phases
 enum _Phase { setup, running, paused, onBreak, completed }
 
-// motivational quotes
 const _quotes = [
   '"The secret of getting ahead is getting started." — Mark Twain',
   '"Small daily improvements lead to stunning results."',
@@ -55,7 +67,6 @@ const _quotes = [
   '"It always seems impossible until it\'s done." — Nelson Mandela',
 ];
 
-// ── Ambient sound asset paths (bundled with app) ──
 const _ambientAssets = <String, String>{
   'rain':  'assets/audio/rain.wav',
   'lofi':  'assets/audio/lofi.wav',
@@ -65,7 +76,6 @@ const _ambientAssets = <String, String>{
   'birds': 'assets/audio/birds.wav',
 };
 
-// ── Sanitize text for PDF (Helvetica doesn't support Unicode) ──
 String _pdfSafe(String text) => text
     .replaceAll('\u2014', '--')   // em-dash
     .replaceAll('\u2013', '-')    // en-dash
@@ -77,7 +87,6 @@ String _pdfSafe(String text) => text
     .replaceAll('\u2026', '...')  // ellipsis
     .replaceAll('\u00A0', ' ');   // non-breaking space
 
-// fallback urls if local assets not available
 const _ambientUrls = <String, String>{
   'rain':  'https://www.orangefreesounds.com/wp-content/uploads/2020/07/Heavy-rain-white-noise-loop.mp3',
   'lofi':  'https://cdn.pixabay.com/audio/2024/11/02/audio_b932be5c36.mp3',
@@ -87,9 +96,7 @@ const _ambientUrls = <String, String>{
   'birds': 'https://cdn.pixabay.com/audio/2022/03/09/audio_c610232c26.mp3',
 };
 
-
 //  MAIN SCREEN
-
 class StudySessionScreen extends ConsumerStatefulWidget {
   const StudySessionScreen({Key? key}) : super(key: key);
   @override
@@ -99,7 +106,6 @@ class StudySessionScreen extends ConsumerStatefulWidget {
 class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
     with TickerProviderStateMixin {
 
-  // setup state
   String _sessionType = 'focused';
   int _durationMin = 25;
   bool _customDuration = false;
@@ -108,11 +114,9 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
   String? _selectedSubjectColor;
   final _titleCtrl = TextEditingController();
 
-  // subject list from api
   List<Map<String, dynamic>> _subjects = [];
   bool _subjectsLoading = true;
 
-  // timer state
   _Phase _phase = _Phase.setup;
   Timer? _ticker;
   int _remainSec = 0;
@@ -123,7 +127,6 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
   DateTime? _endTime;
   int _distractionCount = 0;
 
-  // notes state
   final _notesCtrl = TextEditingController();
   final _topicCtrl = TextEditingController();
   List<String> _topics = [];
@@ -131,21 +134,17 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
   bool _bold = false;
   bool _italic = false;
 
-  // ambient audio
   String _ambientSound = 'none';
   AudioPlayer? _audioPlayer;
   bool _audioLoading = false;
 
-  // past sessions
   List<Map<String, dynamic>> _pastSessions = [];
   bool _pastLoading = false;
 
-  // completion state
   int _xpEarned = 0;
   bool _saving = false;
   bool _saved = false;
 
-  // animations
   late AnimationController _enterCtrl;
   late AnimationController _pulseCtrl;
   late AnimationController _breatheCtrl;
@@ -153,7 +152,6 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
   late AnimationController _xpCtrl;
   late String _quote;
 
-  // milestone tracking
   bool _showed5min = false;
   bool _showed15min = false;
   bool _showedHalfway = false;
@@ -197,7 +195,6 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
     super.dispose();
   }
 
-  // fetch subjects from api
   Future<void> _fetchSubjects() async {
     try {
       final api = ref.read(apiServiceProvider);
@@ -213,7 +210,6 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
     }
   }
 
-  // fetch past sessions
   Future<void> _fetchPastSessions() async {
     setState(() => _pastLoading = true);
     try {
@@ -226,7 +222,6 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
     if (mounted) setState(() => _pastLoading = false);
   }
 
-  // audio control
   Future<void> _playAmbient(String sound) async {
     if (sound == 'none') {
       await _audioPlayer?.stop();
@@ -303,9 +298,7 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
     setState(() => _ambientSound = 'none');
   }
 
-  // ═══════════════════════════════════════════════════════
   //  PAST SESSIONS — with search + filter
-  // ═══════════════════════════════════════════════════════
   void _showPastSessions() {
     showModalBottomSheet(
       context: context,
@@ -324,9 +317,7 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
     );
   }
 
-  // ═══════════════════════════════════════════════════════
   //  TIMER LOGIC
-  // ═══════════════════════════════════════════════════════
   void _startTimer() {
     _startTime = DateTime.now();
     _remainSec = _durationMin * 60;
@@ -440,7 +431,6 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
     setState(() => _phase = _Phase.completed);
   }
 
-  // save to api
   Future<void> _saveSession() async {
     if (_saving) return;
     setState(() => _saving = true);
@@ -467,6 +457,8 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
           _saved = true;
         });
         _xpCtrl.forward(from: 0);
+        // Check for achievements
+        ref.read(dashboardProvider.notifier).checkAchievements();
         // Refresh past sessions
         _fetchPastSessions();
       }
@@ -485,8 +477,6 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
     }
   }
 
-  // helpers
-  // pdf export
   Future<void> _exportNotesPdf() async {
     final pdf = pw.Document();
     final title = _titleCtrl.text.trim().isNotEmpty
@@ -663,9 +653,7 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
     catch (_) { return null; }
   }
 
-  // ═══════════════════════════════════════════════════════
   //  BUILD
-  // ═══════════════════════════════════════════════════════
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -717,7 +705,6 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
     );
   }
 
-  // app bar
   Widget _buildAppBar() {
     return Container(
       padding: EdgeInsets.only(
@@ -783,12 +770,9 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
     ));
   }
 
-  // ═══════════════════════════════════════════════════════
   //  1. SETUP PHASE
-  // ═══════════════════════════════════════════════════════
   Widget _buildSetup() {
     return Column(children: [
-      // ── Compact motivational + quote ──
       _stag(0.0, Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -808,23 +792,18 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
       )),
       const SizedBox(height: 14),
 
-      // ── Session Type — compact row ──
       _stag(0.03, _buildTypeChips()),
       const SizedBox(height: 14),
 
-      // ── Subject & Title card ──
       _stag(0.06, _buildDetailsCard()),
       const SizedBox(height: 14),
 
-      // duration picker
       _stag(0.09, _buildDurationCard()),
       const SizedBox(height: 14),
 
-      // ambient sound picker
       _stag(0.12, _buildAmbientCard()),
       const SizedBox(height: 20),
 
-      // start button
       _stag(0.15, _GameButton(
         icon: Icons.play_arrow_rounded,
         label: 'Start Studying',
@@ -833,7 +812,6 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
         onTap: _startTimer)),
       const SizedBox(height: 14),
 
-      // ── Bottom row: Past Sessions + XP Tip ──
       _stag(0.18, Row(children: [
         // Past sessions button
         Expanded(child: GestureDetector(
@@ -895,7 +873,6 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
     ]);
   }
 
-  // ── Session type — compact horizontal chips ──
   Widget _buildTypeChips() {
     const types = ['focused', 'review', 'practice', 'lecture'];
     const labels = ['Focused', 'Review', 'Practice', 'Lecture'];
@@ -941,7 +918,6 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
     }));
   }
 
-  // ── Subject & Title card ──
   Widget _buildDetailsCard() {
     return Container(
       decoration: BoxDecoration(
@@ -1100,7 +1076,6 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
     );
   }
 
-  // duration card
   Widget _buildDurationCard() {
     return Container(
       decoration: BoxDecoration(
@@ -1193,7 +1168,6 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
     );
   }
 
-  // ambient sounds picker with real audio
   Widget _buildAmbientCard() {
     const sounds = ['none', 'rain', 'lofi', 'cafe', 'ocean', 'fire', 'birds'];
     const labels = ['Off', 'Rain', 'Lo-fi', 'Café', 'Ocean', 'Fire', 'Birds'];
@@ -1279,9 +1253,7 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
     );
   }
 
-  // ═══════════════════════════════════════════════════════
   //  2. TIMER PHASE
-  // ═══════════════════════════════════════════════════════
   Widget _buildTimer() {
     final totalSec = _isBreakPhase
         ? ((_pomodoroCount % 4 == 0) ? 15 : 5) * 60
@@ -1293,7 +1265,6 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
     return Column(children: [
       const SizedBox(height: 8),
 
-      // phase pill
       AnimatedBuilder(
         animation: _pulseCtrl,
         builder: (_, __) {
@@ -1328,7 +1299,6 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
       ),
       const SizedBox(height: 20),
 
-      // timer circle with breathing ring
       AnimatedBuilder(
         animation: _breatheCtrl,
         builder: (_, __) {
@@ -1387,7 +1357,6 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
       ),
       const SizedBox(height: 24),
 
-      // control buttons row
       Row(mainAxisAlignment: MainAxisAlignment.center, children: [
         // Distraction counter (only during focus)
         if (!_isBreakPhase)
@@ -1433,7 +1402,6 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
       ]),
       const SizedBox(height: 18),
 
-      // live stats strip
       Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
@@ -1456,7 +1424,6 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
       ),
       const SizedBox(height: 12),
 
-      // ambient sound indicator
       if (_ambientSound != 'none')
         Container(
           margin: const EdgeInsets.only(bottom: 12),
@@ -1486,7 +1453,6 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
           ]),
         ),
 
-      // ── NOTES SECTION — clean, always visible ──
       _buildNotesSection(),
     ]);
   }
@@ -1528,7 +1494,6 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
     ]));
   }
 
-  // ── NOTES SECTION — Notion-style clean editor with rich text ──
   Widget _buildNotesSection() {
     return Container(
       decoration: BoxDecoration(
@@ -1538,7 +1503,6 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
         boxShadow: [BoxShadow(color: _outline.withOpacity(0.04),
           offset: const Offset(0, 3), blurRadius: 10)]),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        // ─── Header with gradient ───
         Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 14),
@@ -1576,7 +1540,6 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
         Padding(padding: const EdgeInsets.all(14), child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ─── Topics as pill chips ───
             Row(children: [
               Icon(Icons.tag_rounded, size: 13, color: _purpleHdr),
               const SizedBox(width: 6),
@@ -1629,7 +1592,6 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
             ),
             const SizedBox(height: 14),
 
-            // ─── Formatting toolbar ───
             Row(children: [
               Icon(Icons.edit_rounded, size: 13, color: _goldDk),
               const SizedBox(width: 6),
@@ -1670,7 +1632,6 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
             ]),
             const SizedBox(height: 8),
 
-            // ─── Text editor ───
             Container(
               constraints: const BoxConstraints(minHeight: 120, maxHeight: 220),
               decoration: BoxDecoration(
@@ -1696,7 +1657,6 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
             ),
             const SizedBox(height: 8),
 
-            // ─── Info strip ───
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
@@ -1735,9 +1695,7 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
     );
   }
 
-  // ═══════════════════════════════════════════════════════
   //  3. COMPLETION PHASE
-  // ═══════════════════════════════════════════════════════
   Widget _buildCompletion() {
     final mins = (_totalStudiedSec / 60).ceil();
     final baseXp = (mins / 30 * 25).floor();
@@ -1746,7 +1704,6 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
     return Column(children: [
       const SizedBox(height: 8),
 
-      // ── Trophy + celebration ──
       _stag(0.0, Column(children: [
         SizedBox(height: 80, child: CustomPaint(
           painter: _ConfettiPainter(progress: _enterCtrl.value),
@@ -1776,7 +1733,6 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
       ])),
       const SizedBox(height: 20),
 
-      // detailed stats card
       _stag(0.1, Container(
         width: double.infinity,
         decoration: BoxDecoration(
@@ -1813,7 +1769,6 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
       )),
       const SizedBox(height: 16),
 
-      // focus score card with custom faces
       _stag(0.15, Container(
         width: double.infinity,
         decoration: BoxDecoration(
@@ -1897,13 +1852,11 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
       )),
       const SizedBox(height: 16),
 
-      // ── Notes section on completion (editable) ──
       if (!_saved) ...[
         _buildNotesSection(),
         const SizedBox(height: 16),
       ],
 
-      // xp breakdown card
       if (_saved) ...[
         _stag(0.2, AnimatedBuilder(
           animation: _xpCtrl,
@@ -1926,7 +1879,7 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
                   Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                     Icon(Icons.star_rounded, size: 28, color: Color(0xFFE8C840)),
                     const SizedBox(width: 8),
-                    Text('+$_xpEarned XP', style: GoogleFonts.gaegu(
+                    Text('+${_xpEarned > 0 ? _xpEarned : baseXp + bonusXp} XP', style: GoogleFonts.gaegu(
                       fontSize: 32, fontWeight: FontWeight.w700, color: _brown)),
                   ]),
                   const SizedBox(height: 8),
@@ -1947,7 +1900,6 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
         const SizedBox(height: 16),
       ],
 
-      // action buttons
       if (!_saved) ...[
         _GameButton(
           icon: Icons.save_rounded,
@@ -1968,7 +1920,11 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
           label: 'Done',
           gradTop: _pinkLt, gradBot: _pinkHdr,
           borderColor: _pinkHdr,
-          onTap: () => Navigator.pop(context)),
+          onTap: () {
+            ref.read(dashboardProvider.notifier).refresh();
+            ref.read(studyProvider.notifier).refresh();
+            Navigator.pop(context);
+          }),
       ],
       const SizedBox(height: 16),
     ]);
@@ -2031,9 +1987,7 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
   }
 }
 
-
 //  PAST SESSIONS SHEET — search + filter + detail expand
-
 class _PastSessionsSheet extends StatefulWidget {
   final List<Map<String, dynamic>> sessions;
   final bool loading;
@@ -2077,7 +2031,6 @@ class _PastSessionsSheetState extends State<_PastSessionsSheet> {
     super.dispose();
   }
 
-  // ── Update session notes/title ──
   Future<void> _updateSession(String sessionId, {String? notes, String? title,
       List<String>? topics}) async {
     try {
@@ -2107,7 +2060,6 @@ class _PastSessionsSheetState extends State<_PastSessionsSheet> {
     }
   }
 
-  // delete a session
   Future<void> _deleteSession(String sessionId) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -2160,7 +2112,6 @@ class _PastSessionsSheetState extends State<_PastSessionsSheet> {
     }
   }
 
-  // build a single session pdf page content
   List<pw.Widget> _buildSessionPdfContent(Map<String, dynamic> s) {
     final type = s['session_type']?.toString() ?? 'focused';
     final mins = s['duration_minutes'] ?? 0;
@@ -2225,7 +2176,6 @@ class _PastSessionsSheetState extends State<_PastSessionsSheet> {
     ];
   }
 
-  // export multiple sessions as one combined pdf
   Future<void> _exportSessionsPdf(List<Map<String, dynamic>> sessions,
       {String? fileName}) async {
     final pdf = pw.Document();
@@ -2276,7 +2226,6 @@ class _PastSessionsSheetState extends State<_PastSessionsSheet> {
     }
   }
 
-  // export each selected session as its own pdf file
   Future<void> _exportEachSessionPdf(List<Map<String, dynamic>> sessions) async {
     try {
       final dir = await getApplicationDocumentsDirectory();
@@ -2344,7 +2293,6 @@ class _PastSessionsSheetState extends State<_PastSessionsSheet> {
     }
   }
 
-  // ── Full-screen note viewer dialog ──
   void _showFullScreenNotes(Map<String, dynamic> s) {
     final type = s['session_type']?.toString() ?? 'focused';
     final title = s['title']?.toString();
@@ -2386,7 +2334,6 @@ class _PastSessionsSheetState extends State<_PastSessionsSheet> {
               color: const Color(0xFFFFF8F4),
               borderRadius: BorderRadius.circular(20)),
             child: Column(children: [
-              // header with gradient
               Container(
                 padding: const EdgeInsets.fromLTRB(20, 16, 12, 14),
                 decoration: BoxDecoration(
@@ -2512,7 +2459,6 @@ class _PastSessionsSheetState extends State<_PastSessionsSheet> {
                   ),
                 ]),
               ),
-              // stats pills
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
                 child: Row(children: [
@@ -2525,7 +2471,6 @@ class _PastSessionsSheetState extends State<_PastSessionsSheet> {
                   ],
                 ]),
               ),
-              // topics
               if (topics.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
@@ -2540,7 +2485,6 @@ class _PastSessionsSheetState extends State<_PastSessionsSheet> {
                     )).toList()),
                 ),
               Divider(height: 1, color: _outline.withOpacity(0.06)),
-              // ── Scrollable notes body (editable or read-only) ──
               Expanded(
                 child: isEditing
                   ? Padding(
@@ -2786,7 +2730,6 @@ class _PastSessionsSheetState extends State<_PastSessionsSheet> {
                 itemCount: filtered.length,
                 itemBuilder: (_, i) => _sessionTile(filtered[i], i))),
 
-        // selection action bar
         if (hasSelection)
           Container(
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
@@ -3114,9 +3057,7 @@ class _PastSessionsSheetState extends State<_PastSessionsSheet> {
   }
 }
 
-
 //  CUSTOM FOCUS FACE PAINTER
-
 class _FacePainter extends CustomPainter {
   final int score;
   final Color color;
@@ -3173,9 +3114,7 @@ class _FacePainter extends CustomPainter {
   bool shouldRepaint(covariant _FacePainter old) => old.score != score || old.color != color;
 }
 
-
 //  RING PAINTER
-
 class _RingPainter extends CustomPainter {
   final double progress;
   final Color color1, color2, bgColor;
@@ -3206,9 +3145,7 @@ class _RingPainter extends CustomPainter {
   bool shouldRepaint(covariant _RingPainter old) => old.progress != progress;
 }
 
-
 //  PARTICLE PAINTER — ambient floating dots
-
 class _ParticlePainter extends CustomPainter {
   final double progress;
   final Color color;
@@ -3239,9 +3176,7 @@ class _ParticlePainter extends CustomPainter {
   bool shouldRepaint(covariant _ParticlePainter old) => true;
 }
 
-
 //  CONFETTI PAINTER — completion celebration
-
 class _ConfettiPainter extends CustomPainter {
   final double progress;
   _ConfettiPainter({required this.progress});
@@ -3277,9 +3212,7 @@ class _ConfettiPainter extends CustomPainter {
   bool shouldRepaint(covariant _ConfettiPainter old) => old.progress != progress;
 }
 
-
 //  MILESTONE TOAST
-
 class _MilestoneToast extends StatelessWidget {
   final String msg;
   const _MilestoneToast({required this.msg});
@@ -3314,9 +3247,7 @@ class _MilestoneToast extends StatelessWidget {
   }
 }
 
-
 //  DURATION CHIP
-
 class _DurationChip extends StatelessWidget {
   final int min;
   final String label, desc;
@@ -3360,9 +3291,7 @@ class _DurationChip extends StatelessWidget {
   }
 }
 
-
 //  CIRCLE BUTTON — timer controls
-
 class _CircleBtn extends StatefulWidget {
   final Color gradTop, gradBot, borderColor, shadowColor;
   final IconData icon;
@@ -3402,9 +3331,7 @@ class _CircleBtnState extends State<_CircleBtn> {
   }
 }
 
-
 //  GAME BUTTON — big action button
-
 class _GameButton extends StatefulWidget {
   final IconData icon;
   final String label;
@@ -3454,9 +3381,7 @@ class _GameButtonState extends State<_GameButton> {
   }
 }
 
-
 //  PAWPRINT BACKGROUND
-
 class _PawPrintBg extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {

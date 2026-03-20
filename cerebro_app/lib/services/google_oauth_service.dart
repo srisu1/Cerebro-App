@@ -1,3 +1,6 @@
+/// Uses browser-based OAuth flow with a local redirect server.
+/// This approach works reliably for Desktop-type OAuth clients.
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -12,15 +15,21 @@ class GoogleOAuthService {
   static const String _tokenEndpoint =
       'https://oauth2.googleapis.com/token';
 
+  /// Runs the full OAuth flow:
+  /// 1. Starts a local HTTP server to catch the redirect
+  /// 2. Opens Google's consent screen in the browser
+  /// 3. Catches the auth code from the redirect
+  /// 4. Exchanges the auth code for an ID token
+  /// Returns the ID token string, or null if cancelled/failed.
   static Future<String?> signIn() async {
     HttpServer? server;
     try {
-      // start local server to catch the redirect
+      // 1. Start a local server on a random available port
       server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       final port = server.port;
       final redirectUri = 'http://localhost:$port';
 
-      // build oauth url
+      // 2. Build the Google OAuth URL
       final authUrl = Uri.parse(_authEndpoint).replace(queryParameters: {
         'client_id': _clientId,
         'redirect_uri': redirectUri,
@@ -30,22 +39,22 @@ class GoogleOAuthService {
         'prompt': 'select_account',
       });
 
-      // open browser
+      // 3. Open the browser
       if (!await launchUrl(authUrl, mode: LaunchMode.externalApplication)) {
         throw Exception('Could not open browser for Google Sign-In');
       }
 
-      // wait for redirect
+      // 4. Wait for the redirect (timeout after 2 minutes)
       final request = await server.first.timeout(
         const Duration(minutes: 2),
         onTimeout: () => throw TimeoutException('Google Sign-In timed out'),
       );
 
-      // extract auth code
+      // 5. Extract the auth code from the redirect URL
       final code = request.uri.queryParameters['code'];
       final error = request.uri.queryParameters['error'];
 
-      // show success page in browser
+      // Send a nice response to the browser
       request.response
         ..statusCode = HttpStatus.ok
         ..headers.contentType = ContentType.html
@@ -54,7 +63,7 @@ class GoogleOAuthService {
             justify-content: center; align-items: center; height: 100vh; margin: 0;
             background: linear-gradient(135deg, #e8f5e9, #fff8e1);">
             <div style="text-align: center;">
-              <h1 style="color: #2e7d32;">✓ Signed in to CEREBRO</h1>
+              <h1 style="color: #2e7d32;">✓ Signed in to Cerebro</h1>
               <p style="color: #666;">You can close this tab and return to the app.</p>
             </div>
           </body></html>
@@ -67,7 +76,7 @@ class GoogleOAuthService {
         return null; // User cancelled or error occurred
       }
 
-      // exchange code for tokens
+      // 6. Exchange the auth code for tokens
       final httpClient = HttpClient();
       try {
         final tokenRequest =

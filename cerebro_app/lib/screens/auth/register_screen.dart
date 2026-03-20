@@ -1,3 +1,6 @@
+/// Matches login v5: clean split layout, branded panel,
+/// sage green gradient, styled logo badge.
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -8,7 +11,7 @@ import 'package:cerebro_app/providers/auth_provider.dart';
 const _termsText =
     'CEREBRO Terms of Service\n\nLast updated: February 2026\n\n'
     '1. Acceptance of Terms\nBy accessing or using CEREBRO, you agree to these Terms.\n\n'
-    '2. Description of Service\nCEREBRO is an AI-powered student companion for study tracking, '
+    '2. Description of Service\nCEREBRO is an smart student companion for study tracking, '
     'health monitoring, and daily life management.\n\n'
     '3. User Accounts\nYou are responsible for your account security.\n\n'
     '4. Acceptable Use\nYou agree not to misuse the service.\n\n'
@@ -196,7 +199,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
     );
   }
 
-  // --- build ---
+  //  BUILD
   @override
   Widget build(BuildContext context) {
     final auth = ref.watch(authProvider);
@@ -214,7 +217,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
     );
   }
 
-  // --- brand panel ---
+  //  LEFT BRAND PANEL  (sage green gradient)
   Widget _brandPanel() {
     return SizedBox(
       width: 380,
@@ -394,7 +397,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
     );
   }
 
-  // --- form panel ---
+  //  RIGHT FORM PANEL
   Widget _formPanel(AuthState auth, bool loading) {
     final pwStr = _strength(_passC.text);
 
@@ -828,7 +831,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
           color: CerebroTheme.outline));
 }
 
-// --- shared widgets ---
+//  SHARED WIDGETS
 
 class _CuteDialog extends StatelessWidget {
   final Color accent;
