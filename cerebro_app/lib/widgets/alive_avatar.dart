@@ -1,3 +1,12 @@
+/// Avatar that feels alive with:
+///  • Gentle breathing (float up/down)
+///  • Periodic blinking (opacity fade on eyes — no asset needed)
+///  • Expression overlays based on mood / time / activity
+///  • Time-based outfit changes
+///
+/// Blink approach: Instead of loading blink/eyes.png (which may not exist),
+/// we FADE OUT the eyes layer briefly to simulate a blink. Much more reliable.
+
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cerebro_app/models/avatar_config.dart';
@@ -11,6 +20,8 @@ class AliveAvatar extends StatefulWidget {
   final bool autoOutfit;
   final Color? backgroundColor;
 
+  /// When true, only renders head/bust (no breathing, smaller).
+  /// Used for status bar mini avatar.
   final bool mini;
 
   const AliveAvatar({
@@ -29,11 +40,9 @@ class AliveAvatar extends StatefulWidget {
 
 class _AliveAvatarState extends State<AliveAvatar>
     with SingleTickerProviderStateMixin {
-  // breathing animation
   late AnimationController _breatheCtrl;
   late Animation<double> _breatheAnim;
 
-  // blink
   Timer? _blinkTimer;
   double _eyeOpacity = 1.0;
 
@@ -80,6 +89,12 @@ class _AliveAvatarState extends State<AliveAvatar>
     final parts = widget.config.clothes.split('-');
     final color = parts.isNotEmpty ? parts.last : 'blue';
     final style = ExpressionEngine.clothesForTimeOfDay(widget.config.gender);
+    // Store-exclusive colors use Store_items path
+    const storeColors = {'babypink', 'brown', 'olive'};
+    if (storeColors.contains(color)) {
+      final fileName = style == 'off-shoulder' ? 'offshoulder-$color' : '$style-$color';
+      return 'assets/store/Store_items/$fileName.png';
+    }
     return 'assets/avatar/${widget.config.gender}/clothes/$style-$color.png';
   }
 
