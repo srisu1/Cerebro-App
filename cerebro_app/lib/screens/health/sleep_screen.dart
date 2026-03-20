@@ -3,9 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:cerebro_app/providers/auth_provider.dart';
+import 'package:cerebro_app/providers/dashboard_provider.dart';
 import 'dart:math' as math;
 
-// color palette
+// ============================================================================
+// Color Palette
+// ============================================================================
 const _ombre1 = Color(0xFFFFFBF7);
 const _ombre2 = Color(0xFFFFF8F3);
 const _ombre3 = Color(0xFFFFF3EF);
@@ -25,7 +28,9 @@ const _purpleHdr = Color(0xFFCDA8D8);
 const _purpleLt = Color(0xFFD8C0E8);
 const _skyHdr = Color(0xFF9DD4F0);
 
-// background painter
+// ============================================================================
+// Pawprint Background Painter
+// ============================================================================
 class _PawPrintBg extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
@@ -65,6 +70,9 @@ class _PawPrintBg extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
+// ============================================================================
+// Sleep Screen
+// ============================================================================
 class SleepScreen extends ConsumerStatefulWidget {
   const SleepScreen({Key? key}) : super(key: key);
 
@@ -146,8 +154,14 @@ class _SleepScreenState extends ConsumerState<SleepScreen> with TickerProviderSt
       final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDate);
       final bedtimeDateTime =
           DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day, _bedtime.hour, _bedtime.minute);
+      // If wake time is earlier than bedtime, user woke up the next day
+      var wakeDate = _selectedDate;
+      if (_wakeTime.hour < _bedtime.hour ||
+          (_wakeTime.hour == _bedtime.hour && _wakeTime.minute <= _bedtime.minute)) {
+        wakeDate = _selectedDate.add(const Duration(days: 1));
+      }
       final wakeTimeDateTime =
-          DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day, _wakeTime.hour, _wakeTime.minute);
+          DateTime(wakeDate.year, wakeDate.month, wakeDate.day, _wakeTime.hour, _wakeTime.minute);
 
       final bedtimeIso = bedtimeDateTime.toUtc().toIso8601String();
       final wakeTimeIso = wakeTimeDateTime.toUtc().toIso8601String();
@@ -161,6 +175,11 @@ class _SleepScreenState extends ConsumerState<SleepScreen> with TickerProviderSt
       };
 
       await apiService.post('/health/sleep', data: payload);
+
+      // Refresh dashboard so sleep shows on home screen
+      ref.read(dashboardProvider.notifier).refresh();
+      // Check sleep streak achievements
+      ref.read(dashboardProvider.notifier).checkAchievements();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -249,7 +268,10 @@ class _SleepScreenState extends ConsumerState<SleepScreen> with TickerProviderSt
                       children: [
                         IconButton(
                           icon: const Icon(Icons.arrow_back, color: _brown),
-                          onPressed: () => Navigator.of(context).pop(),
+                          onPressed: () {
+                            ref.read(dashboardProvider.notifier).refresh();
+                            Navigator.of(context).pop();
+                          },
                         ),
                         const SizedBox(width: 12),
                         Text(
@@ -496,7 +518,7 @@ class _SleepScreenState extends ConsumerState<SleepScreen> with TickerProviderSt
       onTap: isLoading ? null : onPressed,
       child: Stack(
         children: [
-          // shadow (3D effect)
+          // Shadow (3D effect)
           Container(
             height: 48,
             decoration: BoxDecoration(
@@ -504,7 +526,7 @@ class _SleepScreenState extends ConsumerState<SleepScreen> with TickerProviderSt
               borderRadius: BorderRadius.circular(14),
             ),
           ),
-          // button
+          // Button
           Container(
             height: 44,
             decoration: BoxDecoration(
@@ -674,6 +696,7 @@ class _SleepScreenState extends ConsumerState<SleepScreen> with TickerProviderSt
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Date
             Text(
               DateFormat('EEE, MMM dd, yyyy').format(date),
               style: GoogleFonts.nunito(
@@ -684,7 +707,7 @@ class _SleepScreenState extends ConsumerState<SleepScreen> with TickerProviderSt
             ),
             const SizedBox(height: 10),
 
-            // time range
+            // Time range
             Row(
               children: [
                 Icon(Icons.bedtime, size: 16, color: _coralHdr),
@@ -698,6 +721,7 @@ class _SleepScreenState extends ConsumerState<SleepScreen> with TickerProviderSt
             ),
             const SizedBox(height: 10),
 
+            // Hours and Quality
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -728,6 +752,7 @@ class _SleepScreenState extends ConsumerState<SleepScreen> with TickerProviderSt
               ],
             ),
 
+            // Notes
             if (notes != null && notes.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 10),
