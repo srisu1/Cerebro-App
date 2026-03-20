@@ -4,7 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cerebro_app/providers/auth_provider.dart';
 
-// color palette
+// =============================================================================
+// COLOR PALETTE (Pocket Love Aesthetic)
+// =============================================================================
 const _ombre1 = Color(0xFFFFFBF7);
 const _ombre2 = Color(0xFFFFF8F3);
 const _ombre3 = Color(0xFFFFF3EF);
@@ -24,7 +26,9 @@ const _goldLt = Color(0xFFFFF0C0);
 const _coralHdr = Color(0xFFF0A898);
 const _coralLt = Color(0xFFF8C0B0);
 
-// background painter
+// =============================================================================
+// PAWPRINT BACKGROUND PAINTER
+// =============================================================================
 class _PawPrintBg extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
@@ -56,7 +60,9 @@ class _PawPrintBg extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter old) => false;
 }
 
-// water drop painter
+// =============================================================================
+// WATER DROP PAINTER
+// =============================================================================
 class _WaterDropPainter extends CustomPainter {
   final double fillLevel;
   final Color fillColor;
@@ -76,6 +82,7 @@ class _WaterDropPainter extends CustomPainter {
     final cx = size.width / 2;
     final cy = size.height / 2;
 
+    // Draw teardrop outline
     final outlinePath = _createTearDrop(cx, cy, w, h);
     canvas.drawPath(
       outlinePath,
@@ -85,6 +92,7 @@ class _WaterDropPainter extends CustomPainter {
         ..strokeWidth = 2.0,
     );
 
+    // Draw filled water
     if (fillLevel > 0) {
       final fillPath = _createTearDropFill(cx, cy, w, h, fillLevel);
       canvas.drawPath(
@@ -101,10 +109,13 @@ class _WaterDropPainter extends CustomPainter {
     final topY = cy - (h / 2);
     final bottomY = cy + (h * 0.35);
 
+    // Curve from top
     path.moveTo(cx, topY);
     path.cubicTo(cx - (w * 0.35), cy - (h * 0.15), cx - (w * 0.4), cy + (h * 0.1),
         cx - (w * 0.25), bottomY);
+    // Bottom point
     path.lineTo(cx, cy + (h * 0.5));
+    // Curve back to top
     path.cubicTo(cx + (w * 0.25), bottomY, cx + (w * 0.4), cy + (h * 0.1),
         cx + (w * 0.35), cy - (h * 0.15));
     path.close();
@@ -124,6 +135,14 @@ class _WaterDropPainter extends CustomPainter {
       return _createTearDrop(cx, cy, w, h);
     }
 
+    // Simple fill rect clipped to teardrop
+    final fillRect = Rect.fromLTRB(
+      cx - (w * 0.4),
+      fillHeight,
+      cx + (w * 0.4),
+      maxHeight,
+    );
+
     path.moveTo(cx, fillHeight);
     path.cubicTo(cx - (w * 0.25), fillHeight + (bottomY - fillHeight) * 0.3,
         cx - (w * 0.4), cy + (h * 0.1), cx - (w * 0.25), bottomY);
@@ -141,6 +160,9 @@ class _WaterDropPainter extends CustomPainter {
   }
 }
 
+// =============================================================================
+// WATER SCREEN WIDGET
+// =============================================================================
 class WaterScreen extends ConsumerStatefulWidget {
   const WaterScreen({Key? key}) : super(key: key);
 
@@ -207,10 +229,12 @@ class _WaterScreenState extends ConsumerState<WaterScreen>
     try {
       final apiService = ref.read(apiServiceProvider);
 
+      // Fetch today's intake
       final todayResp = await apiService.get('/health/water/today');
       final todayData = todayResp.data as Map<String, dynamic>;
       final glasses = todayData['glasses'] ?? 0;
 
+      // Fetch 7-day history
       final historyResp =
           await apiService.get('/health/water', queryParams: {'days': '7'});
       final historyData = historyResp.data as List<dynamic>;
@@ -225,7 +249,9 @@ class _WaterScreenState extends ConsumerState<WaterScreen>
       _fillAnimController.forward();
       _staggerAnimController.forward();
     } catch (e) {
-      setState(() => _isLoading = false);
+      setState(() {
+        _isLoading = false;
+      });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to load water data: $e')),
@@ -241,7 +267,9 @@ class _WaterScreenState extends ConsumerState<WaterScreen>
 
       await apiService.post('/health/water', data: {'glasses': newCount});
 
-      setState(() => _todayGlasses = newCount);
+      setState(() {
+        _todayGlasses = newCount;
+      });
 
       _fillAnimController.reset();
       _fillAnimController.forward();
@@ -263,7 +291,9 @@ class _WaterScreenState extends ConsumerState<WaterScreen>
 
       await apiService.post('/health/water', data: {'glasses': newCount});
 
-      setState(() => _todayGlasses = newCount);
+      setState(() {
+        _todayGlasses = newCount;
+      });
 
       _fillAnimController.reset();
       _fillAnimController.forward();
@@ -278,6 +308,7 @@ class _WaterScreenState extends ConsumerState<WaterScreen>
 
   @override
   Widget build(BuildContext context) {
+    final screenSize = MediaQuery.of(context).size;
     final fillPercent = (_todayGlasses / _goal).clamp(0.0, 1.0);
 
     return Scaffold(
@@ -285,65 +316,78 @@ class _WaterScreenState extends ConsumerState<WaterScreen>
       body: CustomPaint(
         painter: _PawPrintBg(),
         child: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // header
-                Row(
+          child: Stack(
+            children: [
+              // Scrollable content
+              SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    GestureDetector(
-                      onTap: () => Navigator.pop(context),
-                      child: Container(
-                        width: 44,
-                        height: 44,
+                    // AppBar
+                    Row(
+                      children: [
+                        GestureDetector(
+                          onTap: () => Navigator.pop(context),
+                          child: Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: _cardFill,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                  color: _outline.withOpacity(0.25), width: 2),
+                            ),
+                            child: const Icon(Icons.arrow_back_ios_new,
+                                color: _outline, size: 18),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Text(
+                          'Hydration',
+                          style: GoogleFonts.gaegu(
+                            fontSize: 26,
+                            fontWeight: FontWeight.w700,
+                            color: _brown,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+
+                    // Today's Intake Card
+                    if (!_isLoading)
+                      _buildTodayCard(context, fillPercent)
+                    else
+                      Container(
+                        height: 280,
                         decoration: BoxDecoration(
                           color: _cardFill,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: _outline.withOpacity(0.25), width: 2),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                              color: _outline.withOpacity(0.25), width: 2),
                         ),
-                        child: const Icon(Icons.arrow_back_ios_new, color: _outline, size: 18),
+                        child: const Center(
+                          child: CircularProgressIndicator(color: _skyHdr),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 16),
-                    Text(
-                      'Hydration',
-                      style: GoogleFonts.gaegu(
-                        fontSize: 26,
-                        fontWeight: FontWeight.w700,
-                        color: _brown,
-                      ),
-                    ),
+                    const SizedBox(height: 20),
+
+                    // Weekly Overview Card
+                    if (!_isLoading) _buildWeeklyCard(),
+                    const SizedBox(height: 20),
+
+                    // Streak & Stats Card
+                    if (!_isLoading) _buildStreakCard(),
+                    const SizedBox(height: 20),
+
+                    // Hydration Tips Banner
+                    _buildTipsCard(),
+                    const SizedBox(height: 20),
                   ],
                 ),
-                const SizedBox(height: 24),
-
-                // today's intake card
-                if (!_isLoading)
-                  _buildTodayCard(context, fillPercent)
-                else
-                  Container(
-                    height: 280,
-                    decoration: BoxDecoration(
-                      color: _cardFill,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: _outline.withOpacity(0.25), width: 2),
-                    ),
-                    child: const Center(child: CircularProgressIndicator(color: _skyHdr)),
-                  ),
-                const SizedBox(height: 20),
-
-                if (!_isLoading) _buildWeeklyCard(),
-                const SizedBox(height: 20),
-
-                if (!_isLoading) _buildStreakCard(),
-                const SizedBox(height: 20),
-
-                _buildTipsCard(),
-                const SizedBox(height: 20),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -358,25 +402,37 @@ class _WaterScreenState extends ConsumerState<WaterScreen>
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: _outline.withOpacity(0.25), width: 2),
         boxShadow: [
-          BoxShadow(color: _outline.withOpacity(0.06), offset: const Offset(0, 4), blurRadius: 12),
+          BoxShadow(
+            color: _outline.withOpacity(0.06),
+            offset: const Offset(0, 4),
+            blurRadius: 12,
+          ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
+          // Sky blue header strip
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 8),
-            decoration: BoxDecoration(color: _skyLt, borderRadius: BorderRadius.circular(12)),
+            decoration: BoxDecoration(
+              color: _skyLt,
+              borderRadius: BorderRadius.circular(12),
+            ),
             child: Text(
               'Today\'s Intake',
               textAlign: TextAlign.center,
-              style: GoogleFonts.gaegu(fontSize: 16, fontWeight: FontWeight.w700, color: _brown),
+              style: GoogleFonts.gaegu(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: _brown,
+              ),
             ),
           ),
           const SizedBox(height: 24),
 
-          // animated water drop
+          // Water drop with fill animation
           SizedBox(
             width: 100,
             height: 140,
@@ -395,18 +451,29 @@ class _WaterScreenState extends ConsumerState<WaterScreen>
           ),
           const SizedBox(height: 16),
 
+          // Text: X / 8 glasses
           Text(
             '$_todayGlasses / $_goal glasses',
-            style: GoogleFonts.gaegu(fontSize: 28, fontWeight: FontWeight.w700, color: _brown),
+            style: GoogleFonts.gaegu(
+              fontSize: 28,
+              fontWeight: FontWeight.w700,
+              color: _brown,
+            ),
           ),
           const SizedBox(height: 4),
+
+          // Progress ring and percentage
           Text(
             '${(fillPercent * 100).toStringAsFixed(0)}% of daily goal',
-            style: GoogleFonts.nunito(fontSize: 14, fontWeight: FontWeight.w600, color: _brownLt),
+            style: GoogleFonts.nunito(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: _brownLt,
+            ),
           ),
           const SizedBox(height: 20),
 
-          // glass icons row
+          // 8 glass icons row
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: List.generate(
@@ -420,7 +487,10 @@ class _WaterScreenState extends ConsumerState<WaterScreen>
                     height: 40,
                     decoration: BoxDecoration(
                       color: isFilled ? _skyLt : Colors.transparent,
-                      border: Border.all(color: _outline.withOpacity(0.4), width: 1.5),
+                      border: Border.all(
+                        color: _outline.withOpacity(0.4),
+                        width: 1.5,
+                      ),
                       borderRadius: BorderRadius.circular(6),
                     ),
                   ),
@@ -430,10 +500,11 @@ class _WaterScreenState extends ConsumerState<WaterScreen>
           ),
           const SizedBox(height: 24),
 
-          // +/- buttons
+          // +/- buttons row
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
+              // Minus button
               GestureDetector(
                 onTap: _decrementGlass,
                 child: Container(
@@ -443,13 +514,18 @@ class _WaterScreenState extends ConsumerState<WaterScreen>
                     color: _skyLt,
                     shape: BoxShape.circle,
                     boxShadow: [
-                      BoxShadow(color: _outline.withOpacity(0.08), offset: const Offset(0, 2), blurRadius: 6),
+                      BoxShadow(
+                        color: _outline.withOpacity(0.08),
+                        offset: const Offset(0, 2),
+                        blurRadius: 6,
+                      ),
                     ],
                   ),
                   child: const Icon(Icons.remove, color: Colors.white, size: 24),
                 ),
               ),
               const SizedBox(width: 32),
+              // Plus button
               GestureDetector(
                 onTap: _incrementGlass,
                 child: Container(
@@ -459,7 +535,11 @@ class _WaterScreenState extends ConsumerState<WaterScreen>
                     color: _skyHdr,
                     shape: BoxShape.circle,
                     boxShadow: [
-                      BoxShadow(color: _outline.withOpacity(0.08), offset: const Offset(0, 2), blurRadius: 6),
+                      BoxShadow(
+                        color: _outline.withOpacity(0.08),
+                        offset: const Offset(0, 2),
+                        blurRadius: 6,
+                      ),
                     ],
                   ),
                   child: const Icon(Icons.add, color: Colors.white, size: 24),
@@ -476,6 +556,7 @@ class _WaterScreenState extends ConsumerState<WaterScreen>
     final days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     final maxGlasses = (_history.isEmpty ? 8 : _history.reduce((a, b) => a > b ? a : b)).toDouble();
 
+    // Pad history to 7 days if needed
     final paddedHistory = List<int>.from(_history);
     while (paddedHistory.length < 7) {
       paddedHistory.insert(0, 0);
@@ -495,25 +576,37 @@ class _WaterScreenState extends ConsumerState<WaterScreen>
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: _outline.withOpacity(0.25), width: 2),
         boxShadow: [
-          BoxShadow(color: _outline.withOpacity(0.06), offset: const Offset(0, 4), blurRadius: 12),
+          BoxShadow(
+            color: _outline.withOpacity(0.06),
+            offset: const Offset(0, 4),
+            blurRadius: 12,
+          ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Green header strip
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 8),
-            decoration: BoxDecoration(color: _greenLt, borderRadius: BorderRadius.circular(12)),
+            decoration: BoxDecoration(
+              color: _greenLt,
+              borderRadius: BorderRadius.circular(12),
+            ),
             child: Text(
               'Weekly Overview',
               textAlign: TextAlign.center,
-              style: GoogleFonts.gaegu(fontSize: 16, fontWeight: FontWeight.w700, color: _brown),
+              style: GoogleFonts.gaegu(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: _brown,
+              ),
             ),
           ),
           const SizedBox(height: 20),
 
-          // bar chart
+          // Bar chart
           SizedBox(
             height: 160,
             child: Row(
@@ -523,7 +616,8 @@ class _WaterScreenState extends ConsumerState<WaterScreen>
                 7,
                 (i) {
                   final glasses = paddedHistory[i];
-                  final height = (glasses / (maxGlasses > 0 ? maxGlasses : 1)) * 120;
+                  final height =
+                      (glasses / (maxGlasses > 0 ? maxGlasses : 1)) * 120;
                   final metGoal = glasses >= _goal;
 
                   return Column(
@@ -540,7 +634,8 @@ class _WaterScreenState extends ConsumerState<WaterScreen>
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: (metGoal ? _greenHdr : _coralHdr).withOpacity(0.2),
+                              color: (metGoal ? _greenHdr : _coralHdr)
+                                  .withOpacity(0.2),
                               offset: const Offset(0, 2),
                               blurRadius: 4,
                             ),
@@ -550,7 +645,11 @@ class _WaterScreenState extends ConsumerState<WaterScreen>
                       const SizedBox(height: 8),
                       Text(
                         days[i][0],
-                        style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w600, color: _brownLt),
+                        style: GoogleFonts.nunito(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: _brownLt,
+                        ),
                       ),
                     ],
                   );
@@ -559,10 +658,16 @@ class _WaterScreenState extends ConsumerState<WaterScreen>
             ),
           ),
           const SizedBox(height: 16),
+
+          // Average text
           Center(
             child: Text(
               'Average: ${avgGlasses.toStringAsFixed(1)} glasses/day',
-              style: GoogleFonts.nunito(fontSize: 14, fontWeight: FontWeight.w600, color: _brownLt),
+              style: GoogleFonts.nunito(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: _brownLt,
+              ),
             ),
           ),
         ],
@@ -571,6 +676,7 @@ class _WaterScreenState extends ConsumerState<WaterScreen>
   }
 
   Widget _buildStreakCard() {
+    // Calculate streak (simplified: count consecutive days at end of history)
     int streak = 0;
     for (int i = _history.length - 1; i >= 0; i--) {
       if (_history[i] >= _goal) {
@@ -580,8 +686,9 @@ class _WaterScreenState extends ConsumerState<WaterScreen>
       }
     }
 
-    final weekGoalsMet = _history.where((g) => g >= _goal).length;
-    const bestStreak = 14;
+    final weekGoalsMet =
+        _history.where((g) => g >= _goal).length;
+    final bestStreak = 14; // Placeholder
     final avgDaily = _history.isEmpty
         ? 0.0
         : _history.reduce((a, b) => a + b) / _history.length;
@@ -593,29 +700,46 @@ class _WaterScreenState extends ConsumerState<WaterScreen>
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: _outline.withOpacity(0.25), width: 2),
         boxShadow: [
-          BoxShadow(color: _outline.withOpacity(0.06), offset: const Offset(0, 4), blurRadius: 12),
+          BoxShadow(
+            color: _outline.withOpacity(0.06),
+            offset: const Offset(0, 4),
+            blurRadius: 12,
+          ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Gold header strip
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 8),
-            decoration: BoxDecoration(color: _goldLt, borderRadius: BorderRadius.circular(12)),
+            decoration: BoxDecoration(
+              color: _goldLt,
+              borderRadius: BorderRadius.circular(12),
+            ),
             child: Text(
               'Achievements',
               textAlign: TextAlign.center,
-              style: GoogleFonts.gaegu(fontSize: 16, fontWeight: FontWeight.w700, color: _brown),
+              style: GoogleFonts.gaegu(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: _brown,
+              ),
             ),
           ),
           const SizedBox(height: 16),
+
+          // Streak stat
           _buildStatRow('Current Streak', '$streak days', _goldHdr),
           const SizedBox(height: 12),
+
           _buildStatRow('Goal Met This Week', '$weekGoalsMet / 7 days', _greenHdr),
           const SizedBox(height: 12),
+
           _buildStatRow('Best Streak Ever', '$bestStreak days', _coralHdr),
           const SizedBox(height: 12),
+
           _buildStatRow('Average Daily', '${avgDaily.toStringAsFixed(1)} glasses', _skyHdr),
         ],
       ),
@@ -628,7 +752,11 @@ class _WaterScreenState extends ConsumerState<WaterScreen>
       children: [
         Text(
           label,
-          style: GoogleFonts.nunito(fontSize: 14, fontWeight: FontWeight.w600, color: _brownLt),
+          style: GoogleFonts.nunito(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: _brownLt,
+          ),
         ),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -638,7 +766,11 @@ class _WaterScreenState extends ConsumerState<WaterScreen>
           ),
           child: Text(
             value,
-            style: GoogleFonts.nunito(fontSize: 14, fontWeight: FontWeight.w700, color: _brown),
+            style: GoogleFonts.nunito(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: _brown,
+            ),
           ),
         ),
       ],
@@ -652,7 +784,11 @@ class _WaterScreenState extends ConsumerState<WaterScreen>
         color: _greenLt,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
-          BoxShadow(color: _outline.withOpacity(0.06), offset: const Offset(0, 2), blurRadius: 8),
+          BoxShadow(
+            color: _outline.withOpacity(0.06),
+            offset: const Offset(0, 2),
+            blurRadius: 8,
+          ),
         ],
       ),
       child: Column(
@@ -663,7 +799,11 @@ class _WaterScreenState extends ConsumerState<WaterScreen>
             children: [
               Text(
                 'Hydration Tip',
-                style: GoogleFonts.gaegu(fontSize: 14, fontWeight: FontWeight.w700, color: _brown),
+                style: GoogleFonts.gaegu(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: _brown,
+                ),
               ),
               GestureDetector(
                 onTap: _pickRandomTip,
@@ -674,7 +814,8 @@ class _WaterScreenState extends ConsumerState<WaterScreen>
                     color: Colors.white.withOpacity(0.5),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.refresh, color: _brown, size: 16),
+                  child:
+                      const Icon(Icons.refresh, color: _brown, size: 16),
                 ),
               ),
             ],
@@ -682,7 +823,12 @@ class _WaterScreenState extends ConsumerState<WaterScreen>
           const SizedBox(height: 8),
           Text(
             _currentTip,
-            style: GoogleFonts.nunito(fontSize: 13, fontWeight: FontWeight.w600, color: _brown, height: 1.5),
+            style: GoogleFonts.nunito(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: _brown,
+              height: 1.5,
+            ),
           ),
         ],
       ),
