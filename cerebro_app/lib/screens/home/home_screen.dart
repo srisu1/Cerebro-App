@@ -1,5 +1,9 @@
+/// 6 tabs: Home, Daily, Study, Shop, Health, Avatar
+/// Ultra-slim bottom nav — icons only, warm tint on active.
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:cerebro_app/config/theme.dart';
 import 'package:cerebro_app/screens/home/dashboard_tab.dart';
 import 'package:cerebro_app/screens/daily/daily_tab.dart';
@@ -59,7 +63,7 @@ class HomeScreen extends ConsumerWidget {
   }
 }
 
-// bottom nav bar
+//  SLIM NAV — thin warm strip, just icons + dot
 class _SlimNav extends StatelessWidget {
   final List<_TabDef> items;
   final int selected;
@@ -131,6 +135,7 @@ class _SlimNavItem extends StatelessWidget {
             color: active ? color : _brownLt.withOpacity(0.35),
           ),
           const SizedBox(height: 4),
+          // Dot indicator
           AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             width: active ? 5 : 0,
