@@ -1,3 +1,12 @@
+/// Renders a HEAD-ONLY mood sticker.
+///
+/// Approach (matching .NET SVG rendering):
+///  1. Internal canvas of 500x500 (large enough for hair overflow)
+///  2. Each layer: sized to (scale * canvas), centered + offset
+///  3. Image fits within that box using BoxFit.contain
+///  4. Stack clips to canvas bounds (Clip.hardEdge)
+///  5. FittedBox scales everything to display size
+
 import 'package:flutter/material.dart';
 import 'package:cerebro_app/models/avatar_config.dart';
 import 'package:cerebro_app/models/expression_state.dart';
@@ -8,6 +17,8 @@ class MoodSticker extends StatelessWidget {
   final String mood;
   final double size;
 
+  /// Zoom factor for the face. 1.0 = default (face fills ~75% of box).
+  /// Use 1.3–1.4 to make the face fill the box edge-to-edge.
   final double zoom;
 
   const MoodSticker({

@@ -32,6 +32,24 @@ class CerebroTheme {
   static const Color shadow = Color(0x404A3F35);
   static const Color shadowDark = Color(0x664A3F35);
 
+  // olive-pink login palette
+  static const Color olive = Color(0xFF98A869);
+  static const Color oliveDark = Color(0xFF58772F);
+  static const Color pinkAccent = Color(0xFFFEA9D3);
+  static const Color pinkAccentDeep = Color(0xFFE890B8);
+  static const Color greenPale = Color(0xFFF9FDEC);
+  static const Color pinkLight = Color(0xFFFFD5F5);
+  static const Color creamWarm = Color(0xFFFDEFDB);
+  static const Color blueLight = Color(0xFFDDF6FF);
+  static const Color coralSoft = Color(0xFFF7AEAE);
+  static const Color orangeWarm = Color(0xFFFFBC5C);
+  static const Color text1 = Color(0xFF2C3322);
+  static const Color text2 = Color(0xFF4D5A3A);
+  static const Color text3 = Color(0xFF8A9668);
+  static const Color inputBorder = Color(0xFFC0C99A);
+  static const Color dividerGreen = Color(0xFFDDE4C8);
+  static const Color inputBg = Color(0xFFFEFDFB);
+
   // aliases
   static const Color primaryPurple = lavender;
   static const Color primaryBlue = sky;
@@ -228,6 +246,6 @@ class CerebroTheme {
     );
   }
 
-  // dark theme (TODO: actually build this)
+  // dark theme (todo)
   static ThemeData get darkTheme => lightTheme;
 }

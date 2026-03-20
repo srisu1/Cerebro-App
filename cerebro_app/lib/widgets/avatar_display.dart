@@ -1,3 +1,8 @@
+/// EXACT port of .NET AvatarDisplay.razor rendering:
+///   Canvas: 600×550, scale(Size/280), anchor: bottom center
+///   Each layer: centered, translate(X,Y), scale(S) on NATIVE image size
+///   Shows "chest up" view — ideal for dashboard, profile, navbar, etc.
+
 import 'package:flutter/material.dart';
 import 'package:cerebro_app/config/theme.dart';
 import 'package:cerebro_app/models/avatar_config.dart';
@@ -19,6 +24,10 @@ class AvatarDisplay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // .NET AvatarDisplay.razor:
+    //   inner div: 600×550, transform-origin: bottom center,
+    //   transform: translateX(-50%) scale(Size / 280.0)
+    //   bottom: -(Size * 0.4)
     final dScale = size / 280.0;
 
     return Container(
@@ -44,7 +53,11 @@ class AvatarDisplay extends StatelessWidget {
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          // Scaling from bottom-center:
+          // .NET: bottom: -(Size * 0.4), left: 50%, translateX(-50%)
+          //       width: 600, height: 550
+          //       transform-origin: bottom center, scale(Size/280)
+          //
+          // After scaling from bottom-center by dScale:
           //   scaled width = 600 * dScale, scaled height = 550 * dScale
           //   bottom of canvas = size + size * 0.4 = size * 1.4 from top
           //   top of canvas = size * 1.4 - 550 * dScale
@@ -71,7 +84,11 @@ class AvatarDisplay extends StatelessWidget {
     final layers = <Widget>[];
 
     void addLayer(String path, LayerPosition pos) {
-      // Positioning: translate center, then offset by (X, Y), then scale
+      // .NET: position: absolute; top: 50%; left: 50%;
+      //       transform: translate(-50%, -50%) translate(X, Y) scale(S);
+      // Flutter: OverflowBox(center) → translate(dx,dy) → scale(s)
+      //   Combined: s = layerScale × dScale
+      //             dx = X × dScale, dy = Y × dScale
       final s = pos.scale * dScale;
       final dx = pos.x * dScale;
       final dy = pos.y * dScale;

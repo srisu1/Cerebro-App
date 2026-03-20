@@ -1,4 +1,3 @@
-/// CEREBRO – Home Dashboard v14 — DYNAMIC + COZY GAME DESIGN
 /// Reactive dashboard powered by DashboardProvider (Riverpod).
 /// Fetches from API, caches locally, updates in real-time.
 
@@ -52,6 +51,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
   Timer? _speechTimer;
   late AnimationController _enterCtrl;
   String? _lastMood; // tracks mood to update expression
+  int? _prevTab;
 
   @override
   void initState() {
@@ -81,12 +81,14 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
     });
   }
 
-  /// Sync expression to current mood (called from build)
+  /// Sync expression to current mood or backend intelligence (called from build)
   void _syncExpression(DashboardState dash) {
-    if (dash.todayMood != _lastMood) {
-      _lastMood = dash.todayMood;
-      _currentExpression = dash.todayMood != null
-          ? ExpressionEngine.fromMood(dash.todayMood)
+    // Priority: todayMood (user-logged) > backendExpression (AI-inferred) > time-of-day
+    final effectiveMood = dash.todayMood ?? dash.backendExpression;
+    if (effectiveMood != _lastMood) {
+      _lastMood = effectiveMood;
+      _currentExpression = effectiveMood != null
+          ? ExpressionEngine.fromMood(effectiveMood)
           : ExpressionEngine.fromTimeOfDay();
       _speechText = ExpressionEngine.speechMessage(
           _currentExpression, dash.displayName, streak: dash.streak);
@@ -114,6 +116,53 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
     return 'Sweet dreams';
   }
 
+  /// Generate a data-aware "Cerebro Says" subtitle line
+  String _getCerebroSays(DashboardState dash) {
+    final tips = <String>[];
+
+    // Sleep-based tip
+    final sleepVal = double.tryParse(dash.sleepHours ?? '');
+    if (sleepVal != null && sleepVal > 0) {
+      if (sleepVal >= 8) {
+        tips.add('Great sleep last night! Your brain is ready to learn.');
+      } else if (sleepVal < 6) {
+        tips.add('You slept under 6h — take it easy today.');
+      }
+    }
+
+    // Streak-based tip
+    if (dash.streak >= 7) {
+      tips.add('${dash.streak}-day streak! Consistency is your superpower.');
+    } else if (dash.streak >= 3) {
+      tips.add('${dash.streak} days in a row — keep the momentum!');
+    }
+
+    // Study-based tip
+    if (dash.studyMinutes > 60) {
+      tips.add('${dash.studyMinutes}min studied today — impressive!');
+    } else if (dash.studyMinutes == 0) {
+      tips.add('No study yet today — even 15 min makes a difference!');
+    }
+
+    // Habit-based tip
+    final doneCount = dash.habits.where((h) => h['done'] == true).length;
+    final total = dash.habits.length;
+    if (total > 0 && doneCount == total) {
+      tips.add('All quests done! You\'re crushing it today!');
+    } else if (total > 0 && doneCount == 0) {
+      tips.add('Your daily quests await — start with just one!');
+    }
+
+    // Level-based
+    if (dash.level >= 10) {
+      tips.add('Level ${dash.level}! You\'re becoming a Cerebro master.');
+    }
+
+    if (tips.isEmpty) return '';
+    // Pick one deterministically per minute to avoid flicker on rebuilds
+    return tips[DateTime.now().minute % tips.length];
+  }
+
   void _showMoodPopup() {
     final dash = ref.read(dashboardProvider);
     if (dash.avatarConfig == null) return;
@@ -137,6 +186,105 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
     );
   }
 
+  void _showLevelUpCelebration(int level) {
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'close',
+      barrierColor: Colors.black54,
+      transitionDuration: const Duration(milliseconds: 500),
+      transitionBuilder: (ctx, a1, a2, child) {
+        return Transform.scale(
+          scale: Curves.easeOutBack.transform(a1.value),
+          child: Opacity(opacity: a1.value, child: child),
+        );
+      },
+      pageBuilder: (ctx, a1, a2) {
+        final title = level <= 5 ? 'Novice' :
+                      level <= 10 ? 'Apprentice' :
+                      level <= 20 ? 'Scholar' : 'Master';
+        return Center(child: Material(
+          color: Colors.transparent,
+          child: Container(
+            width: 340, height: 320,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                colors: [Color(0xFFFFF8E0), Color(0xFFFFF0D0)],
+              ),
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(color: _outline, width: 3.5),
+              boxShadow: [
+                BoxShadow(color: const Color(0xFFF8E080).withOpacity(0.6),
+                    blurRadius: 40, spreadRadius: 8),
+                BoxShadow(color: _outline.withOpacity(0.3),
+                    offset: const Offset(0, 8), blurRadius: 0),
+              ],
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Star icon with glow
+                Container(
+                  width: 80, height: 80,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft, end: Alignment.bottomRight,
+                      colors: [Color(0xFFFFE870), Color(0xFFFFB830)],
+                    ),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: _outline, width: 3),
+                    boxShadow: [
+                      BoxShadow(color: const Color(0xFFF8E080).withOpacity(0.5),
+                          blurRadius: 20, spreadRadius: 4),
+                    ],
+                  ),
+                  child: const Icon(Icons.star_rounded,
+                      size: 48, color: Color(0xFF8B6914)),
+                ),
+                const SizedBox(height: 16),
+                Text('LEVEL UP!', style: GoogleFonts.gaegu(
+                  fontSize: 32, fontWeight: FontWeight.w900,
+                  color: _brown, letterSpacing: 2,
+                )),
+                const SizedBox(height: 4),
+                Text('Level $level — $title', style: GoogleFonts.nunito(
+                  fontSize: 18, fontWeight: FontWeight.w700,
+                  color: _brownLt,
+                )),
+                const SizedBox(height: 16),
+                Text('Keep going, you\'re amazing!',
+                  style: GoogleFonts.nunito(
+                    fontSize: 14, fontWeight: FontWeight.w600,
+                    color: _brownLt.withOpacity(0.8)),
+                ),
+                const SizedBox(height: 20),
+                GestureDetector(
+                  onTap: () => Navigator.of(ctx).pop(),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 10),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                        colors: [Color(0xFFFFE870), Color(0xFFE8C040)],
+                      ),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: _outline, width: 2.5),
+                      boxShadow: [BoxShadow(color: _outline.withOpacity(0.3),
+                          offset: const Offset(0, 4), blurRadius: 0)],
+                    ),
+                    child: Text('Awesome!', style: GoogleFonts.gaegu(
+                      fontSize: 20, fontWeight: FontWeight.w700, color: _brown)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ));
+      },
+    );
+  }
+
   void _toggleHabit(int i) {
     ref.read(dashboardProvider.notifier).toggleHabit(i);
   }
@@ -152,8 +300,23 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
   //  MAIN BUILD
   @override
   Widget build(BuildContext context) {
+    // Auto-refresh when user switches TO the home tab
+    final currentTab = ref.watch(selectedTabProvider);
+    if (currentTab == 0 && _prevTab != 0) {
+      Future.microtask(() => ref.read(dashboardProvider.notifier).refresh());
+    }
+    _prevTab = currentTab;
+
     final dash = ref.watch(dashboardProvider);
     _syncExpression(dash);
+
+    // Level-up celebration
+    if (dash.pendingLevelUp != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _showLevelUpCelebration(dash.pendingLevelUp!);
+        ref.read(dashboardProvider.notifier).clearLevelUp();
+      });
+    }
 
     return Stack(children: [
       Positioned.fill(child: Container(
@@ -285,15 +448,30 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
         ]),
       ]),
       const SizedBox(height: 8),
-      // Row 2: Greeting
+      // Row 2: Greeting + Cerebro Says
       Align(
         alignment: Alignment.centerLeft,
-        child: Text(
-          '${_getGreeting()}, ${dash.displayName}!',
-          style: GoogleFonts.gaegu(
-            fontSize: 26, fontWeight: FontWeight.w700,
-            color: _brown, height: 1.15,
-          ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${_getGreeting()}, ${dash.displayName}!',
+              style: GoogleFonts.gaegu(
+                fontSize: 26, fontWeight: FontWeight.w700,
+                color: _brown, height: 1.15,
+              ),
+            ),
+            if (_getCerebroSays(dash).isNotEmpty) ...[
+              const SizedBox(height: 2),
+              Text(
+                _getCerebroSays(dash),
+                style: GoogleFonts.nunito(
+                  fontSize: 12, fontWeight: FontWeight.w600,
+                  color: _brownLt.withOpacity(0.8), height: 1.2,
+                ),
+              ),
+            ],
+          ],
         ),
       ),
     ]);
@@ -401,34 +579,44 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
 
   //  QUICK ACTIONS — 3 chunky 3D buttons
   Widget _buildQuickActions() {
-    return Row(children: [
-      Expanded(child: _GameBtn(
-        icon: Icons.auto_stories_rounded, label: 'Study',
-        gradientTop: const Color(0xFFB8E8C0), gradientBot: _green,
-        borderColor: _greenDk,
-        onTap: () {
-          ref.read(selectedTabProvider.notifier).state = 2; // Study tab
-        },
-      )),
-      const SizedBox(width: 10),
-      Expanded(child: _GameBtn(
-        icon: Icons.nightlight_round, label: 'Sleep',
-        gradientTop: const Color(0xFFC8BDF0), gradientBot: const Color(0xFF9D8AD4),
-        borderColor: const Color(0xFF8670C0),
-        onTap: () {
-          ref.read(selectedTabProvider.notifier).state = 4; // Health tab
-          // Could navigate to sleep screen directly in future
-        },
-      )),
-      const SizedBox(width: 10),
-      Expanded(child: _GameBtn(
-        icon: Icons.favorite_rounded, label: 'Health',
-        gradientTop: const Color(0xFF98D8F8), gradientBot: const Color(0xFF5BC0EB),
-        borderColor: const Color(0xFF48A8D0),
-        onTap: () {
-          ref.read(selectedTabProvider.notifier).state = 4; // Health tab
-        },
-      )),
+    return Column(children: [
+      Row(children: [
+        Expanded(child: _GameBtn(
+          icon: Icons.auto_stories_rounded, label: 'Study',
+          gradientTop: const Color(0xFFB8E8C0), gradientBot: _green,
+          borderColor: _greenDk,
+          onTap: () {
+            ref.read(selectedTabProvider.notifier).state = 2; // Study tab
+          },
+        )),
+        const SizedBox(width: 10),
+        Expanded(child: _GameBtn(
+          icon: Icons.nightlight_round, label: 'Sleep',
+          gradientTop: const Color(0xFFC8BDF0), gradientBot: const Color(0xFF9D8AD4),
+          borderColor: const Color(0xFF8670C0),
+          onTap: () {
+            ref.read(selectedTabProvider.notifier).state = 4; // Health tab
+          },
+        )),
+      ]),
+      const SizedBox(height: 10),
+      Row(children: [
+        Expanded(child: _GameBtn(
+          icon: Icons.favorite_rounded, label: 'Health',
+          gradientTop: const Color(0xFF98D8F8), gradientBot: const Color(0xFF5BC0EB),
+          borderColor: const Color(0xFF48A8D0),
+          onTap: () {
+            ref.read(selectedTabProvider.notifier).state = 4; // Health tab
+          },
+        )),
+        const SizedBox(width: 10),
+        Expanded(child: _GameBtn(
+          icon: Icons.insights_rounded, label: 'Insights',
+          gradientTop: const Color(0xFFD8C0E8), gradientBot: const Color(0xFFCDA8D8),
+          borderColor: const Color(0xFFAA88C0),
+          onTap: () => context.push(Routes.insights),
+        )),
+      ]),
     ]);
   }
 
@@ -1210,15 +1398,16 @@ class _MoodPopup extends StatelessWidget {
     required this.config, required this.selected, required this.onPick,
   });
 
+  // Must match the 8 mood definitions seeded in the database
   static const _moods = [
-    {'key': 'happy',    'label': 'Happy',    'color': Color(0xFFFFF9E0)},
-    {'key': 'sad',      'label': 'Sad',      'color': Color(0xFFE8F0FF)},
-    {'key': 'calm',     'label': 'Calm',     'color': Color(0xFFE8FFF0)},
-    {'key': 'excited',  'label': 'Excited',  'color': Color(0xFFFFF0E0)},
-    {'key': 'tired',    'label': 'Tired',    'color': Color(0xFFEDE5FF)},
-    {'key': 'anxious',  'label': 'Anxious',  'color': Color(0xFFFFE8EC)},
-    {'key': 'grateful', 'label': 'Grateful', 'color': Color(0xFFFFF0F8)},
-    {'key': 'angry',    'label': 'Angry',    'color': Color(0xFFFFE0E0)},
+    {'key': 'happy',   'label': 'Happy',   'color': Color(0xFFFFF9E0)},
+    {'key': 'sad',     'label': 'Sad',     'color': Color(0xFFE8F0FF)},
+    {'key': 'anxious', 'label': 'Anxious', 'color': Color(0xFFFFE8EC)},
+    {'key': 'calm',    'label': 'Calm',    'color': Color(0xFFE8FFF0)},
+    {'key': 'excited', 'label': 'Excited', 'color': Color(0xFFFFF0E0)},
+    {'key': 'tired',   'label': 'Tired',   'color': Color(0xFFEDE5FF)},
+    {'key': 'angry',   'label': 'Angry',   'color': Color(0xFFFFE0E0)},
+    {'key': 'focused', 'label': 'Focused', 'color': Color(0xFFF0FFF0)},
   ];
 
   @override
