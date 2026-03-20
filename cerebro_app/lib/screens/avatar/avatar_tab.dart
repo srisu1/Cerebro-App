@@ -1,3 +1,5 @@
+/// Shows user's avatar with cute stat cards and customize button.
+
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -48,7 +50,6 @@ class _AvatarTabState extends ConsumerState<AvatarTab> {
           children: [
             const SizedBox(height: 12),
 
-            // title
             Text(
               'My Avatar',
               style: GoogleFonts.nunito(
@@ -59,7 +60,6 @@ class _AvatarTabState extends ConsumerState<AvatarTab> {
             ),
             const SizedBox(height: 20),
 
-            // avatar display
             if (_loading)
               const SizedBox(
                 height: 220,
@@ -113,7 +113,6 @@ class _AvatarTabState extends ConsumerState<AvatarTab> {
 
             const SizedBox(height: 20),
 
-            // customize button
             _ChunkyButton(
               onTap: () => context.go('/avatar'),
               color: CerebroTheme.pinkPop,
@@ -137,7 +136,6 @@ class _AvatarTabState extends ConsumerState<AvatarTab> {
 
             const SizedBox(height: 24),
 
-            // avatar stats
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(18),
@@ -187,7 +185,6 @@ class _AvatarTabState extends ConsumerState<AvatarTab> {
 
             const SizedBox(height: 16),
 
-            // tip card
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(16),
@@ -269,7 +266,6 @@ class _AvatarTabState extends ConsumerState<AvatarTab> {
   }
 }
 
-// chunky 3D button with press animation
 class _ChunkyButton extends StatefulWidget {
   final VoidCallback onTap;
   final Color color;

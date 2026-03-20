@@ -1,3 +1,5 @@
+/// 4 cute animated slides with thick borders, warm colors, bouncy icons.
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -20,7 +22,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     _OnboardingSlide(
       icon: Icons.psychology_rounded,
       title: 'Welcome to\nCEREBRO',
-      subtitle: 'Your Student Companion',
+      subtitle: 'Your Smart Student Companion',
       description:
           'The smart app that connects your studies, health, and daily life into one seamless experience.',
       color: CerebroTheme.pinkPop,
@@ -86,7 +88,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       backgroundColor: CerebroTheme.cream,
       body: Stack(
         children: [
-          // pages
           PageView.builder(
             controller: _pageController,
             itemCount: _slides.length,
@@ -94,7 +95,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             itemBuilder: (context, index) => _buildSlide(_slides[index]),
           ),
 
-          // skip button
           if (_currentPage < _slides.length - 1)
             Positioned(
               top: MediaQuery.of(context).padding.top + 16,
@@ -123,14 +123,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               ),
             ),
 
-          // bottom: indicators + next button
           Positioned(
             bottom: 60,
             left: 24,
             right: 24,
             child: Column(
               children: [
-                // dot indicators
+                // Dot indicators (cute chunky style)
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: List.generate(
@@ -157,7 +156,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 ),
                 const SizedBox(height: 32),
 
-                // action button
+                // Action button (Toca Boca chunky)
                 _ChunkyButton(
                   onTap: _nextPage,
                   color: slide.color,
@@ -166,7 +165,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       : 'Next',
                 ),
 
-                // login link on last slide
+                // Login link on last slide
                 if (_currentPage == _slides.length - 1)
                   Padding(
                     padding: const EdgeInsets.only(top: 16),
@@ -203,7 +202,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         children: [
           const SizedBox(height: 80),
 
-          // animated icon card
           TweenAnimationBuilder<double>(
             tween: Tween(begin: 0.0, end: 1.0),
             duration: const Duration(milliseconds: 800),
@@ -287,7 +285,6 @@ class _OnboardingSlide {
   });
 }
 
-// chunky press-down button
 class _ChunkyButton extends StatefulWidget {
   final VoidCallback onTap;
   final Color color;

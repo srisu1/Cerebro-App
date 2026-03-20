@@ -3,9 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:cerebro_app/providers/auth_provider.dart';
+import 'package:cerebro_app/providers/dashboard_provider.dart';
+import 'package:cerebro_app/widgets/mood_sticker.dart';
+import 'package:cerebro_app/models/avatar_config.dart';
 import 'dart:math' as math;
 
-// color palette
+// PALETTE COLORS
 const _ombre1 = Color(0xFFFFFBF7);
 const _ombre2 = Color(0xFFFFF8F3);
 const _ombre3 = Color(0xFFFFF3EF);
@@ -28,7 +31,7 @@ const _purpleLt = Color(0xFFD8C0E8);
 const _skyHdr = Color(0xFF9DD4F0);
 const _skyLt = Color(0xFFB8E0F8);
 
-// mood emojis
+// MOOD EMOJI MAP
 const _moodEmojis = {
   'Happy': '😊',
   'Sad': '😢',
@@ -53,7 +56,9 @@ const _moodColors = {
 
 const _contextTags = ['Study', 'Exercise', 'Social', 'Work', 'Relax', 'Outdoors'];
 
-// state notifiers
+// =============================================================================
+// STATE NOTIFIERS
+// =============================================================================
 
 class MoodDefinition {
   final String id;
@@ -163,6 +168,10 @@ final moodDefinitionsProvider =
   return notifier;
 });
 
+// =============================================================================
+// SCREEN
+// =============================================================================
+
 class MoodScreen extends ConsumerStatefulWidget {
   const MoodScreen({Key? key}) : super(key: key);
 
@@ -211,9 +220,10 @@ class _MoodScreenState extends ConsumerState<MoodScreen> with SingleTickerProvid
         'context_tags': _selectedContextTags.toList(),
       });
 
-      // refresh history
+      // Refresh history
       ref.read(moodHistoryProvider.notifier).fetchHistory();
 
+      // Reset form
       setState(() {
         _selectedMoodId = null;
         _selectedEnergyLevel = 3;
@@ -258,6 +268,8 @@ class _MoodScreenState extends ConsumerState<MoodScreen> with SingleTickerProvid
   Widget build(BuildContext context) {
     final moodDefs = ref.watch(moodDefinitionsProvider);
     final moodHistory = ref.watch(moodHistoryProvider);
+    final dash = ref.watch(dashboardProvider);
+    final avatarConfig = dash.avatarConfig;
 
     return Scaffold(
       body: Container(
@@ -273,14 +285,17 @@ class _MoodScreenState extends ConsumerState<MoodScreen> with SingleTickerProvid
           child: SingleChildScrollView(
             child: Column(
               children: [
-                // header
+                // HEADER
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
                   child: Row(
                     children: [
                       IconButton(
                         icon: const Icon(Icons.arrow_back, color: _brown),
-                        onPressed: () => Navigator.of(context).pop(),
+                        onPressed: () {
+                          ref.read(dashboardProvider.notifier).refresh();
+                          Navigator.of(context).pop();
+                        },
                       ),
                       Expanded(
                         child: Text(
@@ -297,13 +312,14 @@ class _MoodScreenState extends ConsumerState<MoodScreen> with SingleTickerProvid
                     ],
                   ),
                 ),
-                // how are you feeling card
+                // HOW ARE YOU FEELING CARD
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: moodDefs.when(
                     data: (definitions) {
                       return _HowAreYouCard(
                         definitions: definitions,
+                        avatarConfig: avatarConfig,
                         selectedMoodId: _selectedMoodId,
                         selectedEnergyLevel: _selectedEnergyLevel,
                         selectedContextTags: _selectedContextTags,
@@ -328,7 +344,7 @@ class _MoodScreenState extends ConsumerState<MoodScreen> with SingleTickerProvid
                   ),
                 ),
                 const SizedBox(height: 24),
-                // mood stats
+                // MOOD STATS
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: moodHistory.when(
@@ -338,7 +354,7 @@ class _MoodScreenState extends ConsumerState<MoodScreen> with SingleTickerProvid
                   ),
                 ),
                 const SizedBox(height: 24),
-                // recent moods header
+                // RECENT MOODS HEADER
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Text(
@@ -351,7 +367,7 @@ class _MoodScreenState extends ConsumerState<MoodScreen> with SingleTickerProvid
                   ),
                 ),
                 const SizedBox(height: 12),
-                // recent moods list
+                // RECENT MOODS LIST
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: moodHistory.when(
@@ -376,6 +392,7 @@ class _MoodScreenState extends ConsumerState<MoodScreen> with SingleTickerProvid
                           (index) => _MoodEntryCard(
                             entry: entries[index],
                             relativeTime: _getRelativeTime(entries[index].timestamp),
+                            avatarConfig: avatarConfig,
                           ),
                         ),
                       );
@@ -400,10 +417,13 @@ class _MoodScreenState extends ConsumerState<MoodScreen> with SingleTickerProvid
   }
 }
 
-// widgets
+// =============================================================================
+// WIDGETS
+// =============================================================================
 
 class _HowAreYouCard extends StatelessWidget {
   final List<MoodDefinition> definitions;
+  final AvatarConfig? avatarConfig;
   final String? selectedMoodId;
   final int selectedEnergyLevel;
   final Set<String> selectedContextTags;
@@ -416,6 +436,7 @@ class _HowAreYouCard extends StatelessWidget {
 
   const _HowAreYouCard({
     required this.definitions,
+    this.avatarConfig,
     required this.selectedMoodId,
     required this.selectedEnergyLevel,
     required this.selectedContextTags,
@@ -451,7 +472,7 @@ class _HowAreYouCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          // mood grid
+          // MOOD GRID (2x4) — uses personalized MoodSticker when available
           GridView.count(
             crossAxisCount: 2,
             childAspectRatio: 1.1,
@@ -467,6 +488,8 @@ class _HowAreYouCard extends StatelessWidget {
               return _MoodButton(
                 emoji: emoji,
                 moodName: def.name,
+                moodKey: def.name.toLowerCase(),
+                avatarConfig: avatarConfig,
                 color: color,
                 isSelected: isSelected,
                 onTap: () => onMoodSelected(def.id),
@@ -474,7 +497,7 @@ class _HowAreYouCard extends StatelessWidget {
             }).toList(),
           ),
           const SizedBox(height: 20),
-          // energy level
+          // ENERGY LEVEL
           Text(
             'Energy Level',
             style: GoogleFonts.nunito(
@@ -508,7 +531,7 @@ class _HowAreYouCard extends StatelessWidget {
             }),
           ),
           const SizedBox(height: 20),
-          // context tags
+          // CONTEXT TAGS
           Text(
             'Context',
             style: GoogleFonts.nunito(
@@ -548,7 +571,7 @@ class _HowAreYouCard extends StatelessWidget {
             }).toList(),
           ),
           const SizedBox(height: 20),
-          // note field
+          // NOTE FIELD
           Text(
             'Notes (optional)',
             style: GoogleFonts.nunito(
@@ -583,7 +606,7 @@ class _HowAreYouCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 24),
-          // log mood button
+          // LOG MOOD BUTTON
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
@@ -622,6 +645,8 @@ class _HowAreYouCard extends StatelessWidget {
 class _MoodButton extends StatefulWidget {
   final String emoji;
   final String moodName;
+  final String moodKey;
+  final AvatarConfig? avatarConfig;
   final Color color;
   final bool isSelected;
   final VoidCallback onTap;
@@ -629,6 +654,8 @@ class _MoodButton extends StatefulWidget {
   const _MoodButton({
     required this.emoji,
     required this.moodName,
+    required this.moodKey,
+    this.avatarConfig,
     required this.color,
     required this.isSelected,
     required this.onTap,
@@ -657,7 +684,9 @@ class _MoodButtonState extends State<_MoodButton> with SingleTickerProviderState
     super.dispose();
   }
 
-  void _onTapDown(TapDownDetails details) => _controller.forward();
+  void _onTapDown(TapDownDetails details) {
+    _controller.forward();
+  }
 
   void _onTapUp(TapUpDetails details) {
     _controller.reverse();
@@ -693,7 +722,18 @@ class _MoodButtonState extends State<_MoodButton> with SingleTickerProviderState
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text(widget.emoji, style: const TextStyle(fontSize: 40)),
+              // Use personalized MoodSticker if avatar config is available
+              if (widget.avatarConfig != null)
+                MoodSticker(
+                  config: widget.avatarConfig!,
+                  mood: widget.moodKey,
+                  size: 52,
+                )
+              else
+                Text(
+                  widget.emoji,
+                  style: const TextStyle(fontSize: 40),
+                ),
               const SizedBox(height: 6),
               Text(
                 widget.moodName,
@@ -715,16 +755,19 @@ class _MoodButtonState extends State<_MoodButton> with SingleTickerProviderState
 class _MoodEntryCard extends StatelessWidget {
   final MoodEntry entry;
   final String relativeTime;
+  final AvatarConfig? avatarConfig;
 
   const _MoodEntryCard({
     required this.entry,
     required this.relativeTime,
+    this.avatarConfig,
   });
 
   @override
   Widget build(BuildContext context) {
     final moodColor = _moodColors[entry.moodName] ?? _coralHdr;
     final emoji = _moodEmojis[entry.moodName] ?? '😐';
+    final moodKey = entry.moodName.toLowerCase();
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -744,7 +787,10 @@ class _MoodEntryCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Text(emoji, style: const TextStyle(fontSize: 24)),
+              if (avatarConfig != null)
+                MoodSticker(config: avatarConfig!, mood: moodKey, size: 32)
+              else
+                Text(emoji, style: const TextStyle(fontSize: 24)),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -768,7 +814,7 @@ class _MoodEntryCard extends StatelessWidget {
                   ],
                 ),
               ),
-              // energy dots
+              // ENERGY DOTS
               Row(
                 children: List.generate(
                   5,
@@ -798,7 +844,10 @@ class _MoodEntryCard extends StatelessWidget {
                   ),
                   child: Text(
                     tag,
-                    style: GoogleFonts.nunito(fontSize: 11, color: _brown),
+                    style: GoogleFonts.nunito(
+                      fontSize: 11,
+                      color: _brown,
+                    ),
                   ),
                 );
               }).toList(),
@@ -830,14 +879,19 @@ class _MoodStatsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (entries.isEmpty) return const SizedBox.shrink();
+    if (entries.isEmpty) {
+      return const SizedBox.shrink();
+    }
 
+    // Most frequent mood
     final moodCounts = <String, int>{};
     for (final entry in entries) {
       moodCounts[entry.moodName] = (moodCounts[entry.moodName] ?? 0) + 1;
     }
     final mostFrequent = moodCounts.entries.reduce((a, b) => a.value > b.value ? a : b);
-    final avgEnergy = entries.map((e) => e.energyLevel).reduce((a, b) => a + b) / entries.length;
+
+    // Average energy
+    final avgEnergy = entries.isEmpty ? 0 : entries.map((e) => e.energyLevel).reduce((a, b) => a + b) / entries.length;
 
     return Container(
       decoration: BoxDecoration(
@@ -866,34 +920,64 @@ class _MoodStatsCard extends StatelessWidget {
             children: [
               Column(
                 children: [
-                  Text('${_moodEmojis[mostFrequent.key] ?? '😐'}', style: const TextStyle(fontSize: 28)),
+                  Text(
+                    '${_moodEmojis[mostFrequent.key] ?? '😐'}',
+                    style: const TextStyle(fontSize: 28),
+                  ),
                   const SizedBox(height: 4),
-                  Text('Most Frequent', style: GoogleFonts.nunito(fontSize: 11, color: _outline)),
+                  Text(
+                    'Most Frequent',
+                    style: GoogleFonts.nunito(fontSize: 11, color: _outline),
+                  ),
                   Text(
                     mostFrequent.key,
-                    style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.bold, color: _brown),
+                    style: GoogleFonts.nunito(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: _brown,
+                    ),
                   ),
                 ],
               ),
               Column(
                 children: [
-                  const Text('⚡', style: TextStyle(fontSize: 28)),
+                  Text(
+                    '⚡',
+                    style: const TextStyle(fontSize: 28),
+                  ),
                   const SizedBox(height: 4),
-                  Text('Avg Energy', style: GoogleFonts.nunito(fontSize: 11, color: _outline)),
+                  Text(
+                    'Avg Energy',
+                    style: GoogleFonts.nunito(fontSize: 11, color: _outline),
+                  ),
                   Text(
                     '${avgEnergy.toStringAsFixed(1)}/5',
-                    style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.bold, color: _brown),
+                    style: GoogleFonts.nunito(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: _brown,
+                    ),
                   ),
                 ],
               ),
               Column(
                 children: [
-                  const Text('📊', style: TextStyle(fontSize: 28)),
+                  Text(
+                    '📊',
+                    style: const TextStyle(fontSize: 28),
+                  ),
                   const SizedBox(height: 4),
-                  Text('Total Logged', style: GoogleFonts.nunito(fontSize: 11, color: _outline)),
+                  Text(
+                    'Total Logged',
+                    style: GoogleFonts.nunito(fontSize: 11, color: _outline),
+                  ),
                   Text(
                     '${entries.length}',
-                    style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.bold, color: _brown),
+                    style: GoogleFonts.nunito(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: _brown,
+                    ),
                   ),
                 ],
               ),
@@ -917,7 +1001,9 @@ class _LoadingCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(22),
       ),
       padding: const EdgeInsets.all(20),
-      child: const Center(child: CircularProgressIndicator(color: _coralHdr)),
+      child: const Center(
+        child: CircularProgressIndicator(color: _coralHdr),
+      ),
     );
   }
 }
@@ -941,7 +1027,9 @@ class _ErrorCard extends StatelessWidget {
   }
 }
 
-// background painter
+// =============================================================================
+// PAWPRINT BACKGROUND
+// =============================================================================
 
 class _PawPrintBg extends CustomPainter {
   @override
@@ -959,7 +1047,9 @@ class _PawPrintBg extends CustomPainter {
   }
 
   void _drawPawprint(Canvas canvas, Offset center, double size, Paint paint) {
+    // Main pad
     canvas.drawCircle(center, size * 0.3, paint);
+    // Toe pads
     canvas.drawCircle(center + Offset(-size * 0.4, -size * 0.5), size * 0.15, paint);
     canvas.drawCircle(center + Offset(0, -size * 0.6), size * 0.15, paint);
     canvas.drawCircle(center + Offset(size * 0.4, -size * 0.5), size * 0.15, paint);

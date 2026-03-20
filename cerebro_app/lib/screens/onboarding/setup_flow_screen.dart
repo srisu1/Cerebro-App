@@ -268,7 +268,7 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
 
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 8, 24, 20),
-              child: _CuteButton(
+              child: _ChunkyButton(
                 onTap: _isSubmitting ? null : _nextStep,
                 color: config.color,
                 child: _isSubmitting
@@ -1318,22 +1318,22 @@ class _StepConfig {
 }
 
 //  CUTE BUTTON (Toca Boca press-down effect)
-class _CuteButton extends StatefulWidget {
+class _ChunkyButton extends StatefulWidget {
   final VoidCallback? onTap;
   final Color color;
   final Widget child;
 
-  const _CuteButton({
+  const _ChunkyButton({
     required this.onTap,
     required this.color,
     required this.child,
   });
 
   @override
-  State<_CuteButton> createState() => _CuteButtonState();
+  State<_ChunkyButton> createState() => _ChunkyButtonState();
 }
 
-class _CuteButtonState extends State<_CuteButton> {
+class _ChunkyButtonState extends State<_ChunkyButton> {
   bool _pressed = false;
 
   @override

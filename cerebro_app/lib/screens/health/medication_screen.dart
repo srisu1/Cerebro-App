@@ -5,7 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:cerebro_app/providers/auth_provider.dart';
 
-// color palette
+// Palette
 const _ombre1 = Color(0xFFFFFBF7);
 const _ombre2 = Color(0xFFFFF8F3);
 const _ombre3 = Color(0xFFFFF3EF);
@@ -124,47 +124,74 @@ class _MedicationScreenState extends ConsumerState<MedicationScreen>
                   onChanged: (val) => name = val,
                   decoration: InputDecoration(
                     labelText: 'Medication Name',
-                    labelStyle: GoogleFonts.nunito(color: _brownLt, fontWeight: FontWeight.w600),
+                    labelStyle: GoogleFonts.nunito(
+                      color: _brownLt,
+                      fontWeight: FontWeight.w600,
+                    ),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: _outline.withOpacity(0.25), width: 2),
+                      borderSide:
+                          BorderSide(color: _outline.withOpacity(0.25), width: 2),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide: const BorderSide(color: _coralHdr, width: 2),
                     ),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
                   ),
-                  style: GoogleFonts.nunito(color: _brown, fontWeight: FontWeight.w600),
+                  style: GoogleFonts.nunito(
+                    color: _brown,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
                 const SizedBox(height: 16),
                 TextField(
                   onChanged: (val) => dosage = val,
                   decoration: InputDecoration(
                     labelText: 'Dosage (e.g., 500mg)',
-                    labelStyle: GoogleFonts.nunito(color: _brownLt, fontWeight: FontWeight.w600),
+                    labelStyle: GoogleFonts.nunito(
+                      color: _brownLt,
+                      fontWeight: FontWeight.w600,
+                    ),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: _outline.withOpacity(0.25), width: 2),
+                      borderSide:
+                          BorderSide(color: _outline.withOpacity(0.25), width: 2),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide: const BorderSide(color: _coralHdr, width: 2),
                     ),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
                   ),
-                  style: GoogleFonts.nunito(color: _brown, fontWeight: FontWeight.w600),
+                  style: GoogleFonts.nunito(
+                    color: _brown,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
                 const SizedBox(height: 16),
                 Text(
                   'Frequency',
-                  style: GoogleFonts.nunito(fontSize: 14, fontWeight: FontWeight.w700, color: _brown),
+                  style: GoogleFonts.nunito(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: _brown,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Container(
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: _outline.withOpacity(0.25), width: 2),
+                    border: Border.all(
+                      color: _outline.withOpacity(0.25),
+                      width: 2,
+                    ),
                   ),
                   child: StatefulBuilder(
                     builder: (context, setDialogState) => DropdownButton<String>(
@@ -176,15 +203,23 @@ class _MedicationScreenState extends ConsumerState<MedicationScreen>
                           .map((f) => DropdownMenuItem(
                                 value: f,
                                 child: Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 12,
+                                  ),
                                   child: Text(
                                     f.replaceAll('_', ' ').toUpperCase(),
-                                    style: GoogleFonts.nunito(color: _brown, fontWeight: FontWeight.w600),
+                                    style: GoogleFonts.nunito(
+                                      color: _brown,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
                                 ),
                               ))
                           .toList(),
-                      onChanged: (val) => setDialogState(() => frequency = val ?? 'daily'),
+                      onChanged: (val) => setDialogState(
+                        () => frequency = val ?? 'daily',
+                      ),
                     ),
                   ),
                 ),
@@ -194,15 +229,24 @@ class _MedicationScreenState extends ConsumerState<MedicationScreen>
                     StatefulBuilder(
                       builder: (context, setDialogState) => Checkbox(
                         value: enableReminder,
-                        onChanged: (val) => setDialogState(() => enableReminder = val ?? true),
+                        onChanged: (val) => setDialogState(
+                          () => enableReminder = val ?? true,
+                        ),
                         fillColor: MaterialStateProperty.all(_coralHdr),
-                        side: BorderSide(color: _outline.withOpacity(0.25), width: 2),
+                        side: BorderSide(
+                          color: _outline.withOpacity(0.25),
+                          width: 2,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 8),
                     Text(
                       'Enable reminders',
-                      style: GoogleFonts.nunito(fontSize: 14, fontWeight: FontWeight.w600, color: _brown),
+                      style: GoogleFonts.nunito(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: _brown,
+                      ),
                     ),
                   ],
                 ),
@@ -214,20 +258,32 @@ class _MedicationScreenState extends ConsumerState<MedicationScreen>
                       onPressed: () => Navigator.pop(context),
                       child: Text(
                         'Cancel',
-                        style: GoogleFonts.nunito(color: _brownLt, fontWeight: FontWeight.w700),
+                        style: GoogleFonts.nunito(
+                          color: _brownLt,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 12),
                     ElevatedButton(
                       style: ElevatedButton.styleFrom(
                         backgroundColor: _coralHdr,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 12,
+                        ),
                       ),
-                      onPressed: () => _addMedication(name, dosage, frequency, enableReminder, context),
+                      onPressed: () => _addMedication(name, dosage, frequency,
+                          enableReminder, context),
                       child: Text(
                         'Add',
-                        style: GoogleFonts.nunito(color: Colors.white, fontWeight: FontWeight.w700),
+                        style: GoogleFonts.nunito(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                   ],
@@ -276,7 +332,10 @@ class _MedicationScreenState extends ConsumerState<MedicationScreen>
     }
   }
 
-  Future<void> _logMedicationAction(String medicationId, String action) async {
+  Future<void> _logMedicationAction(
+    String medicationId,
+    String action,
+  ) async {
     try {
       final api = ref.read(apiServiceProvider);
       await api.post('/health/medications/log', data: {
@@ -314,7 +373,11 @@ class _MedicationScreenState extends ConsumerState<MedicationScreen>
           ),
           title: Text(
             'Medications',
-            style: GoogleFonts.gaegu(fontSize: 24, fontWeight: FontWeight.w700, color: _brown),
+            style: GoogleFonts.gaegu(
+              fontSize: 24,
+              fontWeight: FontWeight.w700,
+              color: _brown,
+            ),
           ),
           centerTitle: true,
         ),
@@ -336,23 +399,33 @@ class _MedicationScreenState extends ConsumerState<MedicationScreen>
                 ),
               ),
             ),
-            Positioned.fill(child: CustomPaint(painter: _PawPrintBg())),
+            Positioned.fill(
+              child: CustomPaint(painter: _PawPrintBg()),
+            ),
             RefreshIndicator(
               onRefresh: _loadData,
               backgroundColor: _cardFill,
               color: _coralHdr,
               child: _isLoading
-                  ? const Center(child: CircularProgressIndicator(color: _coralHdr))
+                  ? const Center(
+                      child: CircularProgressIndicator(
+                        color: _coralHdr,
+                      ),
+                    )
                   : SingleChildScrollView(
                       physics: const AlwaysScrollableScrollPhysics(),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
                       child: Column(
                         children: [
-                          // adherence stats card
-                          if (_adherenceStats.isNotEmpty) _buildAdherenceCard(),
+                          // Adherence Stats Card
+                          if (_adherenceStats.isNotEmpty)
+                            _buildAdherenceCard(),
                           const SizedBox(height: 20),
 
-                          // active medications
+                          // Active Medications
                           if (_medications.isNotEmpty)
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -370,13 +443,16 @@ class _MedicationScreenState extends ConsumerState<MedicationScreen>
                                 ),
                                 const SizedBox(height: 12),
                                 ..._medications.asMap().entries.map(
-                                      (entry) => _buildMedicationCard(entry.value, entry.key),
+                                      (entry) => _buildMedicationCard(
+                                        entry.value,
+                                        entry.key,
+                                      ),
                                     ),
                               ],
                             ),
                           const SizedBox(height: 20),
 
-                          // recent logs
+                          // Recent Logs
                           if (_recentLogs.isNotEmpty)
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -393,7 +469,9 @@ class _MedicationScreenState extends ConsumerState<MedicationScreen>
                                   ),
                                 ),
                                 const SizedBox(height: 12),
-                                ..._recentLogs.map((log) => _buildLogItem(log)),
+                                ..._recentLogs.map(
+                                  (log) => _buildLogItem(log),
+                                ),
                               ],
                             ),
                           const SizedBox(height: 20),
@@ -404,7 +482,11 @@ class _MedicationScreenState extends ConsumerState<MedicationScreen>
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   const SizedBox(height: 40),
-                                  Icon(Icons.medication, size: 64, color: _pawClr.withOpacity(0.3)),
+                                  Icon(
+                                    Icons.medication,
+                                    size: 64,
+                                    color: _pawClr.withOpacity(0.3),
+                                  ),
                                   const SizedBox(height: 16),
                                   Text(
                                     'No medications yet',
@@ -438,6 +520,7 @@ class _MedicationScreenState extends ConsumerState<MedicationScreen>
   }
 
   Widget _buildAdherenceCard() {
+    // Aggregate from list of per-medication adherence stats
     int taken = 0, skipped = 0, delayed = 0, totalLogs = 0;
     for (final stat in _adherenceStats) {
       taken += (stat['taken_count'] as int?) ?? 0;
@@ -455,17 +538,25 @@ class _MedicationScreenState extends ConsumerState<MedicationScreen>
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: _outline.withOpacity(0.25), width: 2),
           boxShadow: [
-            BoxShadow(color: _outline.withOpacity(0.06), offset: const Offset(0, 4), blurRadius: 12),
+            BoxShadow(
+              color: _outline.withOpacity(0.06),
+              offset: const Offset(0, 4),
+              blurRadius: 12,
+            ),
           ],
         ),
         child: Column(
           children: [
             ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(18),
+              ),
               child: Container(
                 height: 6,
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(colors: [_greenHdr, _greenLt]),
+                  gradient: LinearGradient(
+                    colors: [_greenHdr, _greenLt],
+                  ),
                 ),
               ),
             ),
@@ -475,12 +566,20 @@ class _MedicationScreenState extends ConsumerState<MedicationScreen>
                 children: [
                   Text(
                     'Adherence Rate',
-                    style: GoogleFonts.nunito(fontSize: 14, fontWeight: FontWeight.w600, color: _brownLt),
+                    style: GoogleFonts.nunito(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: _brownLt,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Text(
                     '${overallAdherence.toStringAsFixed(1)}%',
-                    style: GoogleFonts.gaegu(fontSize: 48, fontWeight: FontWeight.w700, color: _brown),
+                    style: GoogleFonts.gaegu(
+                      fontSize: 48,
+                      fontWeight: FontWeight.w700,
+                      color: _brown,
+                    ),
                   ),
                   const SizedBox(height: 20),
                   Row(
@@ -488,20 +587,62 @@ class _MedicationScreenState extends ConsumerState<MedicationScreen>
                     children: [
                       Column(
                         children: [
-                          Text('$taken', style: GoogleFonts.gaegu(fontSize: 24, fontWeight: FontWeight.w700, color: _greenDk)),
-                          Text('Taken', style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w600, color: _brownLt)),
+                          Text(
+                            '$taken',
+                            style: GoogleFonts.gaegu(
+                              fontSize: 24,
+                              fontWeight: FontWeight.w700,
+                              color: _greenDk,
+                            ),
+                          ),
+                          Text(
+                            'Taken',
+                            style: GoogleFonts.nunito(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: _brownLt,
+                            ),
+                          ),
                         ],
                       ),
                       Column(
                         children: [
-                          Text('$skipped', style: GoogleFonts.gaegu(fontSize: 24, fontWeight: FontWeight.w700, color: _coralHdr)),
-                          Text('Skipped', style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w600, color: _brownLt)),
+                          Text(
+                            '$skipped',
+                            style: GoogleFonts.gaegu(
+                              fontSize: 24,
+                              fontWeight: FontWeight.w700,
+                              color: _coralHdr,
+                            ),
+                          ),
+                          Text(
+                            'Skipped',
+                            style: GoogleFonts.nunito(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: _brownLt,
+                            ),
+                          ),
                         ],
                       ),
                       Column(
                         children: [
-                          Text('$delayed', style: GoogleFonts.gaegu(fontSize: 24, fontWeight: FontWeight.w700, color: _goldHdr)),
-                          Text('Delayed', style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w600, color: _brownLt)),
+                          Text(
+                            '$delayed',
+                            style: GoogleFonts.gaegu(
+                              fontSize: 24,
+                              fontWeight: FontWeight.w700,
+                              color: _goldHdr,
+                            ),
+                          ),
+                          Text(
+                            'Delayed',
+                            style: GoogleFonts.nunito(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: _brownLt,
+                            ),
+                          ),
                         ],
                       ),
                     ],
@@ -530,17 +671,25 @@ class _MedicationScreenState extends ConsumerState<MedicationScreen>
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: _outline.withOpacity(0.25), width: 2),
           boxShadow: [
-            BoxShadow(color: _outline.withOpacity(0.06), offset: const Offset(0, 4), blurRadius: 12),
+            BoxShadow(
+              color: _outline.withOpacity(0.06),
+              offset: const Offset(0, 4),
+              blurRadius: 12,
+            ),
           ],
         ),
         child: Column(
           children: [
             ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(18),
+              ),
               child: Container(
                 height: 6,
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(colors: [_coralHdr, _coralLt]),
+                  gradient: LinearGradient(
+                    colors: [_coralHdr, _coralLt],
+                  ),
                 ),
               ),
             ),
@@ -558,26 +707,44 @@ class _MedicationScreenState extends ConsumerState<MedicationScreen>
                           children: [
                             Text(
                               name,
-                              style: GoogleFonts.gaegu(fontSize: 20, fontWeight: FontWeight.w700, color: _brown),
+                              style: GoogleFonts.gaegu(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w700,
+                                color: _brown,
+                              ),
                             ),
                             const SizedBox(height: 4),
                             Text(
                               dosage,
-                              style: GoogleFonts.nunito(fontSize: 13, fontWeight: FontWeight.w600, color: _brownLt),
+                              style: GoogleFonts.nunito(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: _brownLt,
+                              ),
                             ),
                           ],
                         ),
                       ),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
                         decoration: BoxDecoration(
                           color: _coralLt.withOpacity(0.4),
                           borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: _coralHdr.withOpacity(0.5), width: 1.5),
+                          border: Border.all(
+                            color: _coralHdr.withOpacity(0.5),
+                            width: 1.5,
+                          ),
                         ),
                         child: Text(
                           frequency.replaceAll('_', ' ').toUpperCase(),
-                          style: GoogleFonts.nunito(fontSize: 11, fontWeight: FontWeight.w700, color: _brown),
+                          style: GoogleFonts.nunito(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: _brown,
+                          ),
                         ),
                       ),
                     ],
@@ -585,11 +752,19 @@ class _MedicationScreenState extends ConsumerState<MedicationScreen>
                   const SizedBox(height: 12),
                   Row(
                     children: [
-                      Icon(Icons.local_fire_department, size: 16, color: _goldHdr),
+                      Icon(
+                        Icons.local_fire_department,
+                        size: 16,
+                        color: _goldHdr,
+                      ),
                       const SizedBox(width: 4),
                       Text(
                         '$streak day streak',
-                        style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w600, color: _brownLt),
+                        style: GoogleFonts.nunito(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: _brownLt,
+                        ),
                       ),
                     ],
                   ),
@@ -625,11 +800,18 @@ class _MedicationScreenState extends ConsumerState<MedicationScreen>
         decoration: BoxDecoration(
           color: color.withOpacity(0.2),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: color.withOpacity(0.4), width: 1.5),
+          border: Border.all(
+            color: color.withOpacity(0.4),
+            width: 1.5,
+          ),
         ),
         child: Text(
           label,
-          style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w700, color: _brown),
+          style: GoogleFonts.nunito(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: _brown,
+          ),
         ),
       ),
     );
@@ -679,7 +861,11 @@ class _MedicationScreenState extends ConsumerState<MedicationScreen>
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(actionIcon, size: 20, color: actionColor),
+              Icon(
+                actionIcon,
+                size: 20,
+                color: actionColor,
+              ),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
@@ -687,20 +873,32 @@ class _MedicationScreenState extends ConsumerState<MedicationScreen>
                   children: [
                     Text(
                       medName,
-                      style: GoogleFonts.nunito(fontSize: 14, fontWeight: FontWeight.w700, color: _brown),
+                      style: GoogleFonts.nunito(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: _brown,
+                      ),
                     ),
                     const SizedBox(height: 2),
                     Row(
                       children: [
                         Text(
                           action.replaceAll('_', ' ').toUpperCase(),
-                          style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w600, color: actionColor),
+                          style: GoogleFonts.nunito(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: actionColor,
+                          ),
                         ),
                         const SizedBox(width: 8),
                         if (formattedTime.isNotEmpty)
                           Text(
                             '• $formattedTime',
-                            style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w500, color: _brownLt),
+                            style: GoogleFonts.nunito(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                              color: _brownLt,
+                            ),
                           ),
                       ],
                     ),
@@ -713,7 +911,11 @@ class _MedicationScreenState extends ConsumerState<MedicationScreen>
             const SizedBox(height: 8),
             Text(
               'Side effects: $sideEffects',
-              style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w500, color: _brownLt),
+              style: GoogleFonts.nunito(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: _brownLt,
+              ),
             ),
           ],
         ],
@@ -749,7 +951,6 @@ class _MedicationScreenState extends ConsumerState<MedicationScreen>
   }
 }
 
-// background painter
 class _PawPrintBg extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
