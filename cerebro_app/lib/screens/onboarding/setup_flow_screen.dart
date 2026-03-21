@@ -1,166 +1,335 @@
-/// 7-step onboarding: University, Year, Subjects, Goals, Sleep, Habits, Mood.
-/// Collects all info needed for the full app to work from day one.
+/// Pixel-matched to ui-prototype/setup.html:
+///   • Cream (#fdefdb) background with diamond pattern
+///   • White "setup-card" with thick dark border + hard box-shadow
+///   • Horizontal split: left illustration panel (44%) + right form panel
+///   • Left: SVG building illustration + brand block ("Setup Wizard")
+///   • Right: progress strip (segments) + step content + footer (Back/Next)
+///   • 7 steps: University, Year, Subjects, Goals+Study, Sleep, Habits, Mood
+///   • All existing functionality preserved (API calls, SharedPreferences, etc.)
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cerebro_app/config/constants.dart';
 import 'package:cerebro_app/config/theme.dart';
+import 'package:cerebro_app/services/api_service.dart';
 import 'dart:convert';
+import 'dart:async';
 import 'package:cerebro_app/providers/auth_provider.dart';
 import 'package:cerebro_app/providers/dashboard_provider.dart';
 
+//  STEP DATA
+class _StepInfo {
+  final String title;
+  final String subtitle;
+  const _StepInfo(this.title, this.subtitle);
+}
+
+const _stepInfos = [
+  _StepInfo('About You', "What kind of student are you?"),
+  _StepInfo('Your Institution', 'Where do you study?'),
+  _StepInfo('Your Subjects', 'Pick or add your subjects'),
+  _StepInfo('Goals & Study Time', 'Set your targets'),
+  _StepInfo('Sleep Schedule', 'Good rest = good grades'),
+  _StepInfo('Daily Habits', 'Build streaks, earn XP'),
+  _StepInfo('How Are You Feeling?', 'Set your starting mood'),
+];
+
+// Institution type definitions
+class _InstitutionType {
+  final String key;
+  final String label;
+  final String icon;
+  final String desc;
+  const _InstitutionType(this.key, this.label, this.icon, this.desc);
+}
+
+const _institutionTypes = [
+  _InstitutionType('school', 'School', 'S', 'GCSE / O-Levels / Secondary'),
+  _InstitutionType('sixth_form', 'Sixth Form', '6', 'A-Levels / IB / BTEC'),
+  _InstitutionType('college', 'College', 'C', 'Diploma / Foundation / HND'),
+  _InstitutionType('university', 'University', 'U', 'Undergraduate / Postgrad'),
+];
+
+//  SETUP FLOW SCREEN
 class SetupFlowScreen extends ConsumerStatefulWidget {
   const SetupFlowScreen({super.key});
-
   @override
   ConsumerState<SetupFlowScreen> createState() => _SetupFlowScreenState();
 }
 
 class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
     with TickerProviderStateMixin {
-  final PageController _pageController = PageController();
   int _currentStep = 0;
   final int _totalSteps = 7;
   bool _isSubmitting = false;
 
-  final _universityController = TextEditingController();
-  final _courseController = TextEditingController();
+  // Card pop-in animation
+  late final AnimationController _cardAc;
+  late final Animation<double> _cardScale, _cardFade, _cardSlide;
 
+  // Step transition animation
+  late final AnimationController _stepAc;
+
+  String? _institutionType;  // school, sixth_form, college, university
+
+  final _institutionNameController = TextEditingController();
+  final _courseController = TextEditingController();
   int _yearOfStudy = 1;
+  String? _degreeLevel;  // undergraduate, masters, phd (for university/college)
+
+  // Institution search
+  List<Map<String, String>> _institutionResults = [];
+  bool _searchingInstitutions = false;
+  String? _selectedAffiliation;  // e.g. "Affiliated with London Metropolitan University"
 
   final List<_SubjectEntry> _subjects = [];
   final _subjectNameController = TextEditingController();
-  String _selectedSubjectColor = '#FF6B9D';
+  int _colorIdx = 0;
+  static const _subjectColors = [
+    '#fea9d3', '#ddf6ff', '#98a869', '#f7aeae', '#ffbc5c',
+    '#e4bc83', '#ffd5f5', '#ef6262', '#58772f', '#fdefdb',
+  ];
+  List<_SuggestedSubject> _suggestedSubjects = [];
+  bool _loadingSuggestions = false;
+  bool _suggestionsLoaded = false;
+
+  // Subject search results (when user types in add-your-own)
+  List<_SubjectSearchResult> _subjectSearchResults = [];
+  bool _searchingSubjects = false;
+
+  // Debounce timers
+  Timer? _instSearchDebounce;
+  Timer? _subjectSearchDebounce;
 
   final Set<String> _selectedGoals = {};
-  double _dailyStudyHours = 2.0;
+  double _dailyStudyHours = 3.0;
+  bool _studyHoursPersonalised = false;
 
   TimeOfDay _bedtime = const TimeOfDay(hour: 23, minute: 0);
   TimeOfDay _wakeTime = const TimeOfDay(hour: 7, minute: 30);
 
   final Set<String> _selectedHabits = {};
 
-  int _selectedMood = -1; // index into mood list
+  int _selectedMood = -1;
 
-  late AnimationController _fadeAC;
-  late Animation<double> _fadeAnim;
-  late AnimationController _iconBounceAC;
-
-  static const _subjectColors = [
-    '#FF6B9D', '#7DD3FC', '#7BC9A0', '#FFB5C5',
-    '#FFCA4E', '#B8A9E8', '#FF8C7A', '#5FB085',
-    '#5BC0EB', '#E85A8A', '#9D8AD4', '#E5B345',
+  static const _goalLabels = [
+    'Improve GPA', 'Stay Organized', 'Better Sleep', 'Build Habits',
+    'Reduce Stress', 'Exam Prep', 'Time Management', 'Stay Motivated',
   ];
 
-  static final _studyGoals = [
-    _GoalItem('Improve GPA', Icons.trending_up_rounded, CerebroTheme.pinkPop),
-    _GoalItem('Stay Organized', Icons.calendar_today_rounded, CerebroTheme.sky),
-    _GoalItem('Better Sleep', Icons.bedtime_rounded, CerebroTheme.lavender),
-    _GoalItem('Build Habits', Icons.repeat_rounded, CerebroTheme.sage),
-    _GoalItem('Reduce Stress', Icons.spa_rounded, CerebroTheme.gold),
-    _GoalItem('Exam Prep', Icons.quiz_rounded, CerebroTheme.coral),
-    _GoalItem('Time Management', Icons.schedule_rounded, CerebroTheme.skyDark),
-    _GoalItem('Stay Motivated', Icons.local_fire_department_rounded, CerebroTheme.coralDark),
+  static const _habitItems = [
+    _HabitDef('Drink Water', Color(0xFFDDF6FF)),
+    _HabitDef('Exercise', Color(0xFFF7AEAE)),
+    _HabitDef('Read', Color(0xFFFFD5F5)),
+    _HabitDef('Meditate', Color(0xFF98A869)),
+    _HabitDef('No Junk Food', Color(0xFFFEA9D3)),
+    _HabitDef('Walk 10k Steps', Color(0xFF58772F)),
+    _HabitDef('No Social Media', Color(0xFFEF6262)),
+    _HabitDef('Study 2+ Hours', Color(0xFFDDF6FF)),
+    _HabitDef('Sleep Before 12', Color(0xFFE4BC83)),
   ];
 
-  static final _habitPresets = [
-    _HabitItem('Drink Water', Icons.water_drop_rounded, CerebroTheme.sky, '#7DD3FC'),
-    _HabitItem('Exercise', Icons.fitness_center_rounded, CerebroTheme.coral, '#FF8C7A'),
-    _HabitItem('Read', Icons.auto_stories_rounded, CerebroTheme.lavender, '#B8A9E8'),
-    _HabitItem('Meditate', Icons.self_improvement_rounded, CerebroTheme.sage, '#7BC9A0'),
-    _HabitItem('No Junk Food', Icons.no_food_rounded, CerebroTheme.pinkPop, '#FF6B9D'),
-    _HabitItem('Walk 10k Steps', Icons.directions_walk_rounded, CerebroTheme.sageDark, '#5FB085'),
-    _HabitItem('No Social Media', Icons.phone_disabled_rounded, CerebroTheme.coralDark, '#E67A6A'),
-    _HabitItem('Study 2+ Hours', Icons.school_rounded, CerebroTheme.skyDark, '#5BC0EB'),
-    _HabitItem('Sleep Before 12', Icons.nights_stay_rounded, CerebroTheme.lavenderDark, '#9D8AD4'),
-  ];
-
-  static final _moods = [
-    _MoodItem('Happy', '😊', CerebroTheme.gold),
-    _MoodItem('Excited', '🤩', CerebroTheme.pinkPop),
-    _MoodItem('Calm', '😌', CerebroTheme.sage),
-    _MoodItem('Focused', '🧐', CerebroTheme.sky),
-    _MoodItem('Tired', '😴', CerebroTheme.lavender),
-    _MoodItem('Stressed', '😰', CerebroTheme.coral),
-    _MoodItem('Sad', '😔', CerebroTheme.skyDark),
-    _MoodItem('Anxious', '😟', CerebroTheme.coralDark),
-  ];
-
-  static final _stepConfigs = [
-    _StepConfig(Icons.school_rounded, "Let's get to\nknow you!", 'Tell us about your studies.', CerebroTheme.pinkPop),
-    _StepConfig(Icons.emoji_events_rounded, 'What year are\nyou in?', 'Select your current year of study.', CerebroTheme.sky),
-    _StepConfig(Icons.book_rounded, 'Add your\nsubjects', 'What are you studying right now?', CerebroTheme.sage),
-    _StepConfig(Icons.flag_rounded, 'Set your\ngoals', 'What do you want to achieve?', CerebroTheme.gold),
-    _StepConfig(Icons.bedtime_rounded, 'Your sleep\nschedule', 'When do you usually sleep?', CerebroTheme.lavender),
-    _StepConfig(Icons.repeat_rounded, 'Pick some\nhabits', 'Build healthy routines.', CerebroTheme.coral),
-    _StepConfig(Icons.mood_rounded, 'How are you\nfeeling?', "Let's start with a mood check!", CerebroTheme.pinkPop),
+  static const _moodItems = [
+    _MoodDef('Happy', Color(0xFFFFBC5C)),
+    _MoodDef('Excited', Color(0xFFFEA9D3)),
+    _MoodDef('Calm', Color(0xFFDDF6FF)),
+    _MoodDef('Focused', Color(0xFF98A869)),
+    _MoodDef('Tired', Color(0xFFE4BC83)),
+    _MoodDef('Stressed', Color(0xFFEF6262)),
+    _MoodDef('Sad', Color(0xFFF7AEAE)),
+    _MoodDef('Anxious', Color(0xFFFFD5F5)),
   ];
 
   @override
   void initState() {
     super.initState();
-    _fadeAC = AnimationController(vsync: this, duration: const Duration(milliseconds: 400));
-    _fadeAnim = Tween(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _fadeAC, curve: Curves.easeOut),
-    );
-    _fadeAC.forward();
 
-    _iconBounceAC = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 800),
-    );
+    _cardAc = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 500))
+      ..forward();
+    _cardScale = Tween(begin: 0.96, end: 1.0).animate(
+        CurvedAnimation(parent: _cardAc, curve: Curves.elasticOut));
+    _cardFade = Tween(begin: 0.0, end: 1.0).animate(
+        CurvedAnimation(parent: _cardAc, curve: const Interval(0.0, 0.5)));
+    _cardSlide = Tween(begin: 12.0, end: 0.0).animate(
+        CurvedAnimation(parent: _cardAc, curve: Curves.easeOut));
+
+    _stepAc = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 300));
   }
 
   @override
   void dispose() {
-    _pageController.dispose();
-    _universityController.dispose();
+    _cardAc.dispose();
+    _stepAc.dispose();
+    _institutionNameController.dispose();
     _courseController.dispose();
     _subjectNameController.dispose();
-    _fadeAC.dispose();
-    _iconBounceAC.dispose();
+    _instSearchDebounce?.cancel();
+    _subjectSearchDebounce?.cancel();
     super.dispose();
   }
 
-  void _nextStep() {
+  void _next() {
     if (_currentStep < _totalSteps - 1) {
-      _pageController.nextPage(
-        duration: const Duration(milliseconds: 350),
-        curve: Curves.easeInOut,
-      );
+      final nextStep = _currentStep + 1;
+      setState(() => _currentStep = nextStep);
+      _stepAc.forward(from: 0);
+      // When arriving at subjects step, fetch AI suggestions
+      if (nextStep == 2 && !_suggestionsLoaded) {
+        _fetchSuggestedSubjects();
+      }
+      // Personalise study hours when arriving at goals step
+      if (nextStep == 3 && !_studyHoursPersonalised) {
+        _studyHoursPersonalised = true;
+        setState(() => _dailyStudyHours = _recommendedStudyHours());
+      }
     } else {
       _submitSetup();
     }
   }
 
-  void _prevStep() {
+  Future<void> _fetchSuggestedSubjects() async {
+    if (_loadingSuggestions) return;
+    setState(() => _loadingSuggestions = true);
+    try {
+      final api = ref.read(apiServiceProvider);
+      final resp = await api.post('/study/suggest-subjects', data: {
+        'institution_type': _institutionType ?? 'university',
+        'institution_name': _institutionNameController.text.trim(),
+        'course': _courseController.text.trim(),
+        'year_of_study': _yearOfStudy,
+        'degree_level': _degreeLevel,
+        'affiliation': _selectedAffiliation,
+      });
+      if (resp.statusCode == 200 && resp.data is List) {
+        final list = (resp.data as List).map((s) => _SuggestedSubject(
+          name: s['name'] ?? '',
+          code: s['code'],
+          color: s['color'] ?? '#fea9d3',
+        )).toList();
+        if (mounted) {
+          setState(() {
+            _suggestedSubjects = list;
+            _suggestionsLoaded = true;
+          });
+        }
+      }
+    } catch (e) {
+      print('[SETUP] Subject suggestion failed: $e');
+    } finally {
+      if (mounted) setState(() => _loadingSuggestions = false);
+    }
+  }
+
+  Future<void> _searchSubjects(String query) async {
+    if (query.trim().length < 2) {
+      setState(() { _subjectSearchResults = []; _searchingSubjects = false; });
+      return;
+    }
+    setState(() => _searchingSubjects = true);
+    try {
+      final api = ref.read(apiServiceProvider);
+      final resp = await api.post('/study/search-subjects', data: {
+        'query': query.trim(),
+        'institution_type': _institutionType ?? 'university',
+        'institution_name': _institutionNameController.text.trim(),
+        'course': _courseController.text.trim(),
+        'affiliation': _selectedAffiliation,
+      });
+      if (resp.statusCode == 200 && resp.data is List) {
+        final list = (resp.data as List).map((e) => _SubjectSearchResult(
+          name: e['name']?.toString() ?? '',
+          code: e['code']?.toString(),
+        )).toList();
+        if (mounted) setState(() => _subjectSearchResults = list);
+      }
+    } catch (e) {
+      print('[SETUP] Subject search failed: $e');
+    } finally {
+      if (mounted) setState(() => _searchingSubjects = false);
+    }
+  }
+
+  Future<void> _searchInstitutions(String query) async {
+    if (query.trim().length < 3) {
+      setState(() { _institutionResults = []; _searchingInstitutions = false; });
+      return;
+    }
+    setState(() => _searchingInstitutions = true);
+    try {
+      final api = ref.read(apiServiceProvider);
+      final resp = await api.post('/study/search-institutions', data: {
+        'query': query.trim(),
+        'institution_type': _institutionType ?? 'university',
+      });
+      if (resp.statusCode == 200 && resp.data is List) {
+        final list = (resp.data as List).map((e) => {
+          'name': e['name']?.toString() ?? '',
+          'affiliation': e['affiliation']?.toString() ?? '',
+          'country': e['country']?.toString() ?? '',
+        }).toList();
+        if (mounted) setState(() => _institutionResults = list);
+      }
+    } catch (e) {
+      print('[SETUP] Institution search failed: $e');
+    } finally {
+      if (mounted) setState(() => _searchingInstitutions = false);
+    }
+  }
+
+  void _back() {
     if (_currentStep > 0) {
-      _pageController.previousPage(
-        duration: const Duration(milliseconds: 350),
-        curve: Curves.easeInOut,
-      );
+      setState(() => _currentStep--);
+      _stepAc.forward(from: 0);
     }
   }
 
   void _addSubject() {
     final name = _subjectNameController.text.trim();
-    if (name.isEmpty) return;
-    if (_subjects.length >= 10) return;
-
+    if (name.isEmpty || _subjects.length >= 10) return;
     setState(() {
-      _subjects.add(_SubjectEntry(name: name, color: _selectedSubjectColor));
+      _subjects.add(_SubjectEntry(name: name, color: _subjectColors[_colorIdx]));
       _subjectNameController.clear();
-      // Cycle to next color
-      final currentIdx = _subjectColors.indexOf(_selectedSubjectColor);
-      _selectedSubjectColor = _subjectColors[(currentIdx + 1) % _subjectColors.length];
+      _colorIdx = (_colorIdx + 1) % _subjectColors.length;
     });
   }
 
-  void _removeSubject(int index) {
-    setState(() => _subjects.removeAt(index));
+  void _removeSubject(int i) => setState(() => _subjects.removeAt(i));
+
+  String _calcSleepHours() {
+    int bed = _bedtime.hour * 60 + _bedtime.minute;
+    int wake = _wakeTime.hour * 60 + _wakeTime.minute;
+    int diff = wake - bed;
+    if (diff <= 0) diff += 24 * 60;
+    return (diff / 60).toStringAsFixed(1);
+  }
+
+  Future<void> _pickTime({required bool isBedtime}) async {
+    final initial = isBedtime ? _bedtime : _wakeTime;
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: initial,
+      builder: (ctx, child) => Theme(
+        data: Theme.of(ctx).copyWith(
+          colorScheme: ColorScheme.light(
+            primary: CerebroTheme.pinkAccent,
+            surface: Colors.white,
+            onSurface: CerebroTheme.text1,
+          ),
+        ),
+        child: child!,
+      ),
+    );
+    if (picked != null) {
+      setState(() {
+        if (isBedtime) _bedtime = picked; else _wakeTime = picked;
+      });
+    }
   }
 
   Future<void> _submitSetup() async {
@@ -168,40 +337,36 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
     try {
       final api = ref.read(apiServiceProvider);
 
-      // 1. Update user profile (university, course, year)
       try {
         await api.put('/auth/me', data: {
-          'university': _universityController.text.trim(),
+          'institution_type': _institutionType,
+          'university': _institutionNameController.text.trim(),
           'course': _courseController.text.trim(),
           'year_of_study': _yearOfStudy,
+          'degree_level': _degreeLevel,
         });
       } catch (_) {}
 
-      // 2. Create subjects
       for (final subject in _subjects) {
         try {
           await api.post('/study/subjects', data: {
             'name': subject.name,
             'color': subject.color,
+            'code': subject.code,
             'icon': 'book',
           });
         } catch (_) {}
       }
 
-      // 3. Save sleep schedule locally (used by sleep tracking later)
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt('cerebro_bedtime_hour', _bedtime.hour);
       await prefs.setInt('cerebro_bedtime_min', _bedtime.minute);
       await prefs.setInt('cerebro_wake_hour', _wakeTime.hour);
       await prefs.setInt('cerebro_wake_min', _wakeTime.minute);
-
-      // 4. Save selected goals locally
       await prefs.setStringList('cerebro_goals', _selectedGoals.toList());
       await prefs.setDouble('cerebro_daily_study_hours', _dailyStudyHours);
-
-      // 5. Save selected habits — both as names list AND as quest_definitions + daily_habits
       await prefs.setStringList('cerebro_initial_habits', _selectedHabits.toList());
-      // Build quest definitions so dashboard provider picks them up immediately
+
       final questDefs = _selectedHabits.map((name) {
         final icon = habitIconMap[name] ?? 'check';
         return {'name': name, 'icon': icon};
@@ -209,22 +374,17 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
       final habitsWithDone = questDefs.map((q) => {...q, 'done': false}).toList();
       await prefs.setString('quest_definitions', jsonEncode(questDefs));
       await prefs.setString('daily_habits', jsonEncode(habitsWithDone));
-      // Set today's date so the dashboard knows quests are fresh
       final now = DateTime.now();
       final todayKey = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
       await prefs.setString('habits_date', todayKey);
 
-      // 6. Save initial mood locally
-      if (_selectedMood >= 0 && _selectedMood < _moods.length) {
-        await prefs.setString('cerebro_initial_mood', _moods[_selectedMood].label);
+      if (_selectedMood >= 0 && _selectedMood < _moodItems.length) {
+        await prefs.setString('cerebro_initial_mood', _moodItems[_selectedMood].label);
       }
 
-      // 7. Mark setup as complete
       await prefs.setBool(AppConstants.setupCompleteKey, true);
-
       if (mounted) context.go('/avatar-setup');
     } catch (e) {
-      // Even if API fails, let user continue
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(AppConstants.setupCompleteKey, true);
       if (mounted) context.go('/avatar-setup');
@@ -236,304 +396,212 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
   //  BUILD
   @override
   Widget build(BuildContext context) {
-    final config = _stepConfigs[_currentStep];
-
     return Scaffold(
-      backgroundColor: CerebroTheme.cream,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _buildHeader(config),
+      backgroundColor: CerebroTheme.creamWarm,
+      body: Stack(
+        children: [
+          // Diamond pattern background (cream variant)
+          Positioned.fill(child: _CreamDiamondPattern()),
 
-            Expanded(
-              child: PageView(
-                controller: _pageController,
-                physics: const NeverScrollableScrollPhysics(),
-                onPageChanged: (i) {
-                  setState(() => _currentStep = i);
-                  _iconBounceAC.reset();
-                  _iconBounceAC.forward();
-                },
-                children: [
-                  _buildUniversityStep(),
-                  _buildYearStep(),
-                  _buildSubjectsStep(),
-                  _buildGoalsStep(),
-                  _buildSleepStep(),
-                  _buildHabitsStep(),
-                  _buildMoodStep(),
-                ],
-              ),
-            ),
-
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 8, 24, 20),
-              child: _ChunkyButton(
-                onTap: _isSubmitting ? null : _nextStep,
-                color: config.color,
-                child: _isSubmitting
-                    ? const SizedBox(
-                        width: 24, height: 24,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.5, color: Colors.white,
-                        ),
-                      )
-                    : Text(
-                        _currentStep == _totalSteps - 1
-                            ? "Let's Go! →"
-                            : 'Continue',
-                        style: GoogleFonts.nunito(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
+          // Centered card
+          Positioned.fill(
+            child: Padding(
+              padding: const EdgeInsets.all(28),
+              child: AnimatedBuilder(
+                animation: _cardAc,
+                builder: (ctx, _) => Opacity(
+                  opacity: _cardFade.value.clamp(0.0, 1.0),
+                  child: Transform.translate(
+                    offset: Offset(0, _cardSlide.value),
+                    child: Transform.scale(
+                      scale: _cardScale.value.clamp(0.96, 1.0),
+                      child: Center(
+                        child: Container(
+                          width: double.infinity,
+                          height: double.infinity,
+                          constraints: const BoxConstraints(maxWidth: 1400),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(24),
+                            border: Border.all(color: CerebroTheme.text1, width: 3),
+                            boxShadow: [
+                              BoxShadow(
+                                color: CerebroTheme.text1.withOpacity(0.5),
+                                offset: const Offset(8, 8),
+                                blurRadius: 0,
+                              ),
+                            ],
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(21),
+                            child: _cardLayout(),
+                          ),
                         ),
                       ),
+                    ),
+                  ),
+                ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
-  //  HEADER (progress + back + skip)
-  Widget _buildHeader(_StepConfig config) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
-      child: Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  //  CARD LAYOUT — horizontal split
+  Widget _cardLayout() {
+    return LayoutBuilder(
+      builder: (ctx, constraints) {
+        // Use horizontal split if wide enough, otherwise stack vertically
+        final wide = constraints.maxWidth > 600;
+        if (wide) {
+          return Row(
             children: [
-              // Back button
-              if (_currentStep > 0)
-                GestureDetector(
-                  onTap: _prevStep,
-                  child: Container(
-                    width: 38, height: 38,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(11),
-                      border: Border.all(color: CerebroTheme.outline, width: 2.5),
-                      boxShadow: [CerebroTheme.shadow3DSmall],
-                    ),
-                    child: const Icon(Icons.arrow_back_rounded,
-                        color: CerebroTheme.outline, size: 18),
-                  ),
-                )
-              else
-                const SizedBox(width: 38),
+              // Left panel (44%)
+              SizedBox(
+                width: constraints.maxWidth * 0.44,
+                child: _leftPanel(),
+              ),
+              // Vertical divider
+              Container(width: 3, color: CerebroTheme.text1),
+              // Right panel (flex)
+              Expanded(child: _rightPanel()),
+            ],
+          );
+        } else {
+          // Narrow: skip left panel, full-width form
+          return _rightPanel();
+        }
+      },
+    );
+  }
 
-              // Step counter
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
-                decoration: BoxDecoration(
-                  color: config.color.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: config.color.withOpacity(0.3), width: 1.5),
-                ),
-                child: Text(
-                  '${_currentStep + 1} of $_totalSteps',
-                  style: GoogleFonts.nunito(
-                    color: config.color,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 13,
+  //  LEFT PANEL — illustration + brand block
+  Widget _leftPanel() {
+    return Column(
+      children: [
+        // Illustration area
+        Expanded(
+          child: Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment(-0.5, -1.0),
+                end: Alignment(0.5, 1.0),
+                stops: [0.0, 0.5, 1.0],
+                colors: [
+                  CerebroTheme.creamWarm,
+                  CerebroTheme.greenPale,
+                  CerebroTheme.pinkLight,
+                ],
+              ),
+            ),
+            child: Stack(
+              children: [
+                Center(
+                  child: OverflowBox(
+                    maxWidth: double.infinity,
+                    maxHeight: double.infinity,
+                    child: SizedBox(
+                      width: 700,
+                      height: 520,
+                      child: SvgPicture.asset(
+                        'assets/illustrations/setup_illustration.svg',
+                        fit: BoxFit.contain,
+                      ),
+                    ),
                   ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        // Brand block
+        Container(
+          width: double.infinity,
+          decoration: const BoxDecoration(
+            color: CerebroTheme.creamWarm,
+            border: Border(top: BorderSide(color: CerebroTheme.text1, width: 3)),
+          ),
+          padding: const EdgeInsets.fromLTRB(26, 20, 26, 22),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Setup Wizard',
+                style: TextStyle(
+                  fontFamily: 'Bitroad',
+                  fontSize: 35,
+                  color: CerebroTheme.text1,
+                  height: 1,
                 ),
               ),
-
-              // Skip button
-              GestureDetector(
-                onTap: () async {
-                  final prefs = await SharedPreferences.getInstance();
-                  await prefs.setBool(AppConstants.setupCompleteKey, true);
-                  if (mounted) context.go('/avatar-setup');
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: CerebroTheme.creamDark, width: 2),
-                  ),
-                  child: Text(
-                    'Skip',
-                    style: GoogleFonts.nunito(
-                      color: CerebroTheme.brown,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13,
-                    ),
-                  ),
+              const SizedBox(height: 3),
+              Text("Let's personalise your Cerebro experience~",
+                style: GoogleFonts.gaegu(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: CerebroTheme.text2,
+                  height: 1.3,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 10),
-
-          // Segmented progress bar
-          Row(
-            children: List.generate(_totalSteps, (i) {
-              final isComplete = i < _currentStep;
-              final isCurrent = i == _currentStep;
-              return Expanded(
-                child: Container(
-                  margin: EdgeInsets.only(right: i < _totalSteps - 1 ? 4 : 0),
-                  height: 6,
-                  decoration: BoxDecoration(
-                    color: isComplete
-                        ? config.color
-                        : isCurrent
-                            ? config.color.withOpacity(0.5)
-                            : CerebroTheme.creamDark,
-                    borderRadius: BorderRadius.circular(3),
-                  ),
-                ),
-              );
-            }),
-          ),
-        ],
-      ),
-    );
-  }
-
-  //  STEP TITLE HEADER (reusable)
-  Widget _stepHeader(_StepConfig config) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 20),
-        // Icon badge
-        TweenAnimationBuilder<double>(
-          key: ValueKey(_currentStep),
-          tween: Tween(begin: 0.0, end: 1.0),
-          duration: const Duration(milliseconds: 600),
-          curve: Curves.elasticOut,
-          builder: (context, value, child) {
-            return Transform.scale(scale: value, child: child);
-          },
-          child: Container(
-            width: 56, height: 56,
-            decoration: BoxDecoration(
-              color: config.color.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: config.color, width: 2.5),
-            ),
-            child: Icon(config.icon, size: 28, color: config.color),
-          ),
         ),
-        const SizedBox(height: 16),
-        Text(
-          config.title,
-          style: GoogleFonts.nunito(
-            fontSize: 26,
-            fontWeight: FontWeight.w900,
-            color: CerebroTheme.outline,
-            height: 1.15,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          config.subtitle,
-          style: GoogleFonts.nunito(
-            color: CerebroTheme.brown,
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 20),
       ],
     );
   }
 
-  //  STEP 1: University & Course
-  Widget _buildUniversityStep() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _stepHeader(_stepConfigs[0]),
-          _fieldLabel('University / College'),
-          const SizedBox(height: 6),
-          _cuteTextField(
-            controller: _universityController,
-            hint: 'e.g., London Metropolitan University',
-            icon: Icons.school_outlined,
-          ),
-          const SizedBox(height: 18),
-          _fieldLabel('Course / Program'),
-          const SizedBox(height: 6),
-          _cuteTextField(
-            controller: _courseController,
-            hint: 'e.g., Computer Science',
-            icon: Icons.book_outlined,
-          ),
-          const SizedBox(height: 24),
-          _infoCard(
-            icon: Icons.auto_awesome_rounded,
-            text: "This helps CEREBRO personalize your study insights and connect you with relevant resources.",
-            color: CerebroTheme.pinkPop,
-          ),
-        ],
-      ),
+  //  RIGHT PANEL — progress + content + footer
+  Widget _rightPanel() {
+    return Column(
+      children: [
+        // Progress strip
+        _progressStrip(),
+        // Content area (scrollable)
+        Expanded(child: _contentArea()),
+        // Footer with Back/Next
+        _footer(),
+      ],
     );
   }
 
-  //  STEP 2: Year of Study
-  Widget _buildYearStep() {
-    final years = ['1st Year', '2nd Year', '3rd Year', '4th Year', 'Masters', 'PhD'];
-    final icons = [
-      Icons.looks_one_rounded, Icons.looks_two_rounded,
-      Icons.looks_3_rounded, Icons.looks_4_rounded,
-      Icons.workspace_premium_rounded, Icons.science_rounded,
-    ];
-    final colors = [
-      CerebroTheme.pinkPop, CerebroTheme.sky, CerebroTheme.sage,
-      CerebroTheme.gold, CerebroTheme.lavender, CerebroTheme.coral,
-    ];
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+  //  PROGRESS STRIP
+  Widget _progressStrip() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
+      decoration: const BoxDecoration(
+        color: CerebroTheme.creamWarm,
+        border: Border(bottom: BorderSide(color: CerebroTheme.text1, width: 3)),
+      ),
+      child: Row(
         children: [
-          _stepHeader(_stepConfigs[1]),
-          ...List.generate(years.length, (index) {
-            final isSelected = _yearOfStudy == index + 1;
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: GestureDetector(
-                onTap: () => setState(() => _yearOfStudy = index + 1),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-                  decoration: BoxDecoration(
-                    color: isSelected ? colors[index] : Colors.white,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: isSelected ? CerebroTheme.outline : CerebroTheme.creamDark,
-                      width: isSelected ? 3 : 2,
-                    ),
-                    boxShadow: isSelected ? [CerebroTheme.shadow3DSmall] : [],
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        isSelected ? Icons.check_circle_rounded : icons[index],
-                        color: isSelected ? Colors.white : colors[index],
-                        size: 22,
-                      ),
-                      const SizedBox(width: 14),
-                      Text(
-                        years[index],
-                        style: GoogleFonts.nunito(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                          color: isSelected ? Colors.white : CerebroTheme.outline,
-                        ),
-                      ),
-                    ],
-                  ),
+          // Step indicator label
+          Text(
+            'STEP ${_currentStep + 1} OF $_totalSteps',
+            style: GoogleFonts.nunito(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 1.0,
+              color: CerebroTheme.text3,
+            ),
+          ),
+          const SizedBox(width: 16),
+          // Progress segments
+          ...List.generate(_totalSteps, (i) {
+            final done = i < _currentStep;
+            final active = i == _currentStep;
+            return Expanded(
+              child: Container(
+                margin: EdgeInsets.only(right: i < _totalSteps - 1 ? 5 : 0),
+                height: 10,
+                decoration: BoxDecoration(
+                  color: done
+                      ? CerebroTheme.pinkAccent
+                      : active
+                          ? CerebroTheme.olive
+                          : Colors.transparent,
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: CerebroTheme.text1, width: 2),
                 ),
               ),
             );
@@ -543,193 +611,51 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
     );
   }
 
-  //  STEP 3: Subjects
-  Widget _buildSubjectsStep() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _stepHeader(_stepConfigs[2]),
+  //  CONTENT AREA
+  Widget _contentArea() {
+    final info = _stepInfos[_currentStep];
 
-          // Subject input row
-          Row(
-            children: [
-              // Color picker dot
-              GestureDetector(
-                onTap: _showColorPicker,
-                child: Container(
-                  width: 40, height: 40,
-                  decoration: BoxDecoration(
-                    color: Color(int.parse('FF${_selectedSubjectColor.substring(1)}', radix: 16)),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: CerebroTheme.outline, width: 2.5),
-                    boxShadow: [CerebroTheme.shadow3DSmall],
-                  ),
-                  child: const Icon(Icons.palette_rounded, color: Colors.white, size: 18),
-                ),
-              ),
-              const SizedBox(width: 10),
-              // Subject name field
-              Expanded(
-                child: TextField(
-                  controller: _subjectNameController,
-                  style: GoogleFonts.nunito(fontSize: 14, fontWeight: FontWeight.w600),
-                  decoration: InputDecoration(
-                    hintText: 'e.g., Mathematics',
-                    hintStyle: GoogleFonts.nunito(
-                        color: CerebroTheme.creamDark, fontSize: 14, fontWeight: FontWeight.w500),
-                    filled: true,
-                    fillColor: Colors.white,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: CerebroTheme.creamDark, width: 2),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: CerebroTheme.creamDark, width: 2),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: CerebroTheme.sage, width: 2.5),
-                    ),
-                  ),
-                  onSubmitted: (_) => _addSubject(),
-                ),
-              ),
-              const SizedBox(width: 10),
-              // Add button
-              GestureDetector(
-                onTap: _addSubject,
-                child: Container(
-                  width: 40, height: 40,
-                  decoration: BoxDecoration(
-                    color: CerebroTheme.sage,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: CerebroTheme.outline, width: 2.5),
-                    boxShadow: [CerebroTheme.shadow3DSmall],
-                  ),
-                  child: const Icon(Icons.add_rounded, color: Colors.white, size: 22),
-                ),
-              ),
-            ],
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 300),
+      transitionBuilder: (child, anim) {
+        return FadeTransition(
+          opacity: anim,
+          child: SlideTransition(
+            position: Tween(
+              begin: const Offset(0, 0.03),
+              end: Offset.zero,
+            ).animate(anim),
+            child: child,
           ),
-          const SizedBox(height: 16),
-
-          // Subject list
-          if (_subjects.isEmpty)
-            _infoCard(
-              icon: Icons.lightbulb_rounded,
-              text: "Add at least one subject so your study dashboard is ready from day one!",
-              color: CerebroTheme.sage,
-            )
-          else
-            ...List.generate(_subjects.length, (i) {
-              final s = _subjects[i];
-              final c = Color(int.parse('FF${s.color.substring(1)}', radix: 16));
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: c, width: 2.5),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 28, height: 28,
-                        decoration: BoxDecoration(
-                          color: c,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Icon(Icons.book_rounded, color: Colors.white, size: 16),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(s.name,
-                            style: GoogleFonts.nunito(
-                                fontSize: 15, fontWeight: FontWeight.w700,
-                                color: CerebroTheme.outline)),
-                      ),
-                      GestureDetector(
-                        onTap: () => _removeSubject(i),
-                        child: Icon(Icons.close_rounded,
-                            color: CerebroTheme.brown.withOpacity(0.4), size: 20),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            }),
-
-          if (_subjects.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text(
-                '${_subjects.length}/10 subjects added',
-                style: GoogleFonts.nunito(
-                  color: CerebroTheme.brown, fontSize: 12, fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  void _showColorPicker() {
-    showDialog(
-      context: context,
-      builder: (ctx) => Dialog(
-        backgroundColor: Colors.transparent,
-        child: Container(
-          constraints: const BoxConstraints(maxWidth: 320),
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: CerebroTheme.outline, width: 3),
-            boxShadow: [CerebroTheme.shadow3D],
-          ),
+        );
+      },
+      child: KeyedSubtree(
+        key: ValueKey(_currentStep),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(40, 28, 40, 14),
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Pick a colour',
-                  style: GoogleFonts.nunito(
-                      fontSize: 18, fontWeight: FontWeight.w800, color: CerebroTheme.outline)),
-              const SizedBox(height: 16),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: _subjectColors.map((hex) {
-                  final c = Color(int.parse('FF${hex.substring(1)}', radix: 16));
-                  final isSelected = hex == _selectedSubjectColor;
-                  return GestureDetector(
-                    onTap: () {
-                      setState(() => _selectedSubjectColor = hex);
-                      Navigator.pop(ctx);
-                    },
-                    child: Container(
-                      width: 42, height: 42,
-                      decoration: BoxDecoration(
-                        color: c,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: isSelected ? CerebroTheme.outline : c,
-                          width: isSelected ? 3 : 2,
-                        ),
-                        boxShadow: isSelected ? [CerebroTheme.shadow3DSmall] : [],
-                      ),
-                      child: isSelected
-                          ? const Icon(Icons.check_rounded, color: Colors.white, size: 20)
-                          : null,
-                    ),
-                  );
-                }).toList(),
+              // Header
+              Text(info.title,
+                style: const TextStyle(
+                  fontFamily: 'Bitroad',
+                  fontSize: 34,
+                  color: CerebroTheme.text1,
+                  height: 1.1,
+                ),
               ),
+              const SizedBox(height: 5),
+              Text(info.subtitle,
+                style: GoogleFonts.gaegu(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: CerebroTheme.olive,
+                ),
+              ),
+              const SizedBox(height: 22),
+              // Step body
+              _buildStepBody(),
             ],
           ),
         ),
@@ -737,480 +663,866 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
     );
   }
 
-  //  STEP 4: Goals & Study Time
-  Widget _buildGoalsStep() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _stepHeader(_stepConfigs[3]),
+  Widget _buildStepBody() {
+    switch (_currentStep) {
+      case 0: return _step1InstitutionType();
+      case 1: return _step2InstitutionDetails();
+      case 2: return _step3Subjects();
+      case 3: return _step4Goals();
+      case 4: return _step5Sleep();
+      case 5: return _step6Habits();
+      case 6: return _step7Mood();
+      default: return const SizedBox();
+    }
+  }
 
-          // Goal chips
-          Text('Select all that apply',
-              style: GoogleFonts.nunito(
-                  color: CerebroTheme.brown, fontSize: 13, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 10),
+  //  FOOTER
+  Widget _footer() {
+    final isLast = _currentStep == _totalSteps - 1;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(32, 14, 32, 18),
+      decoration: const BoxDecoration(
+        border: Border(top: BorderSide(color: CerebroTheme.text1, width: 3)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // Back button
+          _currentStep > 0
+              ? _GameBtn(
+                  label: 'Back',
+                  icon: Icons.chevron_left_rounded,
+                  iconFirst: true,
+                  color: Colors.white,
+                  textColor: CerebroTheme.text1,
+                  shadowColor: CerebroTheme.text1,
+                  onTap: _back,
+                )
+              : const SizedBox(width: 80),
+          // Next / Finish button
+          _GameBtn(
+            label: isLast ? 'Finish' : 'Next',
+            icon: isLast ? Icons.check_rounded : Icons.play_arrow_rounded,
+            color: CerebroTheme.pinkAccent,
+            textColor: CerebroTheme.text1,
+            shadowColor: CerebroTheme.text1,
+            onTap: _isSubmitting ? null : _next,
+            isLoading: _isSubmitting,
+          ),
+        ],
+      ),
+    );
+  }
+
+  //  STEP 1: Institution Type
+  Widget _step1InstitutionType() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text("I'm studying at a...",
+          style: GoogleFonts.gaegu(
+            fontSize: 18, fontWeight: FontWeight.w700, color: CerebroTheme.text2,
+          ),
+        ),
+        const SizedBox(height: 12),
+        _optionGrid(
+          count: _institutionTypes.length,
+          columns: 2,
+          builder: (i) {
+            final t = _institutionTypes[i];
+            final sel = _institutionType == t.key;
+            return GestureDetector(
+              onTap: () => setState(() {
+                _institutionType = t.key;
+                // Reset year when type changes
+                _yearOfStudy = 1;
+                _suggestionsLoaded = false;
+              }),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 16),
+                decoration: BoxDecoration(
+                  color: sel ? CerebroTheme.pinkLight : const Color(0xFFFEFDFB),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: CerebroTheme.text1, width: 2.5),
+                  boxShadow: sel
+                      ? [const BoxShadow(color: CerebroTheme.text1, offset: Offset(4, 4), blurRadius: 0)]
+                      : [],
+                ),
+                child: Column(
+                  children: [
+                    Text(t.icon,
+                      style: const TextStyle(fontFamily: 'Bitroad', fontSize: 26, color: CerebroTheme.text1),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(t.label,
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.gaegu(
+                        fontSize: 18, fontWeight: FontWeight.w700, color: CerebroTheme.text1,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(t.desc,
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.nunito(
+                        fontSize: 12, fontWeight: FontWeight.w500, color: CerebroTheme.text3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  //  STEP 2: Institution Details + Year
+  Widget _step2InstitutionDetails() {
+    // Dynamic labels based on institution type
+    final instLabel = _institutionType == 'school'
+        ? 'School Name'
+        : _institutionType == 'sixth_form'
+            ? 'Sixth Form / College Name'
+            : _institutionType == 'college'
+                ? 'College Name'
+                : 'University Name';
+    final instHint = _institutionType == 'school'
+        ? 'e.g., Budhanilkantha School'
+        : _institutionType == 'sixth_form'
+            ? 'e.g., Islington College'
+            : _institutionType == 'college'
+                ? 'e.g., Islington College'
+                : 'e.g., London Metropolitan University';
+    final courseLabel = _institutionType == 'school'
+        ? 'Stream / Board'
+        : _institutionType == 'sixth_form'
+            ? 'Qualification (e.g., A-Levels, IB)'
+            : _institutionType == 'college'
+                ? 'Program / Diploma'
+                : 'Course / Degree';
+    final courseHint = _institutionType == 'school'
+        ? 'e.g., Science Stream, GCSE'
+        : _institutionType == 'sixth_form'
+            ? 'e.g., A-Levels, IB Diploma'
+            : _institutionType == 'college'
+                ? 'e.g., HND Computing, Foundation Art'
+                : 'e.g., BSc Computer Science';
+
+    // Show degree level for university / college
+    final showDegreeLevel = _institutionType == 'university' || _institutionType == 'college';
+
+    // Dynamic year options based on degree level
+    final yearOptions = _getYearOptions();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Institution name with search
+        _formLabel(instLabel),
+        const SizedBox(height: 5),
+        _formInput(_institutionNameController, instHint, onChanged: (v) {
+          _instSearchDebounce?.cancel();
+          _instSearchDebounce = Timer(const Duration(milliseconds: 500), () {
+            _searchInstitutions(v);
+          });
+        }),
+
+        // Search results dropdown
+        if (_searchingInstitutions)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Row(
+              children: [
+                const SizedBox(width: 14, height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: CerebroTheme.olive)),
+                const SizedBox(width: 8),
+                Text('Searching...', style: GoogleFonts.nunito(fontSize: 13, color: CerebroTheme.text3)),
+              ],
+            ),
+          )
+        else if (_institutionResults.isNotEmpty)
+          Container(
+            margin: const EdgeInsets.only(top: 4),
+            constraints: const BoxConstraints(maxHeight: 160),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: CerebroTheme.text1, width: 2),
+              boxShadow: const [BoxShadow(color: CerebroTheme.text1, offset: Offset(3, 3), blurRadius: 0)],
+            ),
+            child: ListView.separated(
+              shrinkWrap: true,
+              padding: EdgeInsets.zero,
+              itemCount: _institutionResults.length,
+              separatorBuilder: (_, __) => Divider(height: 1, color: CerebroTheme.dividerGreen),
+              itemBuilder: (ctx, i) {
+                final inst = _institutionResults[i];
+                return InkWell(
+                  onTap: () {
+                    setState(() {
+                      _institutionNameController.text = inst['name'] ?? '';
+                      _selectedAffiliation = inst['affiliation']?.isNotEmpty == true ? inst['affiliation'] : null;
+                      _institutionResults = [];
+                      _suggestionsLoaded = false;
+                    });
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(inst['name'] ?? '',
+                          style: GoogleFonts.nunito(fontSize: 14, fontWeight: FontWeight.w600, color: CerebroTheme.text1)),
+                        if (inst['affiliation']?.isNotEmpty == true)
+                          Text(inst['affiliation']!,
+                            style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w500, color: CerebroTheme.olive)),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+
+        // Affiliation badge
+        if (_selectedAffiliation != null && _selectedAffiliation!.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: CerebroTheme.greenPale,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: CerebroTheme.olive, width: 1.5),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.link_rounded, size: 16, color: CerebroTheme.olive),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(_selectedAffiliation!,
+                    style: GoogleFonts.nunito(fontSize: 13, fontWeight: FontWeight.w600, color: CerebroTheme.oliveDark)),
+                ),
+              ],
+            ),
+          ),
+        ],
+
+        const SizedBox(height: 14),
+
+        // Degree level selector (university/college only)
+        if (showDegreeLevel) ...[
+          _formLabel('Level of Study'),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              _degreeLevelChip('undergraduate', 'Undergraduate'),
+              const SizedBox(width: 8),
+              _degreeLevelChip('masters', 'Masters'),
+              const SizedBox(width: 8),
+              _degreeLevelChip('phd', 'PhD / Doctorate'),
+            ],
+          ),
+          const SizedBox(height: 14),
+        ],
+
+        _formLabel(courseLabel),
+        const SizedBox(height: 5),
+        _formInput(_courseController, courseHint),
+        const SizedBox(height: 16),
+
+        _formLabel('Year / Grade'),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: List.generate(yearOptions.length, (i) {
+            final sel = _yearOfStudy == i + 1;
+            return GestureDetector(
+              onTap: () => setState(() {
+                _yearOfStudy = i + 1;
+                _suggestionsLoaded = false;
+              }),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                decoration: BoxDecoration(
+                  color: sel ? CerebroTheme.pinkLight : const Color(0xFFFEFDFB),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: CerebroTheme.text1, width: 2.5),
+                  boxShadow: sel
+                      ? [const BoxShadow(color: CerebroTheme.text1, offset: Offset(3, 3), blurRadius: 0)]
+                      : [],
+                ),
+                child: Text(yearOptions[i],
+                  style: GoogleFonts.gaegu(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: CerebroTheme.text1,
+                  ),
+                ),
+              ),
+            );
+          }),
+        ),
+      ],
+    );
+  }
+
+  Widget _degreeLevelChip(String key, String label) {
+    final sel = _degreeLevel == key;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() {
+          _degreeLevel = key;
+          _yearOfStudy = 1;
+          _suggestionsLoaded = false;
+        }),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: sel ? CerebroTheme.pinkLight : const Color(0xFFFEFDFB),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: CerebroTheme.text1, width: 2.5),
+            boxShadow: sel
+                ? [const BoxShadow(color: CerebroTheme.text1, offset: Offset(3, 3), blurRadius: 0)]
+                : [],
+          ),
+          child: Text(label,
+            textAlign: TextAlign.center,
+            style: GoogleFonts.nunito(
+              fontSize: 14,
+              fontWeight: sel ? FontWeight.w700 : FontWeight.w500,
+              color: CerebroTheme.text1,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  List<String> _getYearOptions() {
+    switch (_institutionType) {
+      case 'school':
+        return ['Year 7', 'Year 8', 'Year 9', 'Year 10', 'Year 11', 'Year 12'];
+      case 'sixth_form':
+        return ['Year 12 / AS', 'Year 13 / A2'];
+      case 'college':
+      case 'university':
+        // Dynamic based on degree level
+        switch (_degreeLevel) {
+          case 'masters':
+            return ['1st Year', '2nd Year'];
+          case 'phd':
+            return ['1st Year', '2nd Year', '3rd Year', '4th Year'];
+          case 'undergraduate':
+          default:
+            return ['1st Year', '2nd Year', '3rd Year', '4th Year'];
+        }
+      default:
+        return ['Year 1', 'Year 2', 'Year 3', 'Year 4'];
+    }
+  }
+
+  //  STEP 3: Subjects (AI Suggestions + Custom)
+  Widget _step3Subjects() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // AI suggestions section
+        if (_loadingSuggestions)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: Row(
+              children: [
+                const SizedBox(
+                  width: 16, height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: CerebroTheme.olive),
+                ),
+                const SizedBox(width: 10),
+                Text('Finding subjects for you...',
+                  style: GoogleFonts.gaegu(
+                    fontSize: 17, fontWeight: FontWeight.w700, color: CerebroTheme.text2,
+                  ),
+                ),
+              ],
+            ),
+          )
+        else if (_suggestedSubjects.isNotEmpty) ...[
+          Text('Suggested for you',
+            style: GoogleFonts.gaegu(
+              fontSize: 18, fontWeight: FontWeight.w700, color: CerebroTheme.olive,
+            ),
+          ),
+          const SizedBox(height: 8),
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: _studyGoals.map((goal) {
-              final isSelected = _selectedGoals.contains(goal.label);
+            children: _suggestedSubjects.map((s) {
+              final alreadyAdded = _subjects.any((sub) => sub.name == s.name);
               return GestureDetector(
-                onTap: () => setState(() {
-                  if (isSelected) {
-                    _selectedGoals.remove(goal.label);
-                  } else {
-                    _selectedGoals.add(goal.label);
-                  }
-                }),
+                onTap: alreadyAdded
+                    ? null
+                    : () {
+                        if (_subjects.length >= 10) return;
+                        setState(() {
+                          _subjects.add(_SubjectEntry(name: s.name, color: s.color, code: s.code));
+                        });
+                      },
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                   decoration: BoxDecoration(
-                    color: isSelected ? goal.color : Colors.white,
-                    borderRadius: BorderRadius.circular(22),
+                    color: alreadyAdded ? CerebroTheme.pinkLight : const Color(0xFFFEFDFB),
+                    borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                      color: isSelected ? CerebroTheme.outline : CerebroTheme.creamDark,
-                      width: isSelected ? 2.5 : 2,
+                      color: alreadyAdded ? CerebroTheme.pinkAccent : CerebroTheme.text1,
+                      width: 2.5,
                     ),
-                    boxShadow: isSelected ? [CerebroTheme.shadow3DSmall] : [],
+                    boxShadow: alreadyAdded
+                        ? [const BoxShadow(color: CerebroTheme.text1, offset: Offset(3, 3), blurRadius: 0)]
+                        : [],
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(goal.icon, size: 18,
-                          color: isSelected ? Colors.white : goal.color),
-                      const SizedBox(width: 6),
-                      Text(goal.label,
+                      if (alreadyAdded)
+                        const Padding(
+                          padding: EdgeInsets.only(right: 4),
+                          child: Icon(Icons.check, size: 14, color: CerebroTheme.text1),
+                        ),
+                      Text(s.name,
+                        style: GoogleFonts.nunito(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: CerebroTheme.text1,
+                        ),
+                      ),
+                      if (s.code != null) ...[
+                        const SizedBox(width: 6),
+                        Text(s.code!,
                           style: GoogleFonts.nunito(
-                            fontWeight: FontWeight.w700, fontSize: 13,
-                            color: isSelected ? Colors.white : CerebroTheme.outline,
-                          )),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: CerebroTheme.text3,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
               );
             }).toList(),
           ),
-
-          const SizedBox(height: 28),
-
-          // Daily study hours
-          Text('Daily study target',
-              style: GoogleFonts.nunito(
-                  fontWeight: FontWeight.w800, fontSize: 15, color: CerebroTheme.outline)),
+          const SizedBox(height: 16),
+          Container(
+            width: double.infinity,
+            height: 1.5,
+            color: CerebroTheme.dividerGreen,
+          ),
           const SizedBox(height: 12),
-          Center(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: CerebroTheme.outline, width: 3),
-                boxShadow: [CerebroTheme.shadow3D],
-              ),
-              child: Text(
-                '${_dailyStudyHours.toStringAsFixed(_dailyStudyHours % 1 == 0 ? 0 : 1)} hours',
-                style: GoogleFonts.nunito(
-                  fontSize: 36,
-                  fontWeight: FontWeight.w900,
-                  color: CerebroTheme.gold,
+        ],
+
+        // Custom add section with search
+        Text("Search & add subjects",
+          style: GoogleFonts.gaegu(
+            fontSize: 18, fontWeight: FontWeight.w700, color: CerebroTheme.text2,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Row(
+          children: [
+            Expanded(
+              child: _formInput(_subjectNameController, 'Type to search subjects...',
+                  onSubmit: (_) => _addSubject(),
+                  onChanged: (v) {
+                    _subjectSearchDebounce?.cancel();
+                    _subjectSearchDebounce = Timer(const Duration(milliseconds: 500), () {
+                      _searchSubjects(v);
+                    });
+                  }),
+            ),
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: () => setState(() => _colorIdx = (_colorIdx + 1) % _subjectColors.length),
+              child: Container(
+                width: 32, height: 32,
+                decoration: BoxDecoration(
+                  color: _parseColor(_subjectColors[_colorIdx]),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: CerebroTheme.text1, width: 2.5),
                 ),
               ),
             ),
-          ),
-          const SizedBox(height: 14),
-          SliderTheme(
-            data: SliderThemeData(
-              activeTrackColor: CerebroTheme.gold,
-              inactiveTrackColor: CerebroTheme.creamDark,
-              thumbColor: CerebroTheme.gold,
-              overlayColor: CerebroTheme.gold.withOpacity(0.2),
-              trackHeight: 8,
-              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 12),
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: _addSubject,
+              child: Container(
+                width: 46, height: 46,
+                decoration: BoxDecoration(
+                  color: CerebroTheme.olive,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: CerebroTheme.text1, width: 2.5),
+                  boxShadow: const [
+                    BoxShadow(color: CerebroTheme.text1, offset: Offset(3, 3), blurRadius: 0),
+                  ],
+                ),
+                child: const Icon(Icons.add, color: Colors.white, size: 22),
+              ),
             ),
-            child: Slider(
-              value: _dailyStudyHours,
-              min: 0.5,
-              max: 8,
-              divisions: 15,
-              onChanged: (v) => setState(() => _dailyStudyHours = v),
-            ),
-          ),
+          ],
+        ),
+
+        // Subject search results dropdown
+        if (_searchingSubjects)
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
+            padding: const EdgeInsets.only(top: 6),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('30 min', style: GoogleFonts.nunito(
-                    color: CerebroTheme.brown, fontSize: 11, fontWeight: FontWeight.w600)),
-                Text('8 hours', style: GoogleFonts.nunito(
-                    color: CerebroTheme.brown, fontSize: 11, fontWeight: FontWeight.w600)),
+                const SizedBox(width: 14, height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: CerebroTheme.olive)),
+                const SizedBox(width: 8),
+                Text('Searching modules...', style: GoogleFonts.nunito(fontSize: 13, color: CerebroTheme.text3)),
               ],
             ),
+          )
+        else if (_subjectSearchResults.isNotEmpty)
+          Container(
+            margin: const EdgeInsets.only(top: 4),
+            constraints: const BoxConstraints(maxHeight: 200),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: CerebroTheme.text1, width: 2),
+              boxShadow: const [BoxShadow(color: CerebroTheme.text1, offset: Offset(3, 3), blurRadius: 0)],
+            ),
+            child: ListView.separated(
+              shrinkWrap: true,
+              padding: EdgeInsets.zero,
+              itemCount: _subjectSearchResults.length,
+              separatorBuilder: (_, __) => Divider(height: 1, color: CerebroTheme.dividerGreen),
+              itemBuilder: (ctx, i) {
+                final sr = _subjectSearchResults[i];
+                final alreadyAdded = _subjects.any((s) => s.name == sr.name);
+                return InkWell(
+                  onTap: alreadyAdded ? null : () {
+                    if (_subjects.length >= 10) return;
+                    setState(() {
+                      _subjects.add(_SubjectEntry(
+                        name: sr.name,
+                        code: sr.code,
+                        color: _subjectColors[_colorIdx],
+                      ));
+                      _colorIdx = (_colorIdx + 1) % _subjectColors.length;
+                      _subjectNameController.clear();
+                      _subjectSearchResults = [];
+                    });
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(sr.name,
+                            style: GoogleFonts.nunito(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: alreadyAdded ? CerebroTheme.text3 : CerebroTheme.text1,
+                            ),
+                          ),
+                        ),
+                        if (sr.code != null)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: CerebroTheme.greenPale,
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: CerebroTheme.dividerGreen, width: 1),
+                            ),
+                            child: Text(sr.code!,
+                              style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w600, color: CerebroTheme.olive)),
+                          ),
+                        if (alreadyAdded)
+                          const Padding(
+                            padding: EdgeInsets.only(left: 8),
+                            child: Icon(Icons.check_circle, size: 16, color: CerebroTheme.olive),
+                          ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
           ),
-        ],
-      ),
+
+        const SizedBox(height: 10),
+
+        // Added subjects
+        if (_subjects.isNotEmpty)
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: List.generate(_subjects.length, (i) {
+              final s = _subjects[i];
+              final c = _parseColor(s.color);
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+                decoration: BoxDecoration(
+                  color: c.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: c, width: 2.5),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(s.name,
+                      style: GoogleFonts.nunito(fontSize: 14, fontWeight: FontWeight.w600, color: CerebroTheme.text1),
+                    ),
+                    if (s.code != null) ...[
+                      const SizedBox(width: 4),
+                      Text('(${s.code})',
+                        style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w500, color: CerebroTheme.text3),
+                      ),
+                    ],
+                    const SizedBox(width: 5),
+                    GestureDetector(
+                      onTap: () => _removeSubject(i),
+                      child: Text('x',
+                        style: GoogleFonts.nunito(fontSize: 15, fontWeight: FontWeight.w600, color: CerebroTheme.text1.withOpacity(0.6)),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ),
+
+        const SizedBox(height: 6),
+        Text('${_subjects.length}/10 subjects added',
+          style: GoogleFonts.gaegu(fontSize: 16, fontWeight: FontWeight.w700, color: CerebroTheme.text3),
+        ),
+      ],
+    );
+  }
+
+  //  STEP 4: Goals & Study Time
+  double _recommendedStudyHours() {
+    switch (_institutionType) {
+      case 'school':
+        return 1.5;  // GCSE / secondary students
+      case 'sixth_form':
+        return 3.0;  // A-Level students need more independent study
+      case 'college':
+        if (_degreeLevel == 'masters') return 4.0;
+        if (_degreeLevel == 'phd') return 5.0;
+        return 2.5;  // Diploma / foundation
+      case 'university':
+        if (_degreeLevel == 'masters') return 4.0;
+        if (_degreeLevel == 'phd') return 5.0;
+        return 3.0;  // Undergraduate
+      default:
+        return 2.5;
+    }
+  }
+
+  String _studyRecommendationText() {
+    switch (_institutionType) {
+      case 'school':
+        return 'For secondary school students, 1-2 hours of focused study per day is a solid start alongside homework~';
+      case 'sixth_form':
+        return 'A-Level students typically need 3-4 hours of independent study daily to stay on top of their subjects~';
+      case 'college':
+        if (_degreeLevel == 'masters') return 'Masters students usually benefit from 4-5 hours of daily study including research and reading~';
+        if (_degreeLevel == 'phd') return 'PhD research demands 5-6 hours of focused work daily — but balance is key!';
+        return 'College students do well with 2-3 hours of focused study alongside coursework~';
+      case 'university':
+        if (_degreeLevel == 'masters') return 'Masters students usually benefit from 4-5 hours of daily study including research and reading~';
+        if (_degreeLevel == 'phd') return 'PhD research demands 5-6 hours of focused work daily — but balance is key!';
+        return 'Undergrad students typically aim for 3-4 hours of self-study per day outside lectures~';
+      default:
+        return 'We recommend starting with 2-3 hours and adjusting as you go~';
+    }
+  }
+
+  Widget _step4Goals() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('What do you wanna achieve?',
+          style: GoogleFonts.gaegu(
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: CerebroTheme.text2,
+          ),
+        ),
+        const SizedBox(height: 10),
+        // Chips
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: _goalLabels.map((label) {
+            final sel = _selectedGoals.contains(label);
+            return _chip(
+              label: label,
+              selected: sel,
+              onTap: () => setState(() {
+                if (sel) _selectedGoals.remove(label);
+                else _selectedGoals.add(label);
+              }),
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 16),
+
+        Text('Daily study target',
+          style: GoogleFonts.gaegu(
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: CerebroTheme.text2,
+          ),
+        ),
+        const SizedBox(height: 4),
+        // Slider value
+        Center(
+          child: Text(
+            '${_dailyStudyHours.toStringAsFixed(_dailyStudyHours % 1 == 0 ? 0 : 1)} hours',
+            style: const TextStyle(
+              fontFamily: 'Bitroad',
+              fontSize: 26,
+              color: CerebroTheme.text1,
+            ),
+          ),
+        ),
+        // Slider
+        SliderTheme(
+          data: SliderThemeData(
+            activeTrackColor: CerebroTheme.olive,
+            inactiveTrackColor: CerebroTheme.inputBorder,
+            thumbColor: CerebroTheme.pinkAccent,
+            overlayColor: CerebroTheme.pinkAccent.withOpacity(0.2),
+            trackHeight: 10,
+            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 13),
+          ),
+          child: Slider(
+            value: _dailyStudyHours,
+            min: 0.5,
+            max: 8,
+            divisions: 15,
+            onChanged: (v) => setState(() => _dailyStudyHours = v),
+          ),
+        ),
+        const SizedBox(height: 8),
+        // Personalised recommendation
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: CerebroTheme.greenPale,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: CerebroTheme.dividerGreen, width: 2),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Padding(
+                padding: EdgeInsets.only(top: 2, right: 8),
+                child: Icon(Icons.lightbulb_outline_rounded, size: 18, color: CerebroTheme.olive),
+              ),
+              Expanded(
+                child: Text(
+                  _studyRecommendationText(),
+                  style: GoogleFonts.gaegu(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: CerebroTheme.text2,
+                    height: 1.3,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
   //  STEP 5: Sleep Schedule
-  Widget _buildSleepStep() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _stepHeader(_stepConfigs[4]),
-
-          // Bedtime picker
-          _timePickerCard(
-            label: 'Bedtime',
-            icon: Icons.nights_stay_rounded,
-            time: _bedtime,
-            color: CerebroTheme.lavender,
-            onTap: () => _pickTime(isBedtime: true),
-          ),
-          const SizedBox(height: 14),
-
-          // Wake time picker
-          _timePickerCard(
-            label: 'Wake Up',
-            icon: Icons.wb_sunny_rounded,
-            time: _wakeTime,
-            color: CerebroTheme.gold,
-            onTap: () => _pickTime(isBedtime: false),
-          ),
-
-          const SizedBox(height: 20),
-
-          // Sleep hours display
-          Center(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-              decoration: BoxDecoration(
-                color: CerebroTheme.lavender.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: CerebroTheme.lavender.withOpacity(0.3), width: 2),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.access_time_rounded, color: CerebroTheme.lavender, size: 22),
-                  const SizedBox(width: 10),
-                  Text(
-                    '${_calculateSleepHours()} hours of sleep',
-                    style: GoogleFonts.nunito(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                      color: CerebroTheme.lavenderDark,
-                    ),
-                  ),
-                ],
+  Widget _step5Sleep() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: _timeCard(
+                label: 'Bedtime',
+                value: _formatTime24(_bedtime),
+                onTap: () => _pickTime(isBedtime: true),
               ),
             ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _timeCard(
+                label: 'Wake Up',
+                value: _formatTime24(_wakeTime),
+                onTap: () => _pickTime(isBedtime: false),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        // Info box
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: CerebroTheme.greenPale,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: CerebroTheme.dividerGreen, width: 2),
           ),
-
-          const SizedBox(height: 20),
-          _infoCard(
-            icon: Icons.tips_and_updates_rounded,
-            text: "CEREBRO will use this to remind you about bedtime and track your sleep quality.",
-            color: CerebroTheme.lavender,
+          child: Text(
+            "That's about ${_calcSleepHours()} hours of sleep~",
+            textAlign: TextAlign.center,
+            style: GoogleFonts.gaegu(
+              fontSize: 17,
+              fontWeight: FontWeight.w700,
+              color: CerebroTheme.text2,
+            ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
-  Widget _timePickerCard({
-    required String label,
-    required IconData icon,
-    required TimeOfDay time,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
+  Widget _timeCard({required String label, required String value, required VoidCallback onTap}) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: CerebroTheme.outline, width: 3),
-          boxShadow: [CerebroTheme.shadow3DSmall],
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 48, height: 48,
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.15),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Icon(icon, color: color, size: 26),
-            ),
-            const SizedBox(width: 16),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label, style: GoogleFonts.nunito(
-                    fontSize: 13, fontWeight: FontWeight.w600, color: CerebroTheme.brown)),
-                Text(
-                  _formatTime(time),
-                  style: GoogleFonts.nunito(
-                    fontSize: 28, fontWeight: FontWeight.w900, color: CerebroTheme.outline,
-                  ),
-                ),
-              ],
-            ),
-            const Spacer(),
-            Icon(Icons.edit_rounded, color: CerebroTheme.brown.withOpacity(0.4), size: 20),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _pickTime({required bool isBedtime}) async {
-    final initial = isBedtime ? _bedtime : _wakeTime;
-    final picked = await showTimePicker(
-      context: context,
-      initialTime: initial,
-      builder: (ctx, child) {
-        return Theme(
-          data: Theme.of(ctx).copyWith(
-            colorScheme: ColorScheme.light(
-              primary: isBedtime ? CerebroTheme.lavender : CerebroTheme.gold,
-              surface: Colors.white,
-              onSurface: CerebroTheme.outline,
-            ),
-          ),
-          child: child!,
-        );
-      },
-    );
-    if (picked != null) {
-      setState(() {
-        if (isBedtime) {
-          _bedtime = picked;
-        } else {
-          _wakeTime = picked;
-        }
-      });
-    }
-  }
-
-  String _formatTime(TimeOfDay time) {
-    final h = time.hourOfPeriod == 0 ? 12 : time.hourOfPeriod;
-    final m = time.minute.toString().padLeft(2, '0');
-    final period = time.period == DayPeriod.am ? 'AM' : 'PM';
-    return '$h:$m $period';
-  }
-
-  String _calculateSleepHours() {
-    int bedMins = _bedtime.hour * 60 + _bedtime.minute;
-    int wakeMins = _wakeTime.hour * 60 + _wakeTime.minute;
-    int diff = wakeMins - bedMins;
-    if (diff <= 0) diff += 24 * 60; // crosses midnight
-    final hours = diff / 60;
-    return hours.toStringAsFixed(1);
-  }
-
-  //  STEP 6: Habits
-  Widget _buildHabitsStep() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _stepHeader(_stepConfigs[5]),
-          Text('Pick habits you want to build',
-              style: GoogleFonts.nunito(
-                  color: CerebroTheme.brown, fontSize: 13, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 12),
-
-          // Habit grid (2 columns)
-          ...List.generate((_habitPresets.length / 2).ceil(), (row) {
-            final i1 = row * 2;
-            final i2 = i1 + 1;
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Row(
-                children: [
-                  Expanded(child: _habitChip(_habitPresets[i1])),
-                  const SizedBox(width: 8),
-                  if (i2 < _habitPresets.length)
-                    Expanded(child: _habitChip(_habitPresets[i2]))
-                  else
-                    const Expanded(child: SizedBox()),
-                ],
-              ),
-            );
-          }),
-
-          if (_selectedHabits.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: _infoCard(
-                icon: Icons.emoji_events_rounded,
-                text: "You'll earn ${_selectedHabits.length * 10} XP daily by completing all selected habits!",
-                color: CerebroTheme.coral,
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _habitChip(_HabitItem habit) {
-    final isSelected = _selectedHabits.contains(habit.label);
-    return GestureDetector(
-      onTap: () => setState(() {
-        if (isSelected) {
-          _selectedHabits.remove(habit.label);
-        } else {
-          _selectedHabits.add(habit.label);
-        }
-      }),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        decoration: BoxDecoration(
-          color: isSelected ? habit.color.withOpacity(0.12) : Colors.white,
+          color: const Color(0xFFFEFDFB),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: isSelected ? habit.color : CerebroTheme.creamDark,
-            width: isSelected ? 2.5 : 2,
-          ),
-          boxShadow: isSelected ? [
-            BoxShadow(
-              color: habit.color.withOpacity(0.15),
-              offset: const Offset(0, 3),
-              blurRadius: 0,
-            ),
-          ] : [],
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 32, height: 32,
-              decoration: BoxDecoration(
-                color: isSelected ? habit.color : habit.color.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(9),
-              ),
-              child: Icon(habit.icon, size: 17,
-                  color: isSelected ? Colors.white : habit.color),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(habit.label,
-                  style: GoogleFonts.nunito(
-                    fontSize: 13,
-                    fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                    color: isSelected ? habit.color : CerebroTheme.outline,
-                  )),
-            ),
-            if (isSelected)
-              Icon(Icons.check_circle_rounded, color: habit.color, size: 18),
-          ],
-        ),
-      ),
-    );
-  }
-
-  //  STEP 7: Initial Mood
-  Widget _buildMoodStep() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _stepHeader(_stepConfigs[6]),
-
-          // Mood grid (2x4)
-          ...List.generate((_moods.length / 2).ceil(), (row) {
-            final i1 = row * 2;
-            final i2 = i1 + 1;
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Row(
-                children: [
-                  Expanded(child: _moodCard(i1)),
-                  const SizedBox(width: 10),
-                  if (i2 < _moods.length)
-                    Expanded(child: _moodCard(i2))
-                  else
-                    const Expanded(child: SizedBox()),
-                ],
-              ),
-            );
-          }),
-
-          const SizedBox(height: 16),
-          _infoCard(
-            icon: Icons.auto_awesome_rounded,
-            text: "Your avatar's expression will match your mood. Track daily for insights!",
-            color: CerebroTheme.pinkPop,
-          ),
-          const SizedBox(height: 8),
-          // Teaser for next step
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: CerebroTheme.gold.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: CerebroTheme.gold.withOpacity(0.3), width: 2),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.face_rounded, color: CerebroTheme.gold),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    "Next up: create your personal avatar companion!",
-                    style: GoogleFonts.nunito(
-                      color: CerebroTheme.goldDark,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _moodCard(int index) {
-    final mood = _moods[index];
-    final isSelected = _selectedMood == index;
-    return GestureDetector(
-      onTap: () => setState(() => _selectedMood = index),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(vertical: 18),
-        decoration: BoxDecoration(
-          color: isSelected ? mood.color : Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isSelected ? CerebroTheme.outline : CerebroTheme.creamDark,
-            width: isSelected ? 3 : 2,
-          ),
-          boxShadow: isSelected ? [CerebroTheme.shadow3DSmall] : [],
+          border: Border.all(color: CerebroTheme.text1, width: 2.5),
         ),
         child: Column(
           children: [
-            Text(mood.emoji, style: const TextStyle(fontSize: 36)),
-            const SizedBox(height: 6),
-            Text(
-              mood.label,
+            Text(label.toUpperCase(),
               style: GoogleFonts.nunito(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: isSelected ? Colors.white : CerebroTheme.outline,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.8,
+                color: CerebroTheme.text3,
+              ),
+            ),
+            const SizedBox(height: 3),
+            Text(value,
+              style: const TextStyle(
+                fontFamily: 'Bitroad',
+                fontSize: 22,
+                color: CerebroTheme.text1,
               ),
             ),
           ],
@@ -1219,147 +1531,449 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
     );
   }
 
-  //  SHARED WIDGETS
-  Widget _fieldLabel(String text) => Text(text,
-      style: GoogleFonts.nunito(
-          fontWeight: FontWeight.w800, fontSize: 13, color: CerebroTheme.outline));
+  String _formatTime24(TimeOfDay t) {
+    return '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+  }
 
-  Widget _cuteTextField({
-    required TextEditingController controller,
-    required String hint,
-    required IconData icon,
-  }) {
+  //  STEP 6: Habits
+  Widget _step6Habits() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: _habitItems.map((h) {
+            final sel = _selectedHabits.contains(h.label);
+            return _chip(
+              label: h.label,
+              selected: sel,
+              accentColor: h.color,
+              onTap: () => setState(() {
+                if (sel) _selectedHabits.remove(h.label);
+                else _selectedHabits.add(h.label);
+              }),
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: CerebroTheme.greenPale,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: CerebroTheme.dividerGreen, width: 2),
+          ),
+          child: Text(
+            'Each habit earns you 10 XP daily!',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.gaegu(
+              fontSize: 17,
+              fontWeight: FontWeight.w700,
+              color: CerebroTheme.text2,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  //  STEP 7: Mood
+  Widget _step7Mood() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _optionGrid(
+          count: _moodItems.length,
+          columns: 4,
+          builder: (i) {
+            final m = _moodItems[i];
+            final sel = _selectedMood == i;
+            return _moodCard(
+              label: m.label,
+              color: m.color,
+              selected: sel,
+              onTap: () => setState(() => _selectedMood = i),
+            );
+          },
+        ),
+        const SizedBox(height: 6),
+        Text('Your companion will match your vibe~',
+          style: GoogleFonts.gaegu(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            color: CerebroTheme.text3,
+          ),
+        ),
+      ],
+    );
+  }
+
+  //  SHARED FORM WIDGETS
+
+  Widget _formLabel(String text) {
+    return Text(text,
+      style: GoogleFonts.nunito(
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+        color: CerebroTheme.text2,
+        letterSpacing: 0.3,
+      ),
+    );
+  }
+
+  Widget _formInput(TextEditingController ctrl, String placeholder,
+      {ValueChanged<String>? onSubmit, ValueChanged<String>? onChanged}) {
     return TextField(
-      controller: controller,
-      style: GoogleFonts.nunito(fontSize: 14, fontWeight: FontWeight.w600),
+      controller: ctrl,
+      onSubmitted: onSubmit,
+      onChanged: onChanged,
+      style: GoogleFonts.nunito(fontSize: 16, fontWeight: FontWeight.w500, color: CerebroTheme.text1),
       decoration: InputDecoration(
-        hintText: hint,
-        hintStyle: GoogleFonts.nunito(
-            color: CerebroTheme.creamDark, fontSize: 14, fontWeight: FontWeight.w500),
+        hintText: placeholder,
+        hintStyle: GoogleFonts.nunito(fontSize: 15, color: CerebroTheme.text3, fontWeight: FontWeight.w400),
         filled: true,
-        fillColor: Colors.white,
-        prefixIcon: Icon(icon, color: CerebroTheme.brown.withOpacity(0.5), size: 20),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        fillColor: const Color(0xFFFEFDFB),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: CerebroTheme.creamDark, width: 2),
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: CerebroTheme.text1, width: 2.5),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: CerebroTheme.creamDark, width: 2),
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: CerebroTheme.text1, width: 2.5),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: CerebroTheme.pinkPop, width: 2.5),
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: CerebroTheme.pinkAccent, width: 2.5),
         ),
       ),
     );
   }
 
-  Widget _infoCard({required IconData icon, required String text, required Color color}) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: color.withOpacity(0.2), width: 1.5),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: color, size: 20),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(text,
-                style: GoogleFonts.nunito(
-                    color: CerebroTheme.outline, fontWeight: FontWeight.w600, fontSize: 13)),
+  Widget _optionGrid({required int count, required int columns, required Widget Function(int) builder}) {
+    final rows = (count / columns).ceil();
+    return Column(
+      children: List.generate(rows, (r) {
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Row(
+            children: List.generate(columns, (c) {
+              final i = r * columns + c;
+              if (i >= count) return const Expanded(child: SizedBox());
+              return Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(right: c < columns - 1 ? 10 : 0),
+                  child: builder(i),
+                ),
+              );
+            }),
           ),
-        ],
+        );
+      }),
+    );
+  }
+
+  Widget _optCard({required String label, required String icon, required bool selected, required VoidCallback onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 16),
+        decoration: BoxDecoration(
+          color: selected ? CerebroTheme.pinkLight : const Color(0xFFFEFDFB),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: CerebroTheme.text1, width: 2.5),
+          boxShadow: selected
+              ? [const BoxShadow(color: CerebroTheme.text1, offset: Offset(4, 4), blurRadius: 0)]
+              : [],
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(icon,
+              style: const TextStyle(
+                fontFamily: 'Bitroad',
+                fontSize: 20,
+                color: CerebroTheme.text1,
+              ),
+            ),
+            const SizedBox(height: 3),
+            Text(label,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.gaegu(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: CerebroTheme.text1,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _chip({required String label, required bool selected, Color? accentColor, required VoidCallback onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        decoration: BoxDecoration(
+          color: selected ? CerebroTheme.pinkLight : const Color(0xFFFEFDFB),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: CerebroTheme.text1, width: 2.5),
+          boxShadow: selected
+              ? [const BoxShadow(color: CerebroTheme.text1, offset: Offset(3, 3), blurRadius: 0)]
+              : [],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (accentColor != null) ...[
+              Container(
+                width: 4,
+                height: 16,
+                margin: const EdgeInsets.only(right: 8),
+                decoration: BoxDecoration(
+                  color: accentColor,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ],
+            Text(label,
+              style: GoogleFonts.gaegu(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                color: selected ? CerebroTheme.text1 : CerebroTheme.text2,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _moodCard({required String label, required Color color, required bool selected, required VoidCallback onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 12),
+        decoration: BoxDecoration(
+          color: selected ? CerebroTheme.greenPale : const Color(0xFFFEFDFB),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: CerebroTheme.text1, width: 2.5),
+          boxShadow: selected
+              ? [const BoxShadow(color: CerebroTheme.text1, offset: Offset(4, 4), blurRadius: 0)]
+              : [],
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                color: color,
+                shape: BoxShape.circle,
+                border: Border.all(color: CerebroTheme.text1, width: 2.5),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(label,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.gaegu(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: CerebroTheme.text1,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Color _parseColor(String hex) {
+    final h = hex.replaceAll('#', '');
+    return Color(int.parse('FF$h', radix: 16));
+  }
+}
+
+//  CREAM DIAMOND PATTERN (matches setup.html body background)
+class _CreamDiamondPattern extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      painter: _CreamDiamondPainter(),
+      size: Size.infinite,
+    );
+  }
+}
+
+class _CreamDiamondPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Matches CSS: linear-gradient(135deg, #e4bc8312 25%, transparent...)
+    final paint = Paint()..color = const Color(0x12E4BC83);
+    const s = 20.0;
+    final half = s / 2;
+
+    for (double y = -s; y < size.height + s; y += s) {
+      for (double x = -s; x < size.width + s; x += s) {
+        final p1 = Path()
+          ..moveTo(x, y + s * 0.25)
+          ..lineTo(x + s * 0.25, y)
+          ..lineTo(x, y)
+          ..close();
+        final p2 = Path()
+          ..moveTo(x + s * 0.75, y + s)
+          ..lineTo(x + s, y + s * 0.75)
+          ..lineTo(x + s, y + s)
+          ..close();
+        canvas.drawPath(p1, paint);
+        canvas.drawPath(p2, paint);
+
+        final ox = x + half;
+        final oy = y + half;
+        final q1 = Path()
+          ..moveTo(ox, oy + s * 0.25)
+          ..lineTo(ox + s * 0.25, oy)
+          ..lineTo(ox, oy)
+          ..close();
+        final q2 = Path()
+          ..moveTo(ox + s * 0.75, oy + s)
+          ..lineTo(ox + s, oy + s * 0.75)
+          ..lineTo(ox + s, oy + s)
+          ..close();
+        canvas.drawPath(q1, paint);
+        canvas.drawPath(q2, paint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+//  GAME BUTTON (matches HTML .btn)
+class _GameBtn extends StatefulWidget {
+  final String label;
+  final IconData? icon;
+  final bool iconFirst;
+  final Color color;
+  final Color textColor;
+  final Color shadowColor;
+  final VoidCallback? onTap;
+  final bool isLoading;
+
+  const _GameBtn({
+    required this.label,
+    this.icon,
+    this.iconFirst = false,
+    required this.color,
+    this.textColor = Colors.white,
+    this.shadowColor = CerebroTheme.text1,
+    this.onTap,
+    this.isLoading = false,
+  });
+
+  @override
+  State<_GameBtn> createState() => _GameBtnState();
+}
+
+class _GameBtnState extends State<_GameBtn> {
+  bool _p = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) => setState(() => _p = true),
+      onTapUp: (_) {
+        setState(() => _p = false);
+        widget.onTap?.call();
+      },
+      onTapCancel: () => setState(() => _p = false),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 100),
+        height: 44,
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        transform: Matrix4.translationValues(
+            _p ? 2 : 0, _p ? 2 : 0, 0),
+        decoration: BoxDecoration(
+          color: widget.color,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: CerebroTheme.text1, width: 2.5),
+          boxShadow: [
+            if (!_p)
+              BoxShadow(
+                color: widget.shadowColor,
+                offset: const Offset(3, 3),
+                blurRadius: 0,
+              ),
+          ],
+        ),
+        child: widget.isLoading
+            ? const SizedBox(
+                width: 20, height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+              )
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (widget.iconFirst && widget.icon != null) ...[
+                    Icon(widget.icon, color: widget.textColor, size: 16),
+                    const SizedBox(width: 4),
+                  ],
+                  Text(widget.label,
+                    style: TextStyle(
+                      fontFamily: 'Bitroad',
+                      fontSize: 14,
+                      color: widget.textColor,
+                    ),
+                  ),
+                  if (!widget.iconFirst && widget.icon != null) ...[
+                    const SizedBox(width: 6),
+                    Icon(widget.icon, color: widget.textColor, size: 16),
+                  ],
+                ],
+              ),
       ),
     );
   }
 }
 
 //  DATA CLASSES
-
 class _SubjectEntry {
   final String name;
   final String color;
-  _SubjectEntry({required this.name, required this.color});
+  final String? code;
+  _SubjectEntry({required this.name, required this.color, this.code});
 }
 
-class _GoalItem {
+class _SuggestedSubject {
+  final String name;
+  final String? code;
+  final String color;
+  _SuggestedSubject({required this.name, this.code, required this.color});
+}
+
+class _HabitDef {
   final String label;
-  final IconData icon;
   final Color color;
-  const _GoalItem(this.label, this.icon, this.color);
+  const _HabitDef(this.label, this.color);
 }
 
-class _HabitItem {
+class _MoodDef {
   final String label;
-  final IconData icon;
   final Color color;
-  final String colorHex;
-  const _HabitItem(this.label, this.icon, this.color, this.colorHex);
+  const _MoodDef(this.label, this.color);
 }
 
-class _MoodItem {
-  final String label;
-  final String emoji;
-  final Color color;
-  const _MoodItem(this.label, this.emoji, this.color);
-}
-
-class _StepConfig {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final Color color;
-  const _StepConfig(this.icon, this.title, this.subtitle, this.color);
-}
-
-//  CUTE BUTTON (Toca Boca press-down effect)
-class _ChunkyButton extends StatefulWidget {
-  final VoidCallback? onTap;
-  final Color color;
-  final Widget child;
-
-  const _ChunkyButton({
-    required this.onTap,
-    required this.color,
-    required this.child,
-  });
-
-  @override
-  State<_ChunkyButton> createState() => _ChunkyButtonState();
-}
-
-class _ChunkyButtonState extends State<_ChunkyButton> {
-  bool _pressed = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTapDown: (_) => setState(() => _pressed = true),
-      onTapUp: (_) {
-        setState(() => _pressed = false);
-        widget.onTap?.call();
-      },
-      onTapCancel: () => setState(() => _pressed = false),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 100),
-        width: double.infinity,
-        height: 54,
-        transform: Matrix4.translationValues(0, _pressed ? 4 : 0, 0),
-        decoration: BoxDecoration(
-          color: widget.color,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: CerebroTheme.outline, width: 3.5),
-          boxShadow: [
-            if (!_pressed) CerebroTheme.shadow3D,
-          ],
-        ),
-        child: Center(child: widget.child),
-      ),
-    );
-  }
+class _SubjectSearchResult {
+  final String name;
+  final String? code;
+  _SubjectSearchResult({required this.name, this.code});
 }
