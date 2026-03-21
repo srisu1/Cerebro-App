@@ -1,192 +1,176 @@
-/// 4 cute animated slides with thick borders, warm colors, bouncy icons.
+/// Pixel-matched to ui-prototype/onboarding.html:
+///   • Olive (#98a869) background with diamond checkerboard pattern
+///   • White "game-card" with thick dark border + hard box-shadow
+///   • 3 slides: Master Your Studies, Track Your Wellbeing, Meet Your Companion
+///   • Each slide: gradient illustration area (top) + content area (bottom)
+///   • Nav row: Skip button (green-pale), dots, Next/Get Started button (pink)
+///   • Slide transition: slideIn (translateX 60→0), slideOut (translateX 0→-60)
 
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cerebro_app/config/constants.dart';
 import 'package:cerebro_app/config/theme.dart';
 
+//  SLIDE DATA
+class _SlideData {
+  final String svgAsset;
+  final String title;
+  final String description;
+  const _SlideData({
+    required this.svgAsset,
+    required this.title,
+    required this.description,
+  });
+}
+
+const _slides = [
+  _SlideData(
+    svgAsset: 'assets/illustrations/onboarding_1.svg',
+    title: 'Master Your Studies',
+    description:
+        'Team up with smart tools that adapt to your learning style. Flashcards, summaries, and study plans — all in one place.',
+  ),
+  _SlideData(
+    svgAsset: 'assets/illustrations/onboarding_2.svg',
+    title: 'Track Your Wellbeing',
+    description:
+        'Balance is everything. Log your mood, track your energy, and get gentle nudges to take care of yourself along the way.',
+  ),
+  _SlideData(
+    svgAsset: 'assets/illustrations/onboarding_3.svg',
+    title: 'Meet Your Companion',
+    description:
+        'Your personal AI buddy that learns with you, celebrates your wins, and keeps you company through late-night study sessions.',
+  ),
+];
+
+//  ONBOARDING SCREEN
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
-
   @override
   State<OnboardingScreen> createState() => _OnboardingScreenState();
 }
 
-class _OnboardingScreenState extends State<OnboardingScreen> {
-  final PageController _pageController = PageController();
-  int _currentPage = 0;
+class _OnboardingScreenState extends State<OnboardingScreen>
+    with TickerProviderStateMixin {
+  int _current = 0;
+  int? _previous;
+  bool _animating = false;
 
-  final List<_OnboardingSlide> _slides = const [
-    _OnboardingSlide(
-      icon: Icons.psychology_rounded,
-      title: 'Welcome to\nCEREBRO',
-      subtitle: 'Your Smart Student Companion',
-      description:
-          'The smart app that connects your studies, health, and daily life into one seamless experience.',
-      color: CerebroTheme.pinkPop,
-      bgAccent: CerebroTheme.pinkSoft,
-    ),
-    _OnboardingSlide(
-      icon: Icons.auto_stories_rounded,
-      title: 'Master Your\nStudies',
-      subtitle: 'Smart Study Sessions & Flashcards',
-      description:
-          'Track your study time, create flashcards with spaced repetition, and watch your knowledge grow.',
-      color: CerebroTheme.sky,
-      bgAccent: Color(0xFFD6EFFE),
-    ),
-    _OnboardingSlide(
-      icon: Icons.favorite_rounded,
-      title: 'Track Your\nWellbeing',
-      subtitle: 'Sleep, Mood & Health Insights',
-      description:
-          'Log your sleep, track moods, manage medications, and discover how your health affects your studies.',
-      color: CerebroTheme.sage,
-      bgAccent: Color(0xFFD4F0E0),
-    ),
-    _OnboardingSlide(
-      icon: Icons.face_rounded,
-      title: 'Meet Your\nCompanion',
-      subtitle: 'Create Your Personal Avatar',
-      description:
-          'Customize a unique avatar that grows and evolves with you. Earn XP, unlock items, and level up!',
-      color: CerebroTheme.gold,
-      bgAccent: Color(0xFFFFF0C9),
-    ),
-  ];
+  // Card pop-in animation (matches CSS: cardPop .6s cubic-bezier(.34,1.4,.64,1))
+  late final AnimationController _cardAc;
+  late final Animation<double> _cardScale, _cardFade, _cardSlide;
 
-  Future<void> _completeOnboarding() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(AppConstants.onboardingCompleteKey, true);
-    if (mounted) context.go('/register');
+  // Slide transition animation
+  late final AnimationController _slideAc;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _cardAc = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 600))
+      ..forward();
+    _cardScale = Tween(begin: 0.96, end: 1.0).animate(
+        CurvedAnimation(parent: _cardAc, curve: Curves.elasticOut));
+    _cardFade = Tween(begin: 0.0, end: 1.0).animate(
+        CurvedAnimation(parent: _cardAc, curve: const Interval(0.0, 0.5)));
+    _cardSlide = Tween(begin: 16.0, end: 0.0).animate(
+        CurvedAnimation(parent: _cardAc, curve: Curves.easeOut));
+
+    _slideAc = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 400));
+    _slideAc.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        setState(() {
+          _previous = null;
+          _animating = false;
+        });
+        _slideAc.reset();
+      }
+    });
   }
 
-  void _nextPage() {
-    if (_currentPage < _slides.length - 1) {
-      _pageController.nextPage(
-        duration: const Duration(milliseconds: 400),
-        curve: Curves.easeInOut,
-      );
+  @override
+  void dispose() {
+    _cardAc.dispose();
+    _slideAc.dispose();
+    super.dispose();
+  }
+
+  void _goToSlide(int index) {
+    if (_animating || index == _current) return;
+    setState(() {
+      _previous = _current;
+      _current = index;
+      _animating = true;
+    });
+    _slideAc.forward(from: 0);
+  }
+
+  void _next() {
+    if (_current < _slides.length - 1) {
+      _goToSlide(_current + 1);
     } else {
       _completeOnboarding();
     }
   }
 
-  @override
-  void dispose() {
-    _pageController.dispose();
-    super.dispose();
+  Future<void> _completeOnboarding() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(AppConstants.onboardingCompleteKey, true);
+    if (mounted) context.go('/login');
   }
 
   @override
   Widget build(BuildContext context) {
-    final slide = _slides[_currentPage];
-
     return Scaffold(
-      backgroundColor: CerebroTheme.cream,
+      backgroundColor: CerebroTheme.olive,
       body: Stack(
         children: [
-          PageView.builder(
-            controller: _pageController,
-            itemCount: _slides.length,
-            onPageChanged: (index) => setState(() => _currentPage = index),
-            itemBuilder: (context, index) => _buildSlide(_slides[index]),
-          ),
+          Positioned.fill(child: _DiamondPattern()),
 
-          if (_currentPage < _slides.length - 1)
-            Positioned(
-              top: MediaQuery.of(context).padding.top + 16,
-              right: 24,
-              child: GestureDetector(
-                onTap: _completeOnboarding,
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    border:
-                        Border.all(color: CerebroTheme.outline, width: 2),
-                    boxShadow: [CerebroTheme.shadow3DSmall],
-                  ),
-                  child: Text(
-                    'Skip',
-                    style: GoogleFonts.nunito(
-                      color: CerebroTheme.brown,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
+          Positioned.fill(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(28, 48, 36, 28),
+              child: AnimatedBuilder(
+                animation: _cardAc,
+                builder: (ctx, _) => Opacity(
+                  opacity: _cardFade.value.clamp(0.0, 1.0),
+                  child: Transform.translate(
+                    offset: Offset(0, _cardSlide.value),
+                    child: Transform.scale(
+                      scale: _cardScale.value.clamp(0.96, 1.0),
+                      child: Center(
+                        child: Container(
+                          width: double.infinity,
+                          height: double.infinity,
+                          constraints: const BoxConstraints(maxWidth: 1400),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(24),
+                            border: Border.all(
+                                color: CerebroTheme.text1, width: 3),
+                            boxShadow: [
+                              BoxShadow(
+                                  color: CerebroTheme.text1.withOpacity(0.5),
+                                  offset: const Offset(8, 8),
+                                  blurRadius: 0),
+                            ],
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(21),
+                            child: _cardContent(),
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
-
-          Positioned(
-            bottom: 60,
-            left: 24,
-            right: 24,
-            child: Column(
-              children: [
-                // Dot indicators (cute chunky style)
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: List.generate(
-                    _slides.length,
-                    (index) => AnimatedContainer(
-                      duration: const Duration(milliseconds: 300),
-                      margin: const EdgeInsets.symmetric(horizontal: 4),
-                      width: _currentPage == index ? 32 : 10,
-                      height: 10,
-                      decoration: BoxDecoration(
-                        color: _currentPage == index
-                            ? slide.color
-                            : CerebroTheme.creamDark,
-                        borderRadius: BorderRadius.circular(5),
-                        border: Border.all(
-                          color: _currentPage == index
-                              ? CerebroTheme.outline
-                              : CerebroTheme.creamDark,
-                          width: 2,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 32),
-
-                // Action button (Toca Boca chunky)
-                _ChunkyButton(
-                  onTap: _nextPage,
-                  color: slide.color,
-                  label: _currentPage == _slides.length - 1
-                      ? 'Get Started'
-                      : 'Next',
-                ),
-
-                // Login link on last slide
-                if (_currentPage == _slides.length - 1)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 16),
-                    child: GestureDetector(
-                      onTap: () async {
-                        final prefs = await SharedPreferences.getInstance();
-                        await prefs.setBool(
-                            AppConstants.onboardingCompleteKey, true);
-                        if (mounted) context.go('/login');
-                      },
-                      child: Text(
-                        'Already have an account? Sign In',
-                        style: GoogleFonts.nunito(
-                          color: CerebroTheme.pinkPop,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
             ),
           ),
         ],
@@ -194,146 +178,307 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     );
   }
 
-  Widget _buildSlide(_OnboardingSlide slide) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 32),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const SizedBox(height: 80),
-
-          TweenAnimationBuilder<double>(
-            tween: Tween(begin: 0.0, end: 1.0),
-            duration: const Duration(milliseconds: 800),
-            curve: Curves.elasticOut,
-            builder: (context, value, child) {
-              return Transform.scale(scale: value, child: child);
-            },
-            child: Container(
-              width: 140,
-              height: 140,
-              decoration: BoxDecoration(
-                color: slide.bgAccent,
-                borderRadius: BorderRadius.circular(36),
-                border: Border.all(color: CerebroTheme.outline, width: 5),
-                boxShadow: [CerebroTheme.shadow3DLarge],
+  //  CARD CONTENT (slides with animation)
+  Widget _cardContent() {
+    return AnimatedBuilder(
+      animation: _slideAc,
+      builder: (ctx, _) {
+        return Stack(
+          children: [
+            // Previous slide (exiting: translateX 0 → -60)
+            if (_previous != null)
+              Positioned.fill(
+                child: Opacity(
+                  opacity: (1.0 - _slideAc.value).clamp(0.0, 1.0),
+                  child: Transform.translate(
+                    offset: Offset(-60 * _slideAc.value, 0),
+                    child: _slideWidget(_slides[_previous!]),
+                  ),
+                ),
               ),
-              child: Icon(slide.icon, size: 72, color: slide.color),
+
+            // Current slide (entering: translateX 60 → 0)
+            Positioned.fill(
+              child: _previous != null
+                  ? Opacity(
+                      opacity: _slideAc.value.clamp(0.0, 1.0),
+                      child: Transform.translate(
+                        offset: Offset(60 * (1 - _slideAc.value), 0),
+                        child: _slideWidget(_slides[_current]),
+                      ),
+                    )
+                  : _slideWidget(_slides[_current]),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  //  SINGLE SLIDE
+  Widget _slideWidget(_SlideData slide) {
+    return Column(
+      children: [
+        Expanded(child: _illustrationArea(slide)),
+
+        Container(height: 3, color: CerebroTheme.text1),
+
+        _contentArea(slide),
+      ],
+    );
+  }
+
+  Widget _illustrationArea(_SlideData slide) {
+    return Stack(
+      children: [
+        // Gradient background (matches CSS: linear-gradient(160deg, cream, green-pale, pink-light))
+        Positioned.fill(
+          child: Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment(-0.6, -0.8),
+                end: Alignment(0.6, 0.8),
+                stops: [0.0, 0.4, 1.0],
+                colors: [
+                  CerebroTheme.creamWarm,
+                  CerebroTheme.greenPale,
+                  CerebroTheme.pinkLight,
+                ],
+              ),
             ),
           ),
+        ),
 
-          const SizedBox(height: 40),
+        // SVG illustration (centered, 82% width, min 720px)
+        Center(
+          child: OverflowBox(
+            maxWidth: double.infinity,
+            maxHeight: double.infinity,
+            child: SizedBox(
+              width: 900,
+              height: 680,
+              child: SvgPicture.asset(
+                slide.svgAsset,
+                fit: BoxFit.contain,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 
+  Widget _contentArea(_SlideData slide) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(40, 26, 40, 26),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
           Text(
             slide.title,
             textAlign: TextAlign.center,
-            style: GoogleFonts.nunito(
-              fontSize: 32,
-              fontWeight: FontWeight.w900,
-              color: CerebroTheme.outline,
-              height: 1.2,
+            style: const TextStyle(
+              fontFamily: 'Bitroad',
+              fontSize: 35,
+              color: CerebroTheme.text1,
+              height: 1.1,
             ),
           ),
+          const SizedBox(height: 6),
 
-          const SizedBox(height: 10),
-
-          Text(
-            slide.subtitle,
-            textAlign: TextAlign.center,
-            style: GoogleFonts.nunito(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              color: slide.color,
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 460),
+            child: Text(
+              slide.description,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.nunito(
+                fontSize: 14,
+                color: CerebroTheme.text2,
+                height: 1.5,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
-
           const SizedBox(height: 16),
 
-          Text(
-            slide.description,
-            textAlign: TextAlign.center,
-            style: GoogleFonts.nunito(
-              fontSize: 15,
-              color: CerebroTheme.brown,
-              height: 1.6,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-
-          const Spacer(),
+          _navRow(),
         ],
+      ),
+    );
+  }
+
+  //  NAVIGATION ROW
+  Widget _navRow() {
+    final isLast = _current == _slides.length - 1;
+
+    return SizedBox(
+      width: double.infinity,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 700),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            _GameBtn(
+              label: 'Skip',
+              color: CerebroTheme.greenPale,
+              textColor: CerebroTheme.text1,
+              onTap: _completeOnboarding,
+            ),
+
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: List.generate(_slides.length, (i) {
+                final active = i == _current;
+                return GestureDetector(
+                  onTap: () => _goToSlide(i),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 250),
+                    margin: const EdgeInsets.symmetric(horizontal: 5),
+                    width: active ? 28 : 10,
+                    height: 10,
+                    decoration: BoxDecoration(
+                      color: active
+                          ? CerebroTheme.pinkAccent
+                          : CerebroTheme.greenPale,
+                      borderRadius: BorderRadius.circular(active ? 8 : 5),
+                      border: Border.all(
+                          color: CerebroTheme.text1, width: 2.5),
+                    ),
+                  ),
+                );
+              }),
+            ),
+
+            _GameBtn(
+              label: isLast ? 'Get Started' : 'Next',
+              color: CerebroTheme.pinkAccent,
+              textColor: CerebroTheme.text1,
+              icon: Icons.play_arrow_rounded,
+              onTap: _next,
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-class _OnboardingSlide {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final String description;
-  final Color color;
-  final Color bgAccent;
-
-  const _OnboardingSlide({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.description,
-    required this.color,
-    required this.bgAccent,
-  });
+//  DIAMOND CHECKERBOARD PATTERN (matches title screen)
+class _DiamondPattern extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      painter: _DiamondPatternPainter(),
+      size: Size.infinite,
+    );
+  }
 }
 
-class _ChunkyButton extends StatefulWidget {
-  final VoidCallback onTap;
-  final Color color;
-  final String label;
+class _DiamondPatternPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = const Color(0x22FDEFDB);
+    const s = 30.0;
+    final half = s / 2;
 
-  const _ChunkyButton({
-    required this.onTap,
-    required this.color,
-    required this.label,
-  });
+    for (double y = -s; y < size.height + s; y += s) {
+      for (double x = -s; x < size.width + s; x += s) {
+        final p1 = Path()
+          ..moveTo(x, y + s * 0.25)
+          ..lineTo(x + s * 0.25, y)
+          ..lineTo(x, y)
+          ..close();
+        final p2 = Path()
+          ..moveTo(x + s * 0.75, y + s)
+          ..lineTo(x + s, y + s * 0.75)
+          ..lineTo(x + s, y + s)
+          ..close();
+        canvas.drawPath(p1, paint);
+        canvas.drawPath(p2, paint);
+
+        final ox = x + half;
+        final oy = y + half;
+        final q1 = Path()
+          ..moveTo(ox, oy + s * 0.25)
+          ..lineTo(ox + s * 0.25, oy)
+          ..lineTo(ox, oy)
+          ..close();
+        final q2 = Path()
+          ..moveTo(ox + s * 0.75, oy + s)
+          ..lineTo(ox + s, oy + s * 0.75)
+          ..lineTo(ox + s, oy + s)
+          ..close();
+        canvas.drawPath(q1, paint);
+        canvas.drawPath(q2, paint);
+      }
+    }
+  }
 
   @override
-  State<_ChunkyButton> createState() => _ChunkyButtonState();
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-class _ChunkyButtonState extends State<_ChunkyButton> {
-  bool _pressed = false;
+//  GAME BUTTON (matches HTML .btn with press-down effect)
+class _GameBtn extends StatefulWidget {
+  final String label;
+  final Color color;
+  final Color textColor;
+  final IconData? icon;
+  final VoidCallback? onTap;
+  const _GameBtn({
+    required this.label,
+    required this.color,
+    this.textColor = Colors.white,
+    this.icon,
+    this.onTap,
+  });
+  @override
+  State<_GameBtn> createState() => _GameBtnState();
+}
 
+class _GameBtnState extends State<_GameBtn> {
+  bool _p = false;
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTapDown: (_) => setState(() => _pressed = true),
+      onTapDown: (_) => setState(() => _p = true),
       onTapUp: (_) {
-        setState(() => _pressed = false);
-        widget.onTap();
+        setState(() => _p = false);
+        widget.onTap?.call();
       },
-      onTapCancel: () => setState(() => _pressed = false),
+      onTapCancel: () => setState(() => _p = false),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 100),
-        width: double.infinity,
-        height: 56,
-        transform: Matrix4.translationValues(0, _pressed ? 4 : 0, 0),
+        height: 46,
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        transform: Matrix4.translationValues(
+            _p ? 2 : 0, _p ? 2 : 0, 0),
         decoration: BoxDecoration(
           color: widget.color,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: CerebroTheme.outline, width: 4),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: CerebroTheme.text1, width: 2.5),
           boxShadow: [
-            if (!_pressed) CerebroTheme.shadow3D,
+            if (!_p)
+              const BoxShadow(
+                  color: CerebroTheme.text1,
+                  offset: Offset(3, 3),
+                  blurRadius: 0),
           ],
         ),
-        child: Center(
-          child: Text(
-            widget.label,
-            style: GoogleFonts.nunito(
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-              color: Colors.white,
-            ),
-          ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(widget.label,
+                style: TextStyle(
+                  fontFamily: 'Bitroad',
+                  fontSize: 15,
+                  color: widget.textColor,
+                )),
+            if (widget.icon != null) ...[
+              const SizedBox(width: 6),
+              Icon(widget.icon, color: widget.textColor, size: 20),
+            ],
+          ],
         ),
       ),
     );

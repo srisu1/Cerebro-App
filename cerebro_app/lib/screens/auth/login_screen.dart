@@ -22,7 +22,7 @@ import 'package:cerebro_app/services/api_service.dart';
 const _termsText =
     'CEREBRO Terms of Service\n\nLast updated: February 2026\n\n'
     '1. Acceptance of Terms\nBy accessing or using CEREBRO, you agree to these Terms.\n\n'
-    '2. Description of Service\nCEREBRO is an smart student companion for study tracking, '
+    '2. Description of Service\nCEREBRO is a smart student companion for study tracking, '
     'health monitoring, and daily life management.\n\n'
     '3. User Accounts\nYou are responsible for your account security.\n\n'
     '4. Acceptable Use\nYou agree not to misuse the service.\n\n'
