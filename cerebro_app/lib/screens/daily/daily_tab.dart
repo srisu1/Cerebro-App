@@ -1,49 +1,73 @@
-import 'dart:async';
+/// Visual language mirrors the Home dashboard (ombre + pawprint +
+/// sticker-stamp cards). Functional integrations:
+///
+///   • Quest Manager — reads/writes the SAME habits the home
+///     dashboard shows (via dashboardProvider). Add/edit/delete
+///     here propagates to home instantly.
+///   • Morning / Evening routines — items are editable; each
+///     routine persists its own item list + completion state.
+///   • Back button — returns to the Home tab (selectedTabProvider = 0),
+///     matching Health Hub + Study Hub.
+///   • Daily Score — based on real completions (quests + routines).
+///
+/// Notes on typography: Bitroad font lacks an apostrophe glyph (it
+/// renders as a comma). All Bitroad section titles avoid apostrophes.
+
 import 'dart:convert';
 import 'dart:math' as math;
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:cerebro_app/providers/dashboard_provider.dart';
 
-// COLORS
+import 'package:cerebro_app/config/constants.dart';
+import 'package:cerebro_app/providers/dashboard_provider.dart';
+import 'package:cerebro_app/screens/home/home_screen.dart';
+
 const _ombre1 = Color(0xFFFFFBF7);
 const _ombre2 = Color(0xFFFFF8F3);
 const _ombre3 = Color(0xFFFFF3EF);
 const _ombre4 = Color(0xFFFEEDE9);
 const _pawClr = Color(0xFFF8BCD0);
 
-const _outline = Color(0xFF6E5848);
-const _brown = Color(0xFF4E3828);
-const _brownLt = Color(0xFF7A5840);
+const _outline   = Color(0xFF6E5848);
+const _brown     = Color(0xFF4E3828);
+const _brownLt   = Color(0xFF7A5840);
+const _brownSoft = Color(0xFF9A8070);
 
-const _cardFill = Color(0xFFFFF8F4);
-const _panelBg = Color(0xFFFFF6EE);
-const _goldGlow = Color(0xFFF8E080);
+const _cardFill  = Color(0xFFFFF8F4);
+const _cream     = Color(0xFFFDEFDB);
+const _olive     = Color(0xFF98A869);
+const _oliveDk   = Color(0xFF58772F);
 
-const _coralHdr = Color(0xFFF0A898);
-const _coralLt = Color(0xFFF8C0B0);
-const _pinkHdr = Color(0xFFE8B0A8);
-const _pinkLt = Color(0xFFF0C0B8);
-const _greenHdr = Color(0xFFA8D5A3);
-const _greenLt = Color(0xFFC2E8BC);
-const _greenDk = Color(0xFF88B883);
-const _purpleHdr = Color(0xFFCDA8D8);
-const _purpleLt = Color(0xFFD8C0E8);
-const _purpleDk = Color(0xFFAA88C0);
-const _skyHdr = Color(0xFF9DD4F0);
-const _skyLt = Color(0xFF98D4F0);
-const _skyDk = Color(0xFF6BB8E0);
-const _sageHdr = Color(0xFF90C8A0);
-const _sageLt = Color(0xFFB0D8B8);
-const _sageDk = Color(0xFF70A880);
-const _goldHdr = Color(0xFFF0D878);
-const _goldDk = Color(0xFFD4B850);
+const _coral     = Color(0xFFF7AEAE);
+const _orange    = Color(0xFFFFBC5C);
+const _red       = Color(0xFFEF6262);
+const _gold      = Color(0xFFE4BC83);
+
+const _lavender  = Color(0xFFDDBDE8);
+const _goldGlow  = Color(0xFFF8E080);
+
+// Quest icon preset mapping (mirrors dashboardProvider's habitIconMap keys).
+const Map<String, IconData> _questIcons = {
+  'water':        Icons.water_drop_rounded,
+  'book':         Icons.menu_book_rounded,
+  'fitness':      Icons.fitness_center_rounded,
+  'edit':         Icons.edit_rounded,
+  'self_improve': Icons.self_improvement_rounded,
+  'no_food':      Icons.no_food_rounded,
+  'walk':         Icons.directions_walk_rounded,
+  'phone_off':    Icons.phone_disabled_rounded,
+  'school':       Icons.school_rounded,
+  'night':        Icons.nights_stay_rounded,
+  'check':        Icons.check_rounded,
+};
+
+IconData _iconFor(String key) => _questIcons[key] ?? Icons.check_rounded;
 
 class DailyTab extends ConsumerStatefulWidget {
   const DailyTab({Key? key}) : super(key: key);
-
   @override
   ConsumerState<DailyTab> createState() => _DailyTabState();
 }
@@ -54,1370 +78,1806 @@ class _DailyTabState extends ConsumerState<DailyTab>
   late SharedPreferences _prefs;
   bool _loaded = false;
 
-  // Goals
-  List<Map<String, dynamic>> _goals = [];
-  bool _addingGoal = false;
-  TextEditingController _goalCtrl = TextEditingController();
+  // Routines — items are editable; done state is per-day.
+  List<String> _morningItems = [];
+  List<bool>   _morningDone  = [];
+  List<String> _eveningItems = [];
+  List<bool>   _eveningDone  = [];
 
-  // Routines
-  List<bool> _morningDone = [false, false, false, false];
-  List<bool> _eveningDone = [false, false, false, false];
-
-  // Activity tracking
-  String? _activeCategory;
-  DateTime? _activityStart;
-  Timer? _activityTimer;
-  List<Map<String, dynamic>> _activityLog = [];
-  Duration _activeDuration = Duration.zero;
-
-  final _categories = [
-    {
-      'key': 'study',
-      'label': 'Study',
-      'icon': Icons.menu_book_rounded,
-      'color': const Color(0xFF9DD4F0)
-    },
-    {
-      'key': 'exercise',
-      'label': 'Exercise',
-      'icon': Icons.fitness_center_rounded,
-      'color': const Color(0xFFA8D5A3)
-    },
-    {
-      'key': 'social',
-      'label': 'Social',
-      'icon': Icons.people_rounded,
-      'color': const Color(0xFFE8B0A8)
-    },
-    {
-      'key': 'rest',
-      'label': 'Rest',
-      'icon': Icons.hotel_rounded,
-      'color': const Color(0xFFCDA8D8)
-    },
-    {
-      'key': 'creative',
-      'label': 'Creative',
-      'icon': Icons.brush_rounded,
-      'color': const Color(0xFFF0A898)
-    },
-    {
-      'key': 'errands',
-      'label': 'Errands',
-      'icon': Icons.shopping_bag_rounded,
-      'color': const Color(0xFFF0D878)
-    },
+  static const _defaultMorning = <String>[
+    'Wake up on time',
+    'Hydrate',
+    'Stretch / move',
+    'Plan your day',
+  ];
+  static const _defaultEvening = <String>[
+    'Review your day',
+    'Prep tomorrow',
+    'Screens off by 10',
+    'Wind down',
   ];
 
+  //  LIFECYCLE
   @override
   void initState() {
     super.initState();
-    _enterCtrl =
-        AnimationController(duration: const Duration(milliseconds: 900), vsync: this);
+    _enterCtrl = AnimationController(
+        duration: const Duration(milliseconds: 900), vsync: this);
     _loadData();
   }
 
   @override
   void dispose() {
     _enterCtrl.dispose();
-    _activityTimer?.cancel();
-    _goalCtrl.dispose();
-    _questAddCtrl.dispose();
     super.dispose();
   }
 
+  //  PERSISTENCE
   Future<void> _loadData() async {
     _prefs = await SharedPreferences.getInstance();
-    final today = _getTodayKey();
+    final today = _todayKey();
 
-    // Load goals
-    final goalsJson = _prefs.getString('daily_goals_$today');
-    if (goalsJson != null) {
-      _goals = List<Map<String, dynamic>>.from(jsonDecode(goalsJson));
-    } else {
-      _goals = [];
+    // Morning items (persist across days).
+    final mItemsJson = _prefs.getString('daily_morning_items');
+    _morningItems = mItemsJson != null
+        ? List<String>.from(jsonDecode(mItemsJson))
+        : List<String>.from(_defaultMorning);
+
+    // Morning done (per-day).
+    final mDoneJson = _prefs.getString('daily_morning_done_$today');
+    _morningDone = mDoneJson != null
+        ? List<bool>.from(jsonDecode(mDoneJson))
+        : List<bool>.filled(_morningItems.length, false);
+    // Guard against length mismatch after edits:
+    if (_morningDone.length != _morningItems.length) {
+      _morningDone = List<bool>.filled(_morningItems.length, false);
     }
 
-    // Load morning routine
-    final morningJson = _prefs.getString('daily_morning_$today');
-    if (morningJson != null) {
-      _morningDone = List<bool>.from(jsonDecode(morningJson));
-    } else {
-      _morningDone = [false, false, false, false];
+    // Evening items + done.
+    final eItemsJson = _prefs.getString('daily_evening_items');
+    _eveningItems = eItemsJson != null
+        ? List<String>.from(jsonDecode(eItemsJson))
+        : List<String>.from(_defaultEvening);
+    final eDoneJson = _prefs.getString('daily_evening_done_$today');
+    _eveningDone = eDoneJson != null
+        ? List<bool>.from(jsonDecode(eDoneJson))
+        : List<bool>.filled(_eveningItems.length, false);
+    if (_eveningDone.length != _eveningItems.length) {
+      _eveningDone = List<bool>.filled(_eveningItems.length, false);
     }
 
-    // Load evening routine
-    final eveningJson = _prefs.getString('daily_evening_$today');
-    if (eveningJson != null) {
-      _eveningDone = List<bool>.from(jsonDecode(eveningJson));
-    } else {
-      _eveningDone = [false, false, false, false];
-    }
-
-    // Load activity log
-    final activityJson = _prefs.getString('activity_log_$today');
-    if (activityJson != null) {
-      _activityLog = List<Map<String, dynamic>>.from(jsonDecode(activityJson));
-    } else {
-      _activityLog = [];
-    }
-
+    if (!mounted) return;
     setState(() => _loaded = true);
     _enterCtrl.forward();
   }
 
-  Future<void> _saveGoals() async {
-    _prefs.setString('daily_goals_${_getTodayKey()}', jsonEncode(_goals));
-  }
-
   Future<void> _saveMorning() async {
-    _prefs.setString('daily_morning_${_getTodayKey()}', jsonEncode(_morningDone));
+    await _prefs.setString('daily_morning_items', jsonEncode(_morningItems));
+    await _prefs.setString(
+        'daily_morning_done_${_todayKey()}', jsonEncode(_morningDone));
   }
 
   Future<void> _saveEvening() async {
-    _prefs.setString('daily_evening_${_getTodayKey()}', jsonEncode(_eveningDone));
+    await _prefs.setString('daily_evening_items', jsonEncode(_eveningItems));
+    await _prefs.setString(
+        'daily_evening_done_${_todayKey()}', jsonEncode(_eveningDone));
   }
 
-  Future<void> _saveActivityLog() async {
-    _prefs.setString('activity_log_${_getTodayKey()}', jsonEncode(_activityLog));
+  String _todayKey() {
+    final n = DateTime.now();
+    return '${n.year}-${n.month.toString().padLeft(2, '0')}-${n.day.toString().padLeft(2, '0')}';
   }
 
-  String _getTodayKey() {
-    final now = DateTime.now();
-    return '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+  String _formatDate() {
+    final n = DateTime.now();
+    const days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return '${days[n.weekday - 1]}, ${months[n.month - 1]} ${n.day}';
   }
 
-  int _calcScore() {
-    int score = 0;
-    // Goals: 10 pts each (max 30)
-    score += _goals.where((g) => g['done'] == true).length * 10;
-    // Morning routine: 5 pts each (max 20)
-    score += _morningDone.where((d) => d).length * 5;
-    // Evening routine: 5 pts each (max 20)
-    score += _eveningDone.where((d) => d).length * 5;
-    // Activity tracking: 10 pts per 30 min logged (max 30)
-    int totalMinutes = _activityLog.fold(0, (sum, e) => sum + (e['minutes'] as int? ?? 0));
-    score += (totalMinutes ~/ 30 * 10).clamp(0, 30);
-    return score.clamp(0, 100);
+  //  SCORE — based on real completions
+  int _calcScore(DashboardState dash) {
+    // Quests (up to 40 pts) — proportional to % complete.
+    final q = dash.habits;
+    final qDone = q.where((h) => h['done'] == true).length;
+    final qScore = q.isEmpty ? 0 : ((qDone / q.length) * 40).round();
+
+    // Morning (up to 30).
+    final mDone = _morningDone.where((d) => d).length;
+    final mScore = _morningItems.isEmpty
+        ? 0
+        : ((mDone / _morningItems.length) * 30).round();
+
+    // Evening (up to 30).
+    final eDone = _eveningDone.where((d) => d).length;
+    final eScore = _eveningItems.isEmpty
+        ? 0
+        : ((eDone / _eveningItems.length) * 30).round();
+
+    return (qScore + mScore + eScore).clamp(0, 100);
   }
 
-  Color _scoreColor(int score) {
-    if (score < 30) return Colors.red.shade400;
-    if (score < 70) return const Color(0xFFF0D878);
-    return _greenHdr;
+  Color _scoreColor(int s) {
+    if (s < 30) return _red;
+    if (s < 70) return _gold;
+    return _olive;
   }
 
-  void _toggleGoal(int idx) {
-    setState(() => _goals[idx]['done'] = !_goals[idx]['done']);
-    _saveGoals();
+  String _motivationalLine(int score) {
+    if (score == 0)   return 'Fresh slate — pick one thing to begin.';
+    if (score < 30)   return 'Good start. One more win builds momentum.';
+    if (score < 70)   return 'You are finding your rhythm today.';
+    if (score < 100)  return 'You are crushing it — keep going!';
+    return 'Perfect day. You are unstoppable.';
   }
 
-  void _deleteGoal(int idx) {
-    setState(() => _goals.removeAt(idx));
-    _saveGoals();
+  //  ACTIONS
+  // Smaller XP value for routine steps (vs. full quests at 10).
+  static const int _xpPerRoutineStep = 5;
+
+  void _toggleMorning(int i) {
+    final wasDone = _morningDone[i];
+    setState(() => _morningDone[i] = !wasDone);
+    _saveMorning();
+    // Award XP on completion transition (not on un-check).
+    if (!wasDone) {
+      ref.read(dashboardProvider.notifier).awardXp(_xpPerRoutineStep);
+    }
   }
 
-  void _addGoal() {
-    if (_goals.length >= 3) return;
-    setState(() => _addingGoal = true);
+  void _toggleEvening(int i) {
+    final wasDone = _eveningDone[i];
+    setState(() => _eveningDone[i] = !wasDone);
+    _saveEvening();
+    if (!wasDone) {
+      ref.read(dashboardProvider.notifier).awardXp(_xpPerRoutineStep);
+    }
   }
 
-  void _submitGoal() {
-    if (_goalCtrl.text.trim().isEmpty) return;
+  void _addMorningItem(String text) {
+    final t = text.trim();
+    if (t.isEmpty) return;
     setState(() {
-      _goals.add({'text': _goalCtrl.text.trim(), 'done': false});
-      _goalCtrl.clear();
-      _addingGoal = false;
+      _morningItems.add(t);
+      _morningDone.add(false);
     });
-    _saveGoals();
-  }
-
-  void _cancelGoal() {
-    setState(() {
-      _addingGoal = false;
-      _goalCtrl.clear();
-    });
-  }
-
-  void _toggleMorning(int idx) {
-    setState(() => _morningDone[idx] = !_morningDone[idx]);
     _saveMorning();
   }
 
-  void _toggleEvening(int idx) {
-    setState(() => _eveningDone[idx] = !_eveningDone[idx]);
+  void _editMorningItem(int i, String text) {
+    final t = text.trim();
+    if (t.isEmpty) return;
+    setState(() => _morningItems[i] = t);
+    _saveMorning();
+  }
+
+  void _deleteMorningItem(int i) {
+    setState(() {
+      _morningItems.removeAt(i);
+      _morningDone.removeAt(i);
+    });
+    _saveMorning();
+  }
+
+  void _addEveningItem(String text) {
+    final t = text.trim();
+    if (t.isEmpty) return;
+    setState(() {
+      _eveningItems.add(t);
+      _eveningDone.add(false);
+    });
     _saveEvening();
   }
 
-  void _toggleActivity(String key) {
-    if (_activeCategory == key) {
-      // Stop tracking
-      _stopActivity();
-    } else {
-      // Switch or start
-      if (_activeCategory != null) {
-        _stopActivity();
-      }
-      setState(() {
-        _activeCategory = key;
-        _activityStart = DateTime.now();
-        _activeDuration = Duration.zero;
-      });
-      _activityTimer?.cancel();
-      _activityTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-        if (_activityStart != null) {
-          setState(() {
-            _activeDuration = DateTime.now().difference(_activityStart!);
-          });
-        }
-      });
-    }
+  void _editEveningItem(int i, String text) {
+    final t = text.trim();
+    if (t.isEmpty) return;
+    setState(() => _eveningItems[i] = t);
+    _saveEvening();
   }
 
-  void _stopActivity() {
-    if (_activeCategory != null && _activityStart != null) {
-      final minutes = _activeDuration.inMinutes;
-      if (minutes > 0) {
-        setState(() {
-          _activityLog.add({'category': _activeCategory, 'minutes': minutes});
-          _activeCategory = null;
-          _activityStart = null;
-          _activeDuration = Duration.zero;
-        });
-        _saveActivityLog();
-      } else {
-        setState(() {
-          _activeCategory = null;
-          _activityStart = null;
-          _activeDuration = Duration.zero;
-        });
-      }
-    }
-    _activityTimer?.cancel();
+  void _deleteEveningItem(int i) {
+    setState(() {
+      _eveningItems.removeAt(i);
+      _eveningDone.removeAt(i);
+    });
+    _saveEvening();
   }
 
-  int _getTotalMinutes(String category) {
-    return _activityLog
-        .where((e) => e['category'] == category)
-        .fold(0, (sum, e) => sum + (e['minutes'] as int? ?? 0));
+  // Quest actions delegate to dashboardProvider so home stays in sync.
+  void _toggleQuest(int i) {
+    ref.read(dashboardProvider.notifier).toggleHabit(i);
   }
 
-  Widget _stag(double delay, Widget child) {
-    return AnimatedBuilder(
-      animation: _enterCtrl,
-      builder: (_, __) {
-        final t = Curves.easeOutCubic.transform(
-            ((_enterCtrl.value - delay) / (1.0 - delay)).clamp(0.0, 1.0));
-        return Opacity(
-          opacity: t,
-          child: Transform.translate(offset: Offset(0, 18 * (1 - t)), child: child),
-        );
-      },
+  Future<void> _addQuest() async {
+    final result = await _showQuestSheet(
+      title: 'New Quest',
+      initialName: '',
+      initialIcon: 'check',
+      primaryLabel: 'Add',
     );
+    if (result == null) return;
+    final name = result['name'] as String;
+    final icon = result['icon'] as String;
+    await ref.read(dashboardProvider.notifier).addQuest(name, icon: icon);
   }
 
+  Future<void> _editQuest(int i) async {
+    final dash = ref.read(dashboardProvider);
+    if (i < 0 || i >= dash.habits.length) return;
+    final h = dash.habits[i];
+    final result = await _showQuestSheet(
+      title: 'Edit Quest',
+      initialName: h['name'] as String? ?? '',
+      initialIcon: h['icon'] as String? ?? 'check',
+      primaryLabel: 'Save',
+    );
+    if (result == null) return;
+    await ref.read(dashboardProvider.notifier).updateQuest(
+          i,
+          name: result['name'] as String,
+          icon: result['icon'] as String,
+        );
+  }
+
+  Future<void> _deleteQuest(int i) async {
+    final dash = ref.read(dashboardProvider);
+    if (i < 0 || i >= dash.habits.length) return;
+    final h = dash.habits[i];
+    final confirm = await _showConfirmDialog(
+      title: 'Delete quest?',
+      body: '"${h['name']}" will be removed from your daily list.',
+      dangerLabel: 'Delete',
+    );
+    if (confirm == true) {
+      await ref.read(dashboardProvider.notifier).deleteQuest(i);
+    }
+  }
+
+  //  STAGGER-IN HELPER
+  Widget _stag(double delay, Widget child) => AnimatedBuilder(
+        animation: _enterCtrl,
+        builder: (_, __) {
+          final t = Curves.easeOutCubic.transform(
+              ((_enterCtrl.value - delay) / (1.0 - delay)).clamp(0.0, 1.0));
+          return Opacity(
+            opacity: t,
+            child: Transform.translate(
+                offset: Offset(0, 18 * (1 - t)), child: child),
+          );
+        },
+      );
+
+  //  BUILD
   @override
   Widget build(BuildContext context) {
     if (!_loaded) {
-      return Scaffold(
+      return const Scaffold(
         backgroundColor: _ombre1,
-        body: const Center(child: CircularProgressIndicator()),
+        body: Center(child: CircularProgressIndicator()),
       );
     }
 
-    final score = _calcScore();
+    final dash = ref.watch(dashboardProvider);
+    final score = _calcScore(dash);
     final scoreColor = _scoreColor(score);
 
-    return Stack(
-      children: [
-        Positioned.fill(
-          child: Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [_ombre1, _ombre2, _ombre3, _ombre4],
-                stops: [0.0, 0.3, 0.6, 1.0],
-              ),
+    return Stack(children: [
+      // Ombré background
+      Positioned.fill(
+        child: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [_ombre1, _ombre2, _ombre3, _ombre4],
+              stops: [0.0, 0.3, 0.6, 1.0],
             ),
           ),
         ),
-        Positioned.fill(child: CustomPaint(painter: _PawPrintBg())),
-        Positioned(
-          top: -120,
-          left: 0,
-          right: 0,
-          child: Container(
-            height: 300,
-            decoration: BoxDecoration(
-              gradient: RadialGradient(
-                center: Alignment.topCenter,
-                radius: 1.0,
-                colors: [_goldGlow.withOpacity(0.12), Colors.transparent],
-              ),
+      ),
+      // Paw-print backdrop
+      Positioned.fill(child: CustomPaint(painter: _PawPrintBg())),
+      // Top glow
+      Positioned(
+        top: -120, left: 0, right: 0,
+        child: Container(
+          height: 300,
+          decoration: BoxDecoration(
+            gradient: RadialGradient(
+              center: Alignment.topCenter,
+              radius: 1.0,
+              colors: [_goldGlow.withOpacity(0.12), Colors.transparent],
             ),
           ),
         ),
-        SafeArea(
-          child: RefreshIndicator(
-            color: _outline,
-            backgroundColor: _cardFill,
-            onRefresh: () async => _loadData(),
-            child: SingleChildScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(34, 14, 34, 90),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // HEADER: "My Day" + Score Ring
-                  _stag(
-                    0.0,
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 20),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            'My Day',
-                            style: GoogleFonts.gaegu(
-                              fontSize: 28,
-                              fontWeight: FontWeight.bold,
-                              color: _brown,
-                            ),
+      ),
+
+      // Content
+      SafeArea(
+        child: RefreshIndicator(
+          color: _outline,
+          backgroundColor: _cardFill,
+          onRefresh: () async {
+            await ref.read(dashboardProvider.notifier).refresh();
+            await _loadData();
+          },
+          child: LayoutBuilder(
+            builder: (ctx, c) {
+              final isWide = c.maxWidth > 720;
+              final sidePad = isWide ? 80.0 : 24.0;
+              const navH = 90.0;
+              return SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: EdgeInsets.fromLTRB(sidePad, 20, sidePad, navH),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Hero — back arrow + My Day + date + motivation + score ring
+                    _stag(0.02, _buildHero(score, scoreColor)),
+                    const SizedBox(height: 24),
+
+                    // My Quests
+                    _stag(
+                      0.06,
+                      _sectionTitle(
+                        Icons.auto_awesome_rounded,
+                        'My Quests',
+                        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                          _countBadge(
+                            '${dash.habits.where((h) => h['done'] == true).length}/${dash.habits.length}',
                           ),
-                          _buildScoreRing(score, scoreColor),
-                        ],
+                          const SizedBox(width: 6),
+                          _iconBtn(Icons.add_rounded, _oliveDk,
+                              onTap: _addQuest,
+                              size: 26,
+                              iconSize: 14),
+                        ]),
                       ),
                     ),
-                  ),
+                    const SizedBox(height: 10),
+                    _stag(0.06, _buildQuestsCard(dash)),
+                    const SizedBox(height: 22),
 
-                  // TODAY'S GOALS (HERO CARD)
-                  _stag(
-                    0.05,
-                    _buildGoalsCard(),
-                  ),
-                  const SizedBox(height: 20),
+                    // Morning / Evening
+                    if (isWide)
+                      _stag(0.10, _buildRoutinesRow())
+                    else
+                      _stag(0.10, _buildRoutinesColumn()),
+                    const SizedBox(height: 22),
 
-                  // MORNING & EVENING ROUTINES
-                  _stag(
-                    0.1,
-                    Row(
-                      children: [
-                        Expanded(
-                            child: _buildRoutineCard(
-                                'Morning', _morningDone, _greenHdr, _toggleMorning)),
-                        const SizedBox(width: 14),
-                        Expanded(
-                            child: _buildRoutineCard(
-                                'Evening', _eveningDone, _purpleHdr, _toggleEvening)),
-                      ],
+                    // Score breakdown
+                    _stag(
+                      0.16,
+                      _sectionTitle(
+                        Icons.leaderboard_rounded,
+                        'Daily Score',
+                        trailing: _countBadge(
+                          '$score/100',
+                          color: scoreColor,
+                          textColor: Colors.white,
+                        ),
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 20),
+                    const SizedBox(height: 10),
+                    _stag(0.16, _buildScoreCard(dash)),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    ]);
+  }
 
-                  // ACTIVITY TRACKER
-                  _stag(
-                    0.15,
-                    _buildActivityTracker(),
-                  ),
-                  const SizedBox(height: 20),
+  //  HERO — back arrow + My Day + date + motivation + score ring
+  //  (single row; back button parallels the score ring)
+  Widget _buildHero(int score, Color scoreColor) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        // Back arrow (returns to Home tab)
+        GestureDetector(
+          onTap: () => ref.read(selectedTabProvider.notifier).state = 0,
+          child: Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              border:
+                  Border.all(color: _outline.withOpacity(0.35), width: 1.5),
+              boxShadow: [
+                BoxShadow(
+                  color: _outline.withOpacity(0.28),
+                  offset: const Offset(2, 2),
+                  blurRadius: 0,
+                ),
+              ],
+            ),
+            child: const Icon(Icons.chevron_left_rounded,
+                size: 20, color: _outline),
+          ),
+        ),
+        const SizedBox(width: 12),
+        // My Day + date + motivation
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'My Day',
+                style: TextStyle(
+                  fontFamily: 'Bitroad',
+                  fontSize: 28,
+                  color: _brown,
+                  height: 1.05,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                _formatDate(),
+                style: GoogleFonts.gaegu(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: _brownLt,
+                  height: 1.1,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                _motivationalLine(score),
+                style: GoogleFonts.gaegu(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: _brownSoft,
+                  height: 1.3,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 10),
+        // Score ring — parallel to back arrow on the right
+        _ScoreRing(score: score, color: scoreColor, size: 92),
+      ],
+    );
+  }
 
-                  // MANAGE DAILY QUESTS
-                  _stag(
-                    0.2,
-                    _buildQuestManager(),
-                  ),
-                  const SizedBox(height: 20),
+  //  SECTION HELPERS
+  Widget _sectionTitle(IconData icon, String title, {Widget? trailing}) {
+    return Row(children: [
+      Icon(icon, size: 17, color: _oliveDk),
+      const SizedBox(width: 8),
+      Text(
+        title,
+        style: const TextStyle(
+          fontFamily: 'Bitroad',
+          fontSize: 16,
+          color: _brown,
+          height: 1.1,
+        ),
+      ),
+      const Spacer(),
+      if (trailing != null) trailing,
+    ]);
+  }
 
-                  // QUICK ACTIONS
-                  _stag(
-                    0.25,
-                    _buildQuickActions(),
-                  ),
-                  const SizedBox(height: 20),
+  Widget _countBadge(String text, {Color? color, Color? textColor}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+      decoration: BoxDecoration(
+        color: color ?? _cream,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: _outline.withOpacity(0.3), width: 1.2),
+        boxShadow: [
+          BoxShadow(
+            color: _outline.withOpacity(0.18),
+            offset: const Offset(1, 1),
+            blurRadius: 0,
+          ),
+        ],
+      ),
+      child: Text(
+        text,
+        style: GoogleFonts.nunito(
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
+          color: textColor ?? _brown,
+        ),
+      ),
+    );
+  }
 
-                  // DAILY SCORE BREAKDOWN
-                  _stag(
-                    0.25,
-                    _buildScoreBreakdown(score),
-                  ),
-                ],
+  Widget _card({required Widget child}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.92),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _outline.withOpacity(0.22), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: _outline.withOpacity(0.2),
+            offset: const Offset(3, 3),
+            blurRadius: 0,
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16.5),
+        child: child,
+      ),
+    );
+  }
+
+  Widget _iconBtn(
+    IconData icon,
+    Color color, {
+    required VoidCallback onTap,
+    Color iconColor = Colors.white,
+    double size = 30,
+    double iconSize = 16,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(9),
+          border: Border.all(color: _outline.withOpacity(0.3), width: 1.2),
+          boxShadow: [
+            BoxShadow(
+              color: _outline.withOpacity(0.22),
+              offset: const Offset(1, 1),
+              blurRadius: 0,
+            ),
+          ],
+        ),
+        child: Icon(icon, size: iconSize, color: iconColor),
+      ),
+    );
+  }
+
+  //  QUESTS CARD — synced with dashboardProvider
+  Widget _buildQuestsCard(DashboardState dash) {
+    final quests = dash.habits;
+    final allDone = quests.isNotEmpty &&
+        quests.every((h) => h['done'] == true);
+
+    return _card(
+      child: Column(children: [
+        if (quests.isEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 16, 14, 16),
+            child: Column(children: [
+              Icon(Icons.auto_awesome_rounded,
+                  size: 28, color: _brownSoft),
+              const SizedBox(height: 6),
+              Text(
+                'No quests yet. Tap + to add one.',
+                style: GoogleFonts.gaegu(
+                  fontSize: 14,
+                  color: _brownSoft,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ]),
+          ),
+
+        for (int i = 0; i < quests.length; i++)
+          _QuestRow(
+            key: ValueKey('quest_$i'),
+            quest: quests[i],
+            isLast: i == quests.length - 1,
+            onToggle: () => _toggleQuest(i),
+            onEdit:   () => _editQuest(i),
+            onDelete: () => _deleteQuest(i),
+          ),
+
+        // All-done banner
+        if (allDone)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 9),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [_goldGlow.withOpacity(0.45),
+                         _goldGlow.withOpacity(0.2)],
+              ),
+            ),
+            child: Center(
+              child: Text(
+                'All quests cleared today!',
+                style: GoogleFonts.gaegu(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  color: _brown,
+                ),
               ),
             ),
           ),
+      ]),
+    );
+  }
+
+  //  ROUTINES (editable)
+  Widget _buildRoutinesRow() {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(child: _buildRoutineBlock(
+          icon: Icons.wb_twilight_rounded,
+          title: 'Morning',
+          badgeColor: _orange.withOpacity(0.55),
+          badgeTextColor: Colors.white,
+          items: _morningItems,
+          done: _morningDone,
+          onToggle: _toggleMorning,
+          onAdd: () => _showRoutineTextSheet(
+            title: 'New Morning Step',
+            primaryLabel: 'Add',
+            onSubmit: _addMorningItem,
+          ),
+          onEdit: (i) => _showRoutineTextSheet(
+            title: 'Edit Morning Step',
+            initial: _morningItems[i],
+            primaryLabel: 'Save',
+            onSubmit: (t) => _editMorningItem(i, t),
+          ),
+          onDelete: _deleteMorningItem,
+        )),
+        const SizedBox(width: 14),
+        Expanded(child: _buildRoutineBlock(
+          icon: Icons.nightlight_round,
+          title: 'Evening',
+          badgeColor: _lavender,
+          items: _eveningItems,
+          done: _eveningDone,
+          onToggle: _toggleEvening,
+          onAdd: () => _showRoutineTextSheet(
+            title: 'New Evening Step',
+            primaryLabel: 'Add',
+            onSubmit: _addEveningItem,
+          ),
+          onEdit: (i) => _showRoutineTextSheet(
+            title: 'Edit Evening Step',
+            initial: _eveningItems[i],
+            primaryLabel: 'Save',
+            onSubmit: (t) => _editEveningItem(i, t),
+          ),
+          onDelete: _deleteEveningItem,
+        )),
+      ],
+    );
+  }
+
+  Widget _buildRoutinesColumn() {
+    return Column(children: [
+      _buildRoutineBlock(
+        icon: Icons.wb_twilight_rounded,
+        title: 'Morning',
+        badgeColor: _orange.withOpacity(0.55),
+        badgeTextColor: Colors.white,
+        items: _morningItems,
+        done: _morningDone,
+        onToggle: _toggleMorning,
+        onAdd: () => _showRoutineTextSheet(
+          title: 'New Morning Step',
+          primaryLabel: 'Add',
+          onSubmit: _addMorningItem,
+        ),
+        onEdit: (i) => _showRoutineTextSheet(
+          title: 'Edit Morning Step',
+          initial: _morningItems[i],
+          primaryLabel: 'Save',
+          onSubmit: (t) => _editMorningItem(i, t),
+        ),
+        onDelete: _deleteMorningItem,
+      ),
+      const SizedBox(height: 22),
+      _buildRoutineBlock(
+        icon: Icons.nightlight_round,
+        title: 'Evening',
+        badgeColor: _lavender,
+        items: _eveningItems,
+        done: _eveningDone,
+        onToggle: _toggleEvening,
+        onAdd: () => _showRoutineTextSheet(
+          title: 'New Evening Step',
+          primaryLabel: 'Add',
+          onSubmit: _addEveningItem,
+        ),
+        onEdit: (i) => _showRoutineTextSheet(
+          title: 'Edit Evening Step',
+          initial: _eveningItems[i],
+          primaryLabel: 'Save',
+          onSubmit: (t) => _editEveningItem(i, t),
+        ),
+        onDelete: _deleteEveningItem,
+      ),
+    ]);
+  }
+
+  Widget _buildRoutineBlock({
+    required IconData icon,
+    required String title,
+    required Color badgeColor,
+    Color? badgeTextColor,
+    required List<String> items,
+    required List<bool> done,
+    required void Function(int) onToggle,
+    required VoidCallback onAdd,
+    required void Function(int) onEdit,
+    required void Function(int) onDelete,
+  }) {
+    final doneCount = done.where((d) => d).length;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionTitle(
+          icon,
+          title,
+          trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+            _countBadge(
+              '$doneCount/${items.length}',
+              color: badgeColor,
+              textColor: badgeTextColor,
+            ),
+            const SizedBox(width: 6),
+            _iconBtn(Icons.add_rounded, _oliveDk,
+                onTap: onAdd, size: 26, iconSize: 14),
+          ]),
+        ),
+        const SizedBox(height: 10),
+        _card(
+          child: Column(children: [
+            if (items.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Text(
+                  'No steps yet. Tap + to add one.',
+                  style: GoogleFonts.gaegu(
+                    fontSize: 13,
+                    color: _brownSoft,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            for (int i = 0; i < items.length; i++)
+              _RoutineRow(
+                key: ValueKey('${title}_$i'),
+                text: items[i],
+                done: done[i],
+                isLast: i == items.length - 1,
+                onToggle: () => onToggle(i),
+                onEdit:   () => onEdit(i),
+                onDelete: () => onDelete(i),
+              ),
+          ]),
         ),
       ],
     );
   }
 
-  Widget _buildScoreRing(int score, Color color) {
-    return SizedBox(
-      width: 60,
-      height: 60,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          CircularProgressIndicator(
-            value: score / 100.0,
-            strokeWidth: 3.5,
-            valueColor: AlwaysStoppedAnimation(color),
-            backgroundColor: color.withOpacity(0.2),
-          ),
-          Text(
-            '$score',
-            style: GoogleFonts.gaegu(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: _brown,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  //  SCORE BREAKDOWN
+  Widget _buildScoreCard(DashboardState dash) {
+    final q = dash.habits;
+    final qDone = q.where((h) => h['done'] == true).length;
+    final qPts = q.isEmpty ? 0 : ((qDone / q.length) * 40).round();
 
-  Widget _buildGoalsCard() {
-    final complete = _goals.where((g) => g['done'] == true).length;
-    final allDone = _goals.isNotEmpty && complete == _goals.length;
+    final mDone = _morningDone.where((d) => d).length;
+    final mPts = _morningItems.isEmpty
+        ? 0
+        : ((mDone / _morningItems.length) * 30).round();
 
-    return Container(
-      decoration: BoxDecoration(
-        color: _cardFill,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: _outline, width: 3),
-        boxShadow: [
-          BoxShadow(
-            color: _outline.withOpacity(0.3),
-            offset: const Offset(0, 4),
-            blurRadius: 0,
-          ),
-        ],
-      ),
-      padding: const EdgeInsets.symmetric(vertical: 0, horizontal: 0),
-      child: Column(
-        children: [
-          // Header
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [_coralHdr, _coralLt],
-              ),
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(17),
-                topRight: Radius.circular(17),
-              ),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.adjust_rounded, size: 20, color: Colors.white),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Today\'s Goals',
-                      style: GoogleFonts.gaegu(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ],
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.3),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    '$complete/${_goals.length.clamp(0, 3)}',
-                    style: GoogleFonts.gaegu(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+    final eDone = _eveningDone.where((d) => d).length;
+    final ePts = _eveningItems.isEmpty
+        ? 0
+        : ((eDone / _eveningItems.length) * 30).round();
 
-          // Goals list
-          Padding(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              children: [
-                ..._goals.asMap().entries.map((e) {
-                  final idx = e.key;
-                  final goal = e.value;
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: Row(
-                      children: [
-                        GestureDetector(
-                          onTap: () => _toggleGoal(idx),
-                          child: Container(
-                            width: 24,
-                            height: 24,
-                            decoration: BoxDecoration(
-                              border: Border.all(color: _coralHdr, width: 2),
-                              borderRadius: BorderRadius.circular(6),
-                              color:
-                                  goal['done'] == true ? _coralHdr : Colors.transparent,
-                            ),
-                            child: goal['done'] == true
-                                ? const Icon(Icons.check_rounded,
-                                    size: 16, color: Colors.white)
-                                : null,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            goal['text'],
-                            style: GoogleFonts.nunito(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                              color: _brown,
-                              decoration: goal['done'] == true
-                                  ? TextDecoration.lineThrough
-                                  : null,
-                            ),
-                          ),
-                        ),
-                        GestureDetector(
-                          onTap: () => _deleteGoal(idx),
-                          child: Icon(Icons.close_rounded,
-                              size: 18, color: _brownLt),
-                        ),
-                      ],
-                    ),
-                  );
-                }).toList(),
-                if (_addingGoal)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: Row(
-                      children: [
-                        const SizedBox(width: 24),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: TextField(
-                            controller: _goalCtrl,
-                            autofocus: true,
-                            decoration: InputDecoration(
-                              hintText: 'What do you want to achieve?',
-                              hintStyle: GoogleFonts.gaegu(
-                                fontSize: 14,
-                                color: _brownLt,
-                              ),
-                              border: InputBorder.none,
-                              contentPadding: const EdgeInsets.symmetric(
-                                  vertical: 8, horizontal: 0),
-                            ),
-                            style: GoogleFonts.nunito(
-                              fontSize: 14,
-                              color: _brown,
-                            ),
-                          ),
-                        ),
-                        GestureDetector(
-                          onTap: _submitGoal,
-                          child: Container(
-                            width: 28,
-                            height: 28,
-                            decoration: BoxDecoration(
-                              color: _greenHdr,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Icon(Icons.check_rounded,
-                                size: 16, color: Colors.white),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        GestureDetector(
-                          onTap: _cancelGoal,
-                          child: Icon(Icons.close_rounded,
-                              size: 18, color: _brownLt),
-                        ),
-                      ],
-                    ),
-                  ),
-                if (_goals.length < 3 && !_addingGoal)
-                  GestureDetector(
-                    onTap: _addGoal,
-                    child: Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.add_rounded, size: 18, color: _coralHdr),
-                          const SizedBox(width: 6),
-                          Text(
-                            'Add Goal',
-                            style: GoogleFonts.gaegu(
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
-                              color: _coralHdr,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-
-          // Completion banner
-          if (allDone)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 10),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [_goldHdr, _goldDk],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: const BorderRadius.only(
-                  bottomLeft: Radius.circular(20),
-                  bottomRight: Radius.circular(20),
-                ),
-              ),
-              child: Text(
-                'All goals crushed! +50 XP',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.gaegu(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRoutineCard(String title, List<bool> items, Color headerColor,
-      Function(int) onTap) {
-    final itemsList = title == 'Morning'
-        ? ['Wake up on time', 'Hydrate', 'Stretch / Move', 'Plan your day']
-        : ['Review what you did', 'Prepare tomorrow', 'Screen off by 10pm', 'Wind down'];
-    final done = items.where((d) => d).length;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: _cardFill,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: _outline, width: 3),
-        boxShadow: [
-          BoxShadow(
-            color: _outline.withOpacity(0.3),
-            offset: const Offset(0, 4),
-            blurRadius: 0,
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [headerColor, headerColor.withOpacity(0.8)],
-              ),
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(17),
-                topRight: Radius.circular(17),
-              ),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  title,
-                  style: GoogleFonts.gaegu(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-                Text(
-                  '$done/${items.length}',
-                  style: GoogleFonts.gaegu(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(10),
-            child: Column(
-              children: itemsList.asMap().entries.map((e) {
-                final idx = e.key;
-                final label = e.value;
-                return GestureDetector(
-                  onTap: () => onTap(idx),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 6),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 18,
-                          height: 18,
-                          decoration: BoxDecoration(
-                            border: Border.all(color: headerColor, width: 1.5),
-                            borderRadius: BorderRadius.circular(4),
-                            color: items[idx] ? headerColor : Colors.transparent,
-                          ),
-                          child: items[idx]
-                              ? Icon(Icons.check_rounded,
-                                  size: 13, color: Colors.white)
-                              : null,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            label,
-                            style: GoogleFonts.nunito(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                              color: _brown,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildActivityTracker() {
-    final categoryData = {
-      'study': _getTotalMinutes('study'),
-      'exercise': _getTotalMinutes('exercise'),
-      'social': _getTotalMinutes('social'),
-      'rest': _getTotalMinutes('rest'),
-      'creative': _getTotalMinutes('creative'),
-      'errands': _getTotalMinutes('errands'),
-    };
-    final totalMinutes = categoryData.values.fold(0, (a, b) => a + b);
-
-    return Container(
-      decoration: BoxDecoration(
-        color: _cardFill,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: _outline, width: 3),
-        boxShadow: [
-          BoxShadow(
-            color: _outline.withOpacity(0.3),
-            offset: const Offset(0, 4),
-            blurRadius: 0,
-          ),
-        ],
-      ),
-      padding: const EdgeInsets.all(14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.play_circle_outline_rounded, size: 20, color: _skyHdr),
-              const SizedBox(width: 8),
-              Text(
-                'Right Now',
-                style: GoogleFonts.gaegu(
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold,
-                  color: _brown,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          if (_activeCategory != null)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: _skyHdr.withOpacity(0.15),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                'Active: ${_activeCategory!.capitalize()} — ${_formatDuration(_activeDuration)}',
-                style: GoogleFonts.nunito(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: _skyDk,
-                ),
-              ),
-            )
-          else
-            Text(
-              'Tap a category to start tracking',
-              style: GoogleFonts.nunito(
-                fontSize: 12,
-                color: _brownLt,
-                fontStyle: FontStyle.italic,
-              ),
-            ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _categories.map((cat) {
-              final isActive = _activeCategory == cat['key'];
-              final color = cat['color'] as Color;
-              return GestureDetector(
-                onTap: () => _toggleActivity(cat['key'] as String),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [color, color.withOpacity(0.7)],
-                    ),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: isActive ? Colors.white : color.withOpacity(0.5),
-                      width: isActive ? 2 : 1,
-                    ),
-                    boxShadow: isActive
-                        ? [
-                            BoxShadow(
-                              color: color.withOpacity(0.4),
-                              blurRadius: 8,
-                              spreadRadius: 1,
-                            ),
-                          ]
-                        : [],
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(cat['icon'] as IconData,
-                          size: 18, color: Colors.white),
-                      const SizedBox(height: 2),
-                      Text(
-                        cat['label'] as String,
-                        style: GoogleFonts.nunito(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-          if (totalMinutes > 0) ...[
-            const SizedBox(height: 14),
-            Text(
-              'Today\'s distribution:',
-              style: GoogleFonts.nunito(
-                fontSize: 11,
-                color: _brownLt,
-              ),
-            ),
-            const SizedBox(height: 8),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: SizedBox(
-                height: 12,
-                child: Row(
-                  children: categoryData.entries.map((e) {
-                    final mins = e.value;
-                    final pct = mins / totalMinutes;
-                    final catColor = _categories
-                        .firstWhere((c) => c['key'] == e.key)['color'] as Color;
-                    return Expanded(
-                      flex: (pct * 100).toInt().clamp(1, 100),
-                      child: Container(
-                        color: catColor,
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  // QUEST MANAGER — add / edit / delete daily quests
-  final _questAddCtrl = TextEditingController();
-
-  Widget _buildQuestManager() {
-    final dash = ref.watch(dashboardProvider);
-    final habits = dash.habits;
-
-    return Container(
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft, end: Alignment.bottomRight,
-          colors: [Color(0xFFFFF4EC), Color(0xFFFFFAF6)],
-        ),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: _outline, width: 3),
-        boxShadow: [BoxShadow(color: _outline.withOpacity(0.3),
-            offset: const Offset(0, 4), blurRadius: 0)],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(17),
+    return _card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
         child: Column(children: [
-          // Header
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 14),
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter, end: Alignment.bottomCenter,
-                colors: [_coralLt, _coralHdr],
-              ),
-            ),
-            child: Row(children: [
-              const Icon(Icons.edit_calendar_rounded, size: 18, color: Colors.white),
-              const SizedBox(width: 6),
-              Text('Manage Quests', style: GoogleFonts.gaegu(
-                  fontSize: 20, fontWeight: FontWeight.w700, color: _brown)),
-              const Spacer(),
-              Text('${habits.length} quests', style: GoogleFonts.nunito(
-                  fontSize: 13, fontWeight: FontWeight.w600,
-                  color: Colors.white.withOpacity(0.9))),
-            ]),
-          ),
-
-          // Quest list
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
-            child: Column(children: [
-              for (int i = 0; i < habits.length; i++) ...[
-                if (i > 0) Divider(height: 1, color: _outline.withOpacity(0.08)),
-                _questManagerRow(i, habits[i]),
-              ],
-            ]),
-          ),
-
-          // Add new quest row
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-            child: Row(children: [
-              Expanded(
-                child: Container(
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: _outline.withOpacity(0.3), width: 2),
-                  ),
-                  child: TextField(
-                    controller: _questAddCtrl,
-                    style: GoogleFonts.nunito(fontSize: 14, color: _brown),
-                    decoration: InputDecoration(
-                      hintText: 'Add new quest...',
-                      hintStyle: GoogleFonts.nunito(fontSize: 14,
-                          color: _brownLt.withOpacity(0.5)),
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
-                      border: InputBorder.none,
-                    ),
-                    onSubmitted: (val) => _addNewQuest(),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              GestureDetector(
-                onTap: _addNewQuest,
-                child: Container(
-                  width: 40, height: 40,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [_greenLt, _greenHdr],
-                    ),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: _outline, width: 2.5),
-                    boxShadow: [BoxShadow(color: _outline.withOpacity(0.2),
-                        offset: const Offset(0, 2), blurRadius: 0)],
-                  ),
-                  child: const Icon(Icons.add_rounded, size: 22, color: Colors.white),
-                ),
-              ),
-            ]),
-          ),
+          _scoreRow(Icons.auto_awesome_rounded, 'Quests',  qPts, 40, _coral),
+          const SizedBox(height: 10),
+          _scoreRow(Icons.wb_twilight_rounded,  'Morning', mPts, 30, _orange),
+          const SizedBox(height: 10),
+          _scoreRow(Icons.nightlight_round,     'Evening', ePts, 30, _lavender),
         ]),
       ),
     );
   }
 
-  Widget _questManagerRow(int index, Map<String, dynamic> habit) {
-    final iconMap = {
-      'water': Icons.water_drop_rounded,
-      'book': Icons.menu_book_rounded,
-      'fitness': Icons.fitness_center_rounded,
-      'self_improve': Icons.self_improvement_rounded,
-      'no_food': Icons.no_food_rounded,
-      'walk': Icons.directions_walk_rounded,
-      'phone_off': Icons.phone_disabled_rounded,
-      'school': Icons.school_rounded,
-      'night': Icons.nights_stay_rounded,
-      'check': Icons.check_rounded,
-      'edit': Icons.edit_rounded,
-    };
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(children: [
-        // Icon
-        Container(
-          width: 32, height: 32,
-          decoration: BoxDecoration(
-            color: const Color(0xFFF5EDE5),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(
-            iconMap[habit['icon']] ?? Icons.flag_rounded,
-            size: 16, color: _brownLt,
-          ),
-        ),
-        const SizedBox(width: 10),
-        // Quest name
-        Expanded(
-          child: Text(habit['name'] ?? '', style: GoogleFonts.nunito(
-              fontSize: 15, fontWeight: FontWeight.w700, color: _brown)),
-        ),
-        // Edit button
-        GestureDetector(
-          onTap: () => _showEditQuestDialog(index, habit),
-          child: Padding(
-            padding: const EdgeInsets.all(4),
-            child: Icon(Icons.edit_rounded, size: 18,
-                color: _brownLt.withOpacity(0.5)),
-          ),
-        ),
-        const SizedBox(width: 4),
-        // Delete button
-        GestureDetector(
-          onTap: () => _confirmDeleteQuest(index, habit['name'] ?? ''),
-          child: Padding(
-            padding: const EdgeInsets.all(4),
-            child: Icon(Icons.close_rounded, size: 18,
-                color: Colors.red.shade300),
-          ),
-        ),
-      ]),
-    );
-  }
-
-  void _addNewQuest() {
-    final text = _questAddCtrl.text.trim();
-    if (text.isEmpty) return;
-    ref.read(dashboardProvider.notifier).addQuest(text);
-    _questAddCtrl.clear();
-  }
-
-  void _showEditQuestDialog(int index, Map<String, dynamic> habit) {
-    final editCtrl = TextEditingController(text: habit['name'] ?? '');
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: _cardFill,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: BorderSide(color: _outline, width: 2.5),
-        ),
-        title: Text('Edit Quest', style: GoogleFonts.gaegu(
-            fontSize: 24, fontWeight: FontWeight.w700, color: _brown)),
-        content: TextField(
-          controller: editCtrl,
-          autofocus: true,
-          style: GoogleFonts.nunito(fontSize: 16, color: _brown),
-          decoration: InputDecoration(
-            hintText: 'Quest name',
-            hintStyle: GoogleFonts.nunito(color: _brownLt.withOpacity(0.5)),
-            enabledBorder: UnderlineInputBorder(
-                borderSide: BorderSide(color: _outline.withOpacity(0.3))),
-            focusedBorder: UnderlineInputBorder(
-                borderSide: BorderSide(color: _outline)),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('Cancel', style: GoogleFonts.nunito(
-                fontWeight: FontWeight.w700, color: _brownLt)),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              final newName = editCtrl.text.trim();
-              if (newName.isNotEmpty) {
-                ref.read(dashboardProvider.notifier).updateQuest(index, name: newName);
-              }
-              Navigator.pop(ctx);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _greenHdr,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            child: Text('Save', style: GoogleFonts.nunito(
-                fontWeight: FontWeight.w700)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _confirmDeleteQuest(int index, String name) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: _cardFill,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: BorderSide(color: _outline, width: 2.5),
-        ),
-        title: Text('Delete Quest?', style: GoogleFonts.gaegu(
-            fontSize: 24, fontWeight: FontWeight.w700, color: _brown)),
-        content: Text('Remove "$name" from your daily quests?',
-            style: GoogleFonts.nunito(fontSize: 15, color: _brownLt)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('Keep', style: GoogleFonts.nunito(
-                fontWeight: FontWeight.w700, color: _brownLt)),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              ref.read(dashboardProvider.notifier).deleteQuest(index);
-              Navigator.pop(ctx);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red.shade400,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            child: Text('Delete', style: GoogleFonts.nunito(
-                fontWeight: FontWeight.w700)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildQuickActions() {
-    return Row(
-      children: [
-        Expanded(
-          child: _GameBtn(
-            icon: Icons.adjust_rounded,
-            label: 'Add Goal',
-            gradientTop: _coralHdr,
-            gradientBot: _coralLt,
-            borderColor: _coralHdr,
-            onTap: _addGoal,
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _GameBtn(
-            icon: Icons.checklist_rounded,
-            label: 'Start Routine',
-            gradientTop: _greenHdr,
-            gradientBot: _greenLt,
-            borderColor: _greenHdr,
-            onTap: () {
-              // Highlight next unchecked morning step
-              for (int i = 0; i < _morningDone.length; i++) {
-                if (!_morningDone[i]) {
-                  _toggleMorning(i);
-                  break;
-                }
-              }
-            },
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _GameBtn(
-            icon: Icons.play_circle_outlined,
-            label: 'Log Activity',
-            gradientTop: _skyHdr,
-            gradientBot: _skyLt,
-            borderColor: _skyHdr,
-            onTap: () {
-              // Scroll to activity tracker
-            },
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildScoreBreakdown(int score) {
-    final goalPts = _goals.where((g) => g['done'] == true).length * 10;
-    final morningPts = _morningDone.where((d) => d).length * 5;
-    final eveningPts = _eveningDone.where((d) => d).length * 5;
-    int totalMinutes = _activityLog.fold(0, (sum, e) => sum + (e['minutes'] as int? ?? 0));
-    final activityPts = (totalMinutes ~/ 30 * 10).clamp(0, 30);
-
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        _ScorePill('Goals', goalPts, 30, _coralHdr),
-        _ScorePill('Morning', morningPts, 20, _greenHdr),
-        _ScorePill('Evening', eveningPts, 20, _purpleHdr),
-        _ScorePill('Activity', activityPts, 30, _skyHdr),
-      ],
-    );
-  }
-
-  String _formatDuration(Duration d) {
-    final hours = d.inHours;
-    final minutes = d.inMinutes % 60;
-    if (hours > 0) {
-      return '${hours}h ${minutes}m';
-    }
-    return '${minutes}m';
-  }
-}
-
-class _ScorePill extends StatelessWidget {
-  final String label;
-  final int value;
-  final int max;
-  final Color color;
-
-  const _ScorePill(this.label, this.value, this.max, this.color);
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [color, color.withOpacity(0.6)],
-        ),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: _outline.withOpacity(0.2), width: 1),
-      ),
-      child: Text(
-        '$label: $value/$max',
-        style: GoogleFonts.nunito(
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          color: Colors.white,
-        ),
-      ),
-    );
-  }
-}
-
-class _GameBtn extends StatefulWidget {
-  final IconData icon;
-  final String label;
-  final Color gradientTop, gradientBot, borderColor;
-  final VoidCallback onTap;
-
-  const _GameBtn({
-    required this.icon,
-    required this.label,
-    required this.gradientTop,
-    required this.gradientBot,
-    required this.borderColor,
-    required this.onTap,
-  });
-
-  @override
-  State<_GameBtn> createState() => _GameBtnState();
-}
-
-class _GameBtnState extends State<_GameBtn> {
-  bool _pressed = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTapDown: (_) => setState(() => _pressed = true),
-      onTapUp: (_) {
-        setState(() => _pressed = false);
-        widget.onTap();
-      },
-      onTapCancel: () => setState(() => _pressed = false),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 60),
-        transform: Matrix4.translationValues(0, _pressed ? 3 : 0, 0),
-        padding: const EdgeInsets.symmetric(vertical: 10),
+  Widget _scoreRow(
+      IconData icon, String label, int val, int max, Color color) {
+    final pct = max == 0 ? 0.0 : (val / max).clamp(0.0, 1.0);
+    return Row(children: [
+      Container(
+        width: 32,
+        height: 32,
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [widget.gradientTop, widget.gradientBot],
-          ),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: widget.borderColor.withOpacity(0.5),
-            width: 2,
-          ),
-          boxShadow: _pressed
-              ? []
-              : [
-                  BoxShadow(
-                    color: widget.borderColor.withOpacity(0.35),
-                    offset: const Offset(0, 3),
-                    blurRadius: 0,
-                  ),
-                ],
+          color: color,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: _outline.withOpacity(0.3), width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: _outline.withOpacity(0.2),
+              offset: const Offset(1, 1),
+              blurRadius: 0,
+            ),
+          ],
         ),
+        child: Icon(icon, size: 16, color: _brown),
+      ),
+      const SizedBox(width: 10),
+      Expanded(
         child: Column(
-          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(widget.icon, size: 20, color: Colors.white),
-            const SizedBox(height: 3),
-            Text(
-              widget.label,
-              style: GoogleFonts.gaegu(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
+            Row(children: [
+              Expanded(
+                child: Text(
+                  label,
+                  style: GoogleFonts.nunito(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: _brown,
+                  ),
+                ),
               ),
-              overflow: TextOverflow.ellipsis,
+              Text(
+                '$val / $max',
+                style: const TextStyle(
+                  fontFamily: 'Bitroad',
+                  fontSize: 12,
+                  color: _brown,
+                ),
+              ),
+            ]),
+            const SizedBox(height: 5),
+            Container(
+              height: 7,
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(
+                    color: _outline.withOpacity(0.15), width: 0.8),
+              ),
+              child: FractionallySizedBox(
+                alignment: Alignment.centerLeft,
+                widthFactor: pct,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: color,
+                    borderRadius: BorderRadius.circular(999),
+                    boxShadow: [
+                      BoxShadow(
+                        color: _outline.withOpacity(0.3),
+                        offset: const Offset(0, 1),
+                        blurRadius: 0,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
           ],
         ),
       ),
+    ]);
+  }
+
+  //  DIALOGS — quest editor + routine text sheet + confirm
+  Future<Map<String, String>?> _showQuestSheet({
+    required String title,
+    required String initialName,
+    required String initialIcon,
+    required String primaryLabel,
+  }) {
+    return showGeneralDialog<Map<String, String>>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'quest',
+      barrierColor: Colors.black.withOpacity(0.22),
+      transitionDuration: const Duration(milliseconds: 220),
+      pageBuilder: (ctx, _, __) => const SizedBox.shrink(),
+      transitionBuilder: (ctx, anim, __, child) {
+        final curve =
+            CurvedAnimation(parent: anim, curve: Curves.easeOutBack);
+        return BackdropFilter(
+          filter: ImageFilter.blur(
+              sigmaX: 4 * anim.value, sigmaY: 4 * anim.value),
+          child: Opacity(
+            opacity: anim.value,
+            child: Transform.scale(
+              scale: 0.9 + 0.1 * curve.value,
+              child: _QuestEditorDialog(
+                title: title,
+                initialName: initialName,
+                initialIcon: initialIcon,
+                primaryLabel: primaryLabel,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _showRoutineTextSheet({
+    required String title,
+    String initial = '',
+    required String primaryLabel,
+    required void Function(String) onSubmit,
+  }) {
+    final ctrl = TextEditingController(text: initial);
+    return showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'routine',
+      barrierColor: Colors.black.withOpacity(0.22),
+      transitionDuration: const Duration(milliseconds: 220),
+      pageBuilder: (ctx, _, __) => const SizedBox.shrink(),
+      transitionBuilder: (ctx, anim, __, child) {
+        final curve =
+            CurvedAnimation(parent: anim, curve: Curves.easeOutBack);
+        return BackdropFilter(
+          filter: ImageFilter.blur(
+              sigmaX: 4 * anim.value, sigmaY: 4 * anim.value),
+          child: Opacity(
+            opacity: anim.value,
+            child: Transform.scale(
+              scale: 0.9 + 0.1 * curve.value,
+              child: _RoutineTextDialog(
+                title: title,
+                controller: ctrl,
+                primaryLabel: primaryLabel,
+                onSubmit: (t) {
+                  onSubmit(t);
+                  Navigator.of(ctx).pop();
+                },
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<bool?> _showConfirmDialog({
+    required String title,
+    required String body,
+    required String dangerLabel,
+  }) {
+    return showGeneralDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'confirm',
+      barrierColor: Colors.black.withOpacity(0.22),
+      transitionDuration: const Duration(milliseconds: 200),
+      pageBuilder: (ctx, _, __) => const SizedBox.shrink(),
+      transitionBuilder: (ctx, anim, __, child) {
+        return BackdropFilter(
+          filter: ImageFilter.blur(
+              sigmaX: 3 * anim.value, sigmaY: 3 * anim.value),
+          child: Opacity(
+            opacity: anim.value,
+            child: Transform.scale(
+              scale: 0.92 + 0.08 * anim.value,
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(28),
+                  child: Container(
+                    constraints: const BoxConstraints(maxWidth: 340),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: _outline, width: 2),
+                      boxShadow: [
+                        BoxShadow(
+                          color: _outline.withOpacity(0.35),
+                          offset: const Offset(0, 4),
+                          blurRadius: 0,
+                        ),
+                      ],
+                    ),
+                    padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+                    child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            title,
+                            style: const TextStyle(
+                              fontFamily: 'Bitroad',
+                              fontSize: 20,
+                              color: _brown,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            body,
+                            textAlign: TextAlign.center,
+                            style: GoogleFonts.nunito(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: _brownLt,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          Row(children: [
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: () => Navigator.of(ctx).pop(false),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      vertical: 10),
+                                  decoration: BoxDecoration(
+                                    color: _cream,
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                        color: _outline.withOpacity(0.3),
+                                        width: 1.2),
+                                  ),
+                                  child: Center(
+                                    child: Text(
+                                      'Cancel',
+                                      style: GoogleFonts.nunito(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w800,
+                                        color: _brown,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: () => Navigator.of(ctx).pop(true),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      vertical: 10),
+                                  decoration: BoxDecoration(
+                                    color: _red,
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                        color: _outline.withOpacity(0.45),
+                                        width: 1.2),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: _outline.withOpacity(0.25),
+                                        offset: const Offset(1, 1),
+                                        blurRadius: 0,
+                                      ),
+                                    ],
+                                  ),
+                                  child: Center(
+                                    child: Text(
+                                      dangerLabel,
+                                      style: GoogleFonts.nunito(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w800,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ]),
+                        ]),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
 
+//  QUEST ROW (separate widget so ValueKey works cleanly)
+class _QuestRow extends StatelessWidget {
+  final Map<String, dynamic> quest;
+  final bool isLast;
+  final VoidCallback onToggle;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+  const _QuestRow({
+    super.key,
+    required this.quest,
+    required this.isLast,
+    required this.onToggle,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final done = quest['done'] == true;
+    final name = quest['name'] as String? ?? '';
+    final iconKey = quest['icon'] as String? ?? 'check';
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onToggle,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 11, 14, 11),
+        decoration: BoxDecoration(
+          border: !isLast
+              ? Border(
+                  bottom: BorderSide(color: _outline.withOpacity(0.06)))
+              : null,
+        ),
+        child: Row(children: [
+          _MiniCheckbox(done: done),
+          const SizedBox(width: 10),
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: done
+                  ? _olive.withOpacity(0.25)
+                  : _cream.withOpacity(0.7),
+              borderRadius: BorderRadius.circular(8),
+              border:
+                  Border.all(color: _outline.withOpacity(0.2), width: 1),
+            ),
+            child: Icon(_iconFor(iconKey),
+                size: 15, color: done ? _oliveDk : _brownLt),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              name,
+              style: GoogleFonts.nunito(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: done ? _olive : _brown,
+                decoration:
+                    done ? TextDecoration.lineThrough : null,
+              ),
+            ),
+          ),
+          GestureDetector(
+            onTap: onEdit,
+            child: Padding(
+              padding: const EdgeInsets.all(4),
+              child: Icon(Icons.edit_rounded, size: 15, color: _brownSoft),
+            ),
+          ),
+          const SizedBox(width: 2),
+          GestureDetector(
+            onTap: onDelete,
+            child: Padding(
+              padding: const EdgeInsets.all(4),
+              child: Icon(Icons.close_rounded, size: 16, color: _brownSoft),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+//  ROUTINE ROW (editable list item)
+class _RoutineRow extends StatelessWidget {
+  final String text;
+  final bool done;
+  final bool isLast;
+  final VoidCallback onToggle;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+  const _RoutineRow({
+    super.key,
+    required this.text,
+    required this.done,
+    required this.isLast,
+    required this.onToggle,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onToggle,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+        decoration: BoxDecoration(
+          border: !isLast
+              ? Border(
+                  bottom: BorderSide(color: _outline.withOpacity(0.06)))
+              : null,
+        ),
+        child: Row(children: [
+          _MiniCheckbox(done: done),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              style: GoogleFonts.nunito(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: done ? _olive : _brown,
+                decoration: done ? TextDecoration.lineThrough : null,
+              ),
+            ),
+          ),
+          GestureDetector(
+            onTap: onEdit,
+            child: Padding(
+              padding: const EdgeInsets.all(3),
+              child: Icon(Icons.edit_rounded, size: 14, color: _brownSoft),
+            ),
+          ),
+          GestureDetector(
+            onTap: onDelete,
+            child: Padding(
+              padding: const EdgeInsets.all(3),
+              child: Icon(Icons.close_rounded, size: 15, color: _brownSoft),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+class _MiniCheckbox extends StatelessWidget {
+  final bool done;
+  const _MiniCheckbox({required this.done});
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 150),
+      width: 22,
+      height: 22,
+      decoration: BoxDecoration(
+        color: done ? _olive : _cream,
+        borderRadius: BorderRadius.circular(7),
+        border: Border.all(
+          color: done ? _oliveDk : _outline.withOpacity(0.35),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: (done ? _oliveDk : _outline).withOpacity(0.2),
+            offset: const Offset(1, 1),
+            blurRadius: 0,
+          ),
+        ],
+      ),
+      child: done
+          ? const Icon(Icons.check_rounded, size: 14, color: Colors.white)
+          : null,
+    );
+  }
+}
+
+//  QUEST EDITOR DIALOG — name field + icon grid
+class _QuestEditorDialog extends StatefulWidget {
+  final String title;
+  final String initialName;
+  final String initialIcon;
+  final String primaryLabel;
+  const _QuestEditorDialog({
+    required this.title,
+    required this.initialName,
+    required this.initialIcon,
+    required this.primaryLabel,
+  });
+
+  @override
+  State<_QuestEditorDialog> createState() => _QuestEditorDialogState();
+}
+
+class _QuestEditorDialogState extends State<_QuestEditorDialog> {
+  late TextEditingController _ctrl;
+  late String _iconKey;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(text: widget.initialName);
+    _iconKey = widget.initialIcon;
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final name = _ctrl.text.trim();
+    if (name.isEmpty) return;
+    Navigator.of(context).pop({'name': name, 'icon': _iconKey});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final iconKeys = _questIcons.keys.toList();
+    return Material(
+      type: MaterialType.transparency,
+      child: Center(
+        child: SingleChildScrollView(
+          padding: EdgeInsets.only(
+            left: 28,
+            right: 28,
+            top: 28,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 28,
+          ),
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 380),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: _outline, width: 2),
+              boxShadow: [
+                BoxShadow(
+                  color: _outline.withOpacity(0.4),
+                  offset: const Offset(0, 5),
+                  blurRadius: 0,
+                ),
+              ],
+            ),
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(children: [
+                  Icon(Icons.auto_awesome_rounded,
+                      size: 22, color: _oliveDk),
+                  const SizedBox(width: 8),
+                  Text(
+                    widget.title,
+                    style: const TextStyle(
+                      fontFamily: 'Bitroad',
+                      fontSize: 20,
+                      color: _brown,
+                    ),
+                  ),
+                  const Spacer(),
+                  GestureDetector(
+                    onTap: () => Navigator.of(context).pop(),
+                    child: Icon(Icons.close_rounded,
+                        size: 20, color: _brownSoft),
+                  ),
+                ]),
+                const SizedBox(height: 14),
+
+                // Name input
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: _cream.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                        color: _outline.withOpacity(0.3), width: 1.2),
+                  ),
+                  child: TextField(
+                    controller: _ctrl,
+                    autofocus: true,
+                    onSubmitted: (_) => _submit(),
+                    decoration: InputDecoration(
+                      hintText: 'Quest name',
+                      hintStyle: GoogleFonts.nunito(
+                          fontSize: 14, color: _brownSoft),
+                      border: InputBorder.none,
+                      isDense: true,
+                    ),
+                    style: GoogleFonts.nunito(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: _brown,
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 14),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'ICON',
+                    style: GoogleFonts.nunito(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      color: _brownSoft,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: iconKeys.map((k) {
+                    final active = k == _iconKey;
+                    return GestureDetector(
+                      onTap: () => setState(() => _iconKey = k),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 150),
+                        width: 38,
+                        height: 38,
+                        decoration: BoxDecoration(
+                          color: active
+                              ? _olive.withOpacity(0.85)
+                              : _cream,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: active
+                                ? _oliveDk
+                                : _outline.withOpacity(0.25),
+                            width: active ? 2 : 1.2,
+                          ),
+                          boxShadow: active
+                              ? [
+                                  BoxShadow(
+                                    color: _oliveDk.withOpacity(0.35),
+                                    offset: const Offset(1, 2),
+                                    blurRadius: 0,
+                                  ),
+                                ]
+                              : [],
+                        ),
+                        child: Icon(
+                          _questIcons[k],
+                          size: 18,
+                          color: active ? Colors.white : _brown,
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+
+                const SizedBox(height: 18),
+                Row(children: [
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => Navigator.of(context).pop(),
+                      child: Container(
+                        padding:
+                            const EdgeInsets.symmetric(vertical: 11),
+                        decoration: BoxDecoration(
+                          color: _cream,
+                          borderRadius: BorderRadius.circular(11),
+                          border: Border.all(
+                              color: _outline.withOpacity(0.3),
+                              width: 1.2),
+                        ),
+                        child: Center(
+                          child: Text(
+                            'Cancel',
+                            style: GoogleFonts.nunito(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              color: _brown,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: _submit,
+                      child: Container(
+                        padding:
+                            const EdgeInsets.symmetric(vertical: 11),
+                        decoration: BoxDecoration(
+                          color: _olive,
+                          borderRadius: BorderRadius.circular(11),
+                          border:
+                              Border.all(color: _oliveDk, width: 1.5),
+                          boxShadow: [
+                            BoxShadow(
+                              color: _oliveDk.withOpacity(0.35),
+                              offset: const Offset(1, 2),
+                              blurRadius: 0,
+                            ),
+                          ],
+                        ),
+                        child: Center(
+                          child: Text(
+                            widget.primaryLabel,
+                            style: GoogleFonts.nunito(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ]),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+//  ROUTINE TEXT DIALOG — simple name editor
+class _RoutineTextDialog extends StatelessWidget {
+  final String title;
+  final TextEditingController controller;
+  final String primaryLabel;
+  final void Function(String) onSubmit;
+  const _RoutineTextDialog({
+    required this.title,
+    required this.controller,
+    required this.primaryLabel,
+    required this.onSubmit,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 360),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: _outline, width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: _outline.withOpacity(0.4),
+                offset: const Offset(0, 5),
+                blurRadius: 0,
+              ),
+            ],
+          ),
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Row(children: [
+              Icon(Icons.edit_rounded, size: 20, color: _oliveDk),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontFamily: 'Bitroad',
+                  fontSize: 19,
+                  color: _brown,
+                ),
+              ),
+              const Spacer(),
+              GestureDetector(
+                onTap: () => Navigator.of(context).pop(),
+                child: Icon(Icons.close_rounded,
+                    size: 20, color: _brownSoft),
+              ),
+            ]),
+            const SizedBox(height: 14),
+            Theme(
+              data: Theme.of(context).copyWith(
+                inputDecorationTheme: const InputDecorationTheme(
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                ),
+              ),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                decoration: BoxDecoration(
+                  color: _cream.withOpacity(0.5),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                      color: _outline.withOpacity(0.3), width: 1.2),
+                ),
+                child: TextField(
+                  controller: controller,
+                  autofocus: true,
+                  onSubmitted: (v) => onSubmit(v),
+                  decoration: InputDecoration(
+                    hintText: 'Step name',
+                    hintStyle: GoogleFonts.nunito(
+                        fontSize: 14, color: _brownSoft),
+                    border: InputBorder.none,
+                    isDense: true,
+                  ),
+                  style: GoogleFonts.nunito(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: _brown,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => Navigator.of(context).pop(),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 11),
+                    decoration: BoxDecoration(
+                      color: _cream,
+                      borderRadius: BorderRadius.circular(11),
+                      border: Border.all(
+                          color: _outline.withOpacity(0.3), width: 1.2),
+                    ),
+                    child: Center(
+                      child: Text(
+                        'Cancel',
+                        style: GoogleFonts.nunito(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          color: _brown,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => onSubmit(controller.text),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 11),
+                    decoration: BoxDecoration(
+                      color: _olive,
+                      borderRadius: BorderRadius.circular(11),
+                      border: Border.all(color: _oliveDk, width: 1.5),
+                      boxShadow: [
+                        BoxShadow(
+                          color: _oliveDk.withOpacity(0.35),
+                          offset: const Offset(1, 2),
+                          blurRadius: 0,
+                        ),
+                      ],
+                    ),
+                    child: Center(
+                      child: Text(
+                        primaryLabel,
+                        style: GoogleFonts.nunito(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ]),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+//  SCORE RING (sticker-stamp circle with ring arc + number)
+class _ScoreRing extends StatelessWidget {
+  final int score;
+  final Color color;
+  final double size;
+  const _ScoreRing({
+    required this.score,
+    required this.color,
+    this.size = 96,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Stack(alignment: Alignment.center, children: [
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            shape: BoxShape.circle,
+            border: Border.all(color: _outline, width: 2.5),
+            boxShadow: [
+              BoxShadow(
+                color: _outline.withOpacity(0.35),
+                offset: const Offset(0, 4),
+                blurRadius: 0,
+              ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.all(8),
+          child: CustomPaint(
+            painter: _RingPainter(
+              progress: (score / 100).clamp(0.0, 1.0),
+              bgColor: color.withOpacity(0.18),
+              fgColor: color,
+              strokeWidth: 7,
+            ),
+            size: Size(size - 16, size - 16),
+          ),
+        ),
+        Column(mainAxisSize: MainAxisSize.min, children: [
+          Text(
+            '$score',
+            style: const TextStyle(
+              fontFamily: 'Bitroad',
+              fontSize: 28,
+              color: _brown,
+              height: 1,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            'SCORE',
+            style: GoogleFonts.nunito(
+              fontSize: 8,
+              fontWeight: FontWeight.w800,
+              color: _brownSoft,
+              letterSpacing: 1.2,
+            ),
+          ),
+        ]),
+      ]),
+    );
+  }
+}
+
+class _RingPainter extends CustomPainter {
+  final double progress;
+  final Color bgColor, fgColor;
+  final double strokeWidth;
+  _RingPainter({
+    required this.progress,
+    required this.bgColor,
+    required this.fgColor,
+    required this.strokeWidth,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = (size.shortestSide - strokeWidth) / 2;
+    final bg = Paint()
+      ..color = bgColor
+      ..strokeWidth = strokeWidth
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+    canvas.drawCircle(center, radius, bg);
+    if (progress <= 0) return;
+    final fg = Paint()
+      ..color = fgColor
+      ..strokeWidth = strokeWidth
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      -math.pi / 2,
+      2 * math.pi * progress,
+      false,
+      fg,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _RingPainter old) =>
+      old.progress != progress ||
+      old.fgColor != fgColor ||
+      old.bgColor != bgColor;
+}
+
+//  PAW-PRINT BACKDROP
 class _PawPrintBg extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
@@ -1441,10 +1901,4 @@ class _PawPrintBg extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-extension on String {
-  String capitalize() {
-    return '${this[0].toUpperCase()}${substring(1)}';
-  }
 }

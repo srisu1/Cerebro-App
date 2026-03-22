@@ -1,3 +1,6 @@
+/// Ported from .NET MoodJournal AvatarPositions.cs
+/// Each layer has (x, y, scale) offsets for proper compositing.
+
 class LayerPosition {
   final double x;
   final double y;
@@ -6,7 +9,6 @@ class LayerPosition {
 }
 
 class AvatarPositions {
-  // default positions for each layer
   static const defaults = {
     'base': LayerPosition(0, 0, 0.30),
     'eyes': LayerPosition(0, -31, 0.30),
@@ -20,7 +22,6 @@ class AvatarPositions {
     'extras': LayerPosition(0, 50, 0.30),
   };
 
-  // female hair positions
   static const hairFemale = {
     'bangs-short': LayerPosition(-3, -76, 0.30),
     'bangs': LayerPosition(-2, -22, 0.30),
@@ -34,7 +35,6 @@ class AvatarPositions {
     'boys-cut': LayerPosition(-4, -140, 0.30),
   };
 
-  // male hair positions
   static const hairMale = {
     'curly-short': LayerPosition(2, -167, 0.30),
     'straight-short': LayerPosition(4, -138, 0.30),
@@ -48,17 +48,20 @@ class AvatarPositions {
     'edgy-hair': LayerPosition(-2, -145, 0.30),
   };
 
-  // female clothes positions
+  // NOTE: 'uniform' and 'button-up-shirt' are primarily male styles,
+  // but included here as safety fallbacks matching c-neck dimensions
+  // in case they're ever assigned to a female avatar.
   static const clothesFemale = {
-    'off-shoulder': LayerPosition(-7, 214, 0.29),
+    'off-shoulder': LayerPosition(-15, 221, 0.31),
     'night-dress': LayerPosition(-4, 214, 0.32),
     'sweater': LayerPosition(-4, 214, 0.32),
     'c-neck': LayerPosition(-4, 214, 0.32),
     'tank-top': LayerPosition(6, 214, 0.30),
     'v-neck-sweater': LayerPosition(-4, 214, 0.32),
+    'uniform': LayerPosition(0, 210, 0.30),
+    'button-up-shirt': LayerPosition(0, 210, 0.30),
   };
 
-  // male clothes positions
   static const clothesMale = {
     'uniform': LayerPosition(1, 230, 0.39),
     'button-up-shirt': LayerPosition(1, 230, 0.39),
@@ -68,7 +71,6 @@ class AvatarPositions {
     'tank-top': LayerPosition(7, 212, 0.32),
   };
 
-  // facial hair positions (male only)
   static const facialHair = {
     'style1': LayerPosition(-3, 31, 0.30),
     'style2': LayerPosition(-7, 122, 0.30),
@@ -92,12 +94,10 @@ class AvatarPositions {
     'style20': LayerPosition(-2, 44, 0.30),
   };
 
-  // glasses positions
   static const glasses = {
     'default': LayerPosition(1, -25, 0.30),
   };
 
-  // headwear positions
   static const headwear = {
     'hairband1': LayerPosition(-8, -150, 0.30),
     'hairband2': LayerPosition(-8, -150, 0.30),
@@ -109,13 +109,11 @@ class AvatarPositions {
     'sideways-baseball-cap': LayerPosition(77, -204, 0.29),
   };
 
-  // neckwear positions
   static const neckwear = {
     'boy-tie': LayerPosition(0, 160, 0.11),
     'straight-tie': LayerPosition(0, 241, 0.11),
   };
 
-  // extras positions
   static const extras = {
     'side-bow': LayerPosition(-141, -200, 0.30),
     'lady-hat': LayerPosition(0, -193, 0.30),
