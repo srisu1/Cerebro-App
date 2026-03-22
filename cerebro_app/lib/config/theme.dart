@@ -1,8 +1,9 @@
+/// Cute warm aesthetic with thick borders, 3D shadows, cream backgrounds.
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class CerebroTheme {
-  // palette
   static const Color cream = Color(0xFFFEF5E8);
   static const Color creamMid = Color(0xFFF5E6D3);
   static const Color creamDark = Color(0xFFE8D5C4);
@@ -32,7 +33,6 @@ class CerebroTheme {
   static const Color shadow = Color(0x404A3F35);
   static const Color shadowDark = Color(0x664A3F35);
 
-  // olive-pink login palette
   static const Color olive = Color(0xFF98A869);
   static const Color oliveDark = Color(0xFF58772F);
   static const Color pinkAccent = Color(0xFFFEA9D3);
@@ -50,7 +50,6 @@ class CerebroTheme {
   static const Color dividerGreen = Color(0xFFDDE4C8);
   static const Color inputBg = Color(0xFFFEFDFB);
 
-  // aliases
   static const Color primaryPurple = lavender;
   static const Color primaryBlue = sky;
   static const Color accentGreen = sage;
@@ -58,7 +57,6 @@ class CerebroTheme {
   static const Color accentRed = coral;
   static const Color xpGold = gold;
 
-  // border helpers
   static Border get thickBorder =>
       Border.all(color: outline, width: 4);
 
@@ -83,7 +81,6 @@ class CerebroTheme {
         blurRadius: 0,
       );
 
-  // card decorations
   static BoxDecoration cuteCard({
     Color? color,
     double radius = 20,
@@ -114,7 +111,7 @@ class CerebroTheme {
     );
   }
 
-  // light theme
+  //  LIGHT THEME (Toca Boca Style)
   static ThemeData get lightTheme {
     return ThemeData(
       useMaterial3: true,
@@ -246,6 +243,6 @@ class CerebroTheme {
     );
   }
 
-  // dark theme (todo)
+  //  DARK THEME (keep minimal for now)
   static ThemeData get darkTheme => lightTheme;
 }

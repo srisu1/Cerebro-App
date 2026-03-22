@@ -1,3 +1,7 @@
+/// Uses GoRouter for declarative navigation.
+/// Title screen shows first, then navigates via TitleScreen._go()
+/// Flow: title → onboarding → register → setup → avatar → home
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -25,6 +29,7 @@ import 'package:cerebro_app/screens/insights/insights_screen.dart';
 import 'package:cerebro_app/screens/gamification/achievements_screen.dart';
 import 'package:cerebro_app/screens/title/title_screen.dart';
 
+/// Route paths as constants to avoid typos
 class Routes {
   static const String splash = '/';
   static const String onboarding = '/onboarding';
@@ -52,11 +57,13 @@ class Routes {
   static const String setPassword = '/set-password';
 }
 
+/// GoRouter provider for Riverpod
 final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     initialLocation: Routes.splash,
 
     routes: [
+      // Navigation logic lives inside TitleScreen._go()
       GoRoute(
         path: Routes.splash,
         builder: (context, state) => const TitleScreen(),

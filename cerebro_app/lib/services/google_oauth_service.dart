@@ -63,7 +63,7 @@ class GoogleOAuthService {
             justify-content: center; align-items: center; height: 100vh; margin: 0;
             background: linear-gradient(135deg, #e8f5e9, #fff8e1);">
             <div style="text-align: center;">
-              <h1 style="color: #2e7d32;">✓ Signed in to Cerebro</h1>
+              <h1 style="color: #2e7d32;">✓ Signed in to CEREBRO</h1>
               <p style="color: #666;">You can close this tab and return to the app.</p>
             </div>
           </body></html>

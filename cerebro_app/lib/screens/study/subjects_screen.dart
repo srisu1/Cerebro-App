@@ -1,3 +1,4 @@
+//  CEREBRO — Subjects Manager
 //  Cozy Pocket Love aesthetic · Full CRUD · Proficiency tracking
 
 import 'dart:async';
