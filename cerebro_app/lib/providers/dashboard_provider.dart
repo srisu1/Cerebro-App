@@ -12,7 +12,6 @@ import 'package:cerebro_app/models/avatar_config.dart';
 import 'package:cerebro_app/services/api_service.dart';
 import 'package:cerebro_app/providers/auth_provider.dart';
 
-
 const int xpPerCash = 20; // 20 XP = 1 Cash
 const int startingXp = 20; // new users start with 20 XP
 const int startingCash = 50; // new users start with 50 cash for testing
@@ -32,7 +31,6 @@ const Map<String, String> habitIconMap = {
   'Read 15 min': 'book',
 };
 
-
 class DashboardState {
   final bool isLoading;
   final String displayName;
@@ -47,6 +45,7 @@ class DashboardState {
   final AvatarConfig? avatarConfig;
   final String? backendExpression; // expression from backend intelligence
   final int? pendingLevelUp; // non-null = show level-up celebration for this level
+  final int waterIntake; // glasses of water today (out of 8)
   final DateTime lastRefreshed;
 
   const DashboardState({
@@ -63,6 +62,7 @@ class DashboardState {
     this.avatarConfig,
     this.backendExpression,
     this.pendingLevelUp,
+    this.waterIntake = 0,
     required this.lastRefreshed,
   });
 
@@ -90,6 +90,7 @@ class DashboardState {
     String? backendExpression,
     int? pendingLevelUp,
     bool clearLevelUp = false,
+    int? waterIntake,
     DateTime? lastRefreshed,
   }) {
     return DashboardState(
@@ -106,11 +107,11 @@ class DashboardState {
       avatarConfig: avatarConfig ?? this.avatarConfig,
       backendExpression: backendExpression ?? this.backendExpression,
       pendingLevelUp: clearLevelUp ? null : (pendingLevelUp ?? this.pendingLevelUp),
+      waterIntake: waterIntake ?? this.waterIntake,
       lastRefreshed: lastRefreshed ?? this.lastRefreshed,
     );
   }
 }
-
 
 class DashboardNotifier extends StateNotifier<DashboardState> {
   final ApiService _api;
@@ -120,7 +121,6 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
     loadAll();
   }
 
-  //
   Future<void> loadAll() async {
     state = state.copyWith(isLoading: true);
     await _loadFromCache();
@@ -129,7 +129,6 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
     _syncFromApi();
   }
 
-  
   Future<void> refresh() async {
     // Re-read avatar from cache (may have been changed on avatar screen)
     final prefs = await SharedPreferences.getInstance();
@@ -144,13 +143,11 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
     state = state.copyWith(lastRefreshed: DateTime.now());
   }
 
-  
   static String _todayKey() {
     final now = DateTime.now();
     return '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
   }
 
-  
   Future<void> _loadFromCache() async {
     final prefs = await SharedPreferences.getInstance();
 
@@ -162,7 +159,6 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
       } catch (_) {}
     }
 
-    
     // We store the user's quest *definitions* in 'quest_definitions'
     // and the daily completion state in 'habits_date' key.
     // If the date has changed, we reset all 'done' flags.
@@ -272,7 +268,6 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
     }
   }
 
-  
   Future<void> _syncFromApi() async {
     try {
       // Fetch user profile
@@ -290,7 +285,6 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
       // API down — use cached data silently
     }
 
-    //
     // LOCAL is the authority for XP and cash — backend may be stale.
     // We only pull streak from the backend (which we can't track locally).
     // We push our local XP/cash TO the backend to keep it in sync.
@@ -314,7 +308,6 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
       }
     } catch (_) {}
 
-    
     try {
       final habitsRes = await _api.get('/daily/habits');
       if (habitsRes.statusCode == 200) {
@@ -430,7 +423,6 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
       }
     } catch (_) {}
 
-    
     try {
       final exprRes = await _api.get('/gamification/avatar/expression');
       if (exprRes.statusCode == 200) {
@@ -459,7 +451,6 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
     return [];
   }
 
-  
 
   /// Update mood display locally only (no API call).
   /// Use when another screen already posted to the API.
@@ -534,7 +525,18 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
     }
   }
 
-  
+  void drinkWater() {
+    if (state.waterIntake < 8) {
+      state = state.copyWith(waterIntake: state.waterIntake + 1);
+    }
+  }
+
+  void undoWater() {
+    if (state.waterIntake > 0) {
+      state = state.copyWith(waterIntake: state.waterIntake - 1);
+    }
+  }
+
 
   /// Add a new quest. Returns true if added.
   Future<bool> addQuest(String name, {String icon = 'check'}) async {
@@ -683,6 +685,9 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
     state = state.copyWith(clearLevelUp: true);
   }
 
+  /// Public wrapper so other tabs (health, daily, etc.) can award XP.
+  Future<void> awardXp(int amount) => _addXp(amount);
+
   Future<void> _addXp(int amount) async {
     int newXp = state.totalXp + amount;
     int newLevel = state.level;
@@ -735,7 +740,6 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
     }
   }
 
-  
   /// Default quests — NO Journal
   static List<Map<String, dynamic>> _defaultQuestDefs() => [
         {'name': 'Drink Water', 'icon': 'water'},
@@ -748,7 +752,6 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
   static List<Map<String, dynamic>> _defaultHabits() =>
       _defaultQuestDefs().map((q) => {...q, 'done': false}).toList();
 }
-
 
 final dashboardProvider =
     StateNotifierProvider<DashboardNotifier, DashboardState>((ref) {

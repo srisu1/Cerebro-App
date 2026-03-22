@@ -17,6 +17,10 @@ class AliveAvatar extends StatefulWidget {
   final AvatarConfig config;
   final double size;
   final ExpressionState expression;
+  /// When true, overrides user's chosen clothes with time/schedule-based outfit.
+  /// Defaults to FALSE — avatar wears what the user picked.
+  /// TODO: Re-enable once schedule-based outfit system is built
+  /// (should read from user's personal schedule, not hardcoded hours).
   final bool autoOutfit;
   final Color? backgroundColor;
 
@@ -24,14 +28,29 @@ class AliveAvatar extends StatefulWidget {
   /// Used for status bar mini avatar.
   final bool mini;
 
+  /// When true, skips body / accessory layers (clothes, glasses, headwear,
+  /// neckwear, extras) and only renders the head stack: base, eyes, nose,
+  /// mouth, hair, facial hair. Used by [MoodSticker] so the personalized
+  /// face elements (eyes / nose / mouth / hair) sit in identical relative
+  /// positions to the full home/profile avatar.
+  final bool headOnly;
+
+  /// Whether the breathing float + blink animations are running. Defaults
+  /// to true; set false for static stickers (mood selector, list rows)
+  /// where the parent has its own animation and we don't want compounded
+  /// motion.
+  final bool? breathing;
+
   const AliveAvatar({
     super.key,
     required this.config,
     this.size = 240,
     this.expression = ExpressionState.neutral,
-    this.autoOutfit = true,
+    this.autoOutfit = false,
     this.backgroundColor,
     this.mini = false,
+    this.headOnly = false,
+    this.breathing,
   });
 
   @override
@@ -46,6 +65,8 @@ class _AliveAvatarState extends State<AliveAvatar>
   Timer? _blinkTimer;
   double _eyeOpacity = 1.0;
 
+  bool get _breathingOn => widget.breathing ?? !widget.mini;
+
   @override
   void initState() {
     super.initState();
@@ -53,14 +74,15 @@ class _AliveAvatarState extends State<AliveAvatar>
     _breatheCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 3500),
-    )..repeat(reverse: true);
+    );
+    if (_breathingOn) _breatheCtrl.repeat(reverse: true);
 
-    final amplitude = widget.mini ? 0.0 : 5.0;
+    final amplitude = _breathingOn ? 5.0 : 0.0;
     _breatheAnim = Tween<double>(begin: -amplitude, end: amplitude).animate(
       CurvedAnimation(parent: _breatheCtrl, curve: Curves.easeInOut),
     );
 
-    if (!widget.mini) _scheduleBlink();
+    if (_breathingOn) _scheduleBlink();
   }
 
   @override
@@ -103,6 +125,18 @@ class _AliveAvatarState extends State<AliveAvatar>
     final size = widget.size;
     final dScale = size / 280.0;
 
+    // Inner stack positioning:
+    //   • Default (head + torso visible): top = size*1.4 - 550*dScale
+    //     → base image center lands at size*0.418 (upper portion) so the
+    //       body extends down into view below the head.
+    //   • headOnly: top = size/2 - 275*dScale
+    //     → base image center lands at size/2 (exactly vertically centered)
+    //       so the head fills the middle of the box and the body just
+    //       extends below the visible edge.
+    final double innerTop = widget.headOnly
+        ? size / 2 - 275 * dScale
+        : size * 1.4 - 550 * dScale;
+
     return AnimatedBuilder(
       animation: _breatheAnim,
       builder: (_, child) => Transform.translate(
@@ -116,13 +150,20 @@ class _AliveAvatarState extends State<AliveAvatar>
           color: widget.backgroundColor ?? Colors.transparent,
           borderRadius: BorderRadius.circular(size * 0.15),
         ),
-        clipBehavior: widget.backgroundColor != null ? Clip.hardEdge : Clip.none,
+        // Only clip when the caller asks for a filled background. In
+        // headOnly mode we render the justheadbase asset (no body), so
+        // there's nothing to hide — and clipping here would chop off the
+        // top of the hair and the chin before the parent (MoodSticker)
+        // has a chance to scale the rendering down to fit.
+        clipBehavior: widget.backgroundColor != null
+            ? Clip.hardEdge
+            : Clip.none,
         child: Stack(
           clipBehavior: Clip.none,
           children: [
             Positioned(
               left: (size - 600 * dScale) / 2,
-              top: size * 1.4 - 550 * dScale,
+              top: innerTop,
               width: 600 * dScale,
               height: 550 * dScale,
               child: Stack(
@@ -175,7 +216,12 @@ class _AliveAvatarState extends State<AliveAvatar>
     }
 
     // 1. Base skin
-    addLayer(config.basePath, AvatarPositions.defaults['base']!);
+    //    In head-only mode use the justheadbase asset (no torso) so the
+    //    sticker doesn't carry a body silhouette behind the face.
+    addLayer(
+      widget.headOnly ? config.justHeadBasePath : config.basePath,
+      AvatarPositions.defaults['base']!,
+    );
 
     // 2. Eyes — use expression overlay ONLY if real assets exist
     //    Apply blink opacity (fades eyes out briefly)
@@ -207,15 +253,23 @@ class _AliveAvatarState extends State<AliveAvatar>
       addLayer(config.mouthPath, AvatarPositions.defaults['mouth']!);
     }
 
-    // 5. Clothes
-    final clothesParts = config.clothes.split('-');
-    final clothesStyle = clothesParts.length >= 2
-        ? clothesParts.sublist(0, clothesParts.length - 1).join('-')
-        : config.clothes;
-    addLayer(
-      _getClothesPath(),
-      AvatarPositions.getClothesPosition(config.gender, clothesStyle),
-    );
+    // 5. Clothes — use auto-outfit style for BOTH image path AND position
+    //    so the position always matches the actual rendered garment.
+    //    Skipped entirely in head-only mode (mood stickers).
+    if (!widget.headOnly) {
+      final activeClothesStyle = widget.autoOutfit
+          ? ExpressionEngine.clothesForTimeOfDay(config.gender)
+          : (() {
+              final parts = config.clothes.split('-');
+              return parts.length >= 2
+                  ? parts.sublist(0, parts.length - 1).join('-')
+                  : config.clothes;
+            })();
+      addLayer(
+        _getClothesPath(),
+        AvatarPositions.getClothesPosition(config.gender, activeClothesStyle),
+      );
+    }
 
     // 6. Hair
     addLayer(
@@ -228,6 +282,9 @@ class _AliveAvatarState extends State<AliveAvatar>
       addLayer(config.facialHairPath!,
           AvatarPositions.getFacialHairPosition(config.facialHair!));
     }
+
+    // 8-11 are body / accessory layers — skipped in head-only mode.
+    if (widget.headOnly) return layers;
 
     // 8. Glasses
     if (config.glassesPath != null && config.glasses != null) {

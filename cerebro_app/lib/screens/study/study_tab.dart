@@ -1,14 +1,18 @@
-/// Sneak-peek overview — each feature has its own page.
-/// Centered timer hero with circular controls (user-approved style).
-/// Warm Pocket Love aesthetic, visual variety, no endless scroll.
+/// Matches study_refined.html prototype exactly (desktop layout).
 ///
-/// Layout:
-///  1. Header row (title + XP pill)
-///  2. Timer Hero (centered, warm cream/gold, circular buttons)
-///  3. Quick Actions (5 cozy game buttons — 2 rows)
-///  4. Feature Peek — 2×2 cards with distinct visual styles
-///  5. Study Resources teaser banner
-///  6. Study Insight
+/// Desktop layout (maxWidth > 900):
+///  HERO     — fixed 32% viewport / min 240px
+///             • back btn + title absolutely positioned top-left
+///             • pills absolutely positioned top-right
+///             • timer CENTERED within hero region
+///  CONTENT  — fills remaining viewport, no scroll
+///             LEFT  45% — Quick Actions + Overview peek grid (stretches)
+///             RIGHT 55% — Weekly Activity card (bars stretch vertical)
+///                         + Resources + Calendar teasers + Tip
+///
+/// Narrow layout (<= 900): stacked scrollable fallback (mobile).
+///
+/// All data/model/provider code is unchanged.
 
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
@@ -18,6 +22,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cerebro_app/config/router.dart';
 import 'package:cerebro_app/providers/auth_provider.dart';
+import 'package:cerebro_app/providers/dashboard_provider.dart';
 import 'package:cerebro_app/services/api_service.dart';
 import 'package:cerebro_app/screens/home/home_screen.dart';
 
@@ -27,9 +32,10 @@ const _ombre3  = Color(0xFFFFF3EF);
 const _ombre4  = Color(0xFFFEEDE9);
 const _pawClr  = Color(0xFFF8BCD0);
 
-const _outline = Color(0xFF6E5848);
-const _brown   = Color(0xFF4E3828);
+const _outline = Color(0xFF6E5848);   // --bdr / --ink-mid
+const _brown   = Color(0xFF4E3828);   // --ink / --bdr-dk
 const _brownLt = Color(0xFF7A5840);
+const _inkSoft = Color(0xFF9A8070);   // --ink-soft — HTML wb-day, t-sub, tc-sub
 
 const _cardFill = Color(0xFFFFF8F4);
 const _goldGlow = Color(0xFFF8E080);
@@ -51,6 +57,10 @@ const _goldDk   = Color(0xFFD4B850);
 const _sageHdr  = Color(0xFF90C8A0);
 const _sageLt   = Color(0xFFB0D8B8);
 const _sageDk   = Color(0xFF70A880);
+
+// Olive — matches prototype --olive / --olive-dk
+const _olive   = Color(0xFF98A869);
+const _oliveDk = Color(0xFF58772F);
 
 //  STUDY DATA MODEL + PROVIDER
 class StudyData {
@@ -278,7 +288,9 @@ class _StudyTabState extends ConsumerState<StudyTab>
     ));
   }
 
-  //  BUILD
+  //  BUILD — branches on viewport width
+  //   • Desktop (>900px): fixed-viewport hero + 2-col content
+  //   • Narrow (<=900px): stacked scrollable fallback
   @override
   Widget build(BuildContext context) {
     // Auto-refresh when user switches TO the study tab
@@ -288,639 +300,780 @@ class _StudyTabState extends ConsumerState<StudyTab>
     }
     _prevTab = currentTab;
 
-    final s = ref.watch(studyProvider);
-    return Stack(children: [
-      // Pawprint ombré background
-      Positioned.fill(child: Container(
+    final s    = ref.watch(studyProvider);
+    final dash = ref.watch(dashboardProvider);   // real XP + streak
+
+    return Stack(fit: StackFit.expand, children: [
+      // Pawprint ombré background (fills full screen incl. under nav)
+      Container(
         decoration: const BoxDecoration(gradient: LinearGradient(
           begin: Alignment.topCenter, end: Alignment.bottomCenter,
           colors: [_ombre1, _ombre2, _ombre3, _ombre4],
           stops: [0.0, 0.3, 0.6, 1.0],
         )),
-      )),
-      Positioned.fill(child: CustomPaint(painter: _PawPrintBg())),
-      // Warm golden glow (NOT blue)
-      Positioned(top: -120, left: 0, right: 0, child: Container(
-        height: 300,
-        decoration: BoxDecoration(gradient: RadialGradient(
-          center: Alignment.topCenter, radius: 1.0,
-          colors: [_goldGlow.withOpacity(0.12), Colors.transparent],
-        )),
-      )),
+      ),
+      CustomPaint(painter: _PawPrintBg()),
       // Content
-      SafeArea(child: RefreshIndicator(
-        color: _outline, backgroundColor: _cardFill,
-        onRefresh: () => ref.read(studyProvider.notifier).refresh(),
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(34, 14, 34, 90),
+      SafeArea(
+        bottom: false,
+        child: LayoutBuilder(
+          builder: (ctx, c) {
+            // Desktop threshold: 900px is a reasonable breakpoint for
+            // a true 2-column layout. Below that, fall back to stacked scroll.
+            final isDesktop = c.maxWidth > 900;
+            if (isDesktop) {
+              return _buildDesktopLayout(s, dash, c);
+            }
+            return _buildNarrowLayout(s, dash, c);
+          },
+        ),
+      ),
+    ]);
+  }
+
+  //  DESKTOP LAYOUT — matches study_refined.html exactly
+  //  Column { Hero (32vh / min 240), Content (fills rest) }
+  Widget _buildDesktopLayout(StudyData s, DashboardState dash, BoxConstraints c) {
+    // 80px horizontal padding on very wide screens, scales down smoothly
+    final hPad = c.maxWidth > 1280 ? 80.0
+              : c.maxWidth > 1024 ? 60.0
+              : 40.0;
+    // .hero { height ~38vh; min-height:260px } — bigger so timer breathes
+    // more and doesn't feel cramped against the top pills.
+    final heroH = math.max(c.maxHeight * 0.38, 260.0);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // HERO ── Stack: back+title (top-left), pills (top-right), timer (centered)
+        SizedBox(
+          height: heroH,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              // Top-left: back button + page title
+              Positioned(
+                top: 20, left: hPad,
+                child: _stag(0.00, _buildHeroTop()),
+              ),
+              // Top-right: 3 stat pills
+              Positioned(
+                top: 20, right: hPad,
+                child: _stag(0.00, _buildHeroPills(s, dash)),
+              ),
+              // Timer block — centred horizontally, pushed slightly below
+              // vertical centre so the playback buttons clear the pills row
+              // above. Y=0.15 means the block sits a touch lower than centre,
+              // giving the "Today's Focus" label enough top-space to breathe.
+              Positioned.fill(
+                child: Align(
+                  alignment: const Alignment(0.0, 0.15),
+                  child: _stag(0.06, _buildTimerCenter(s)),
+                ),
+              ),
+            ],
+          ),
+        ),
+        // CONTENT ── fills remaining viewport, no scroll
+        Expanded(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(hPad, 16, hPad, 14),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // LEFT 45%
+                Expanded(
+                  flex: 45,
+                  child: _stag(0.10, _buildLeftColumnDesktop(s)),
+                ),
+                const SizedBox(width: 40),   // .content gap:40px
+                // RIGHT 55%
+                Expanded(
+                  flex: 55,
+                  child: _stag(0.14, _buildRightColumnDesktop(s)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  //  NARROW LAYOUT — original scrollable stack (phone/tablet)
+  Widget _buildNarrowLayout(StudyData s, DashboardState dash, BoxConstraints c) {
+    return RefreshIndicator(
+      color: _outline, backgroundColor: _cardFill,
+      onRefresh: () => ref.read(studyProvider.notifier).refresh(),
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(22, 14, 22, 100),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _stag(0.00, _header(s)),
-              const SizedBox(height: 20),
-              _stag(0.06, _timerHero(s)),
-              const SizedBox(height: 20),
-              _stag(0.12, _quickActions()),
-              const SizedBox(height: 20),
-              _stag(0.18, _peekRow1(s)),
+              _stag(0.00, _buildHeader(s, dash)),
               const SizedBox(height: 14),
-              _stag(0.24, _peekRow2(s)),
-              const SizedBox(height: 14),
-              _stag(0.30, _resourcesTeaser()),
-              const SizedBox(height: 10),
-              _stag(0.33, _calendarTeaser()),
+              _stag(0.06, _buildTimerCenter(s)),
               const SizedBox(height: 20),
-              _stag(0.36, _insightCard(s)),
-              const SizedBox(height: 24),
+              _stag(0.12, Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _buildQuickActionsSection(),
+                  const SizedBox(height: 18),
+                  _buildOverviewGrid(s, stretch: false),
+                  const SizedBox(height: 18),
+                  _buildWeeklyActivityCard(s, stretch: false),
+                  const SizedBox(height: 12),
+                  _buildResourcesTeaser(),
+                  const SizedBox(height: 8),
+                  _buildCalendarTeaser(),
+                  const SizedBox(height: 12),
+                  _buildTipCard(s),
+                ],
+              )),
             ],
           ),
         ),
-      )),
-    ]);
-  }
-
-  //  1. HEADER — title + stat chips (warm, dashboard style)
-  Widget _header(StudyData s) {
-    return Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-      Expanded(child: Text('Study Hub', style: GoogleFonts.gaegu(
-        fontSize: 28, fontWeight: FontWeight.w700, color: _brown, height: 1.1))),
-      // Today chip
-      _TopChip(
-        icon: Icons.timer_rounded,
-        label: _fmt(s.todayMinutes),
-        gradTop: const Color(0xFFF0C0B8), gradBot: _pinkHdr,
-      ),
-      const SizedBox(width: 6),
-      // XP chip
-      _TopChip(
-        icon: Icons.auto_awesome_rounded,
-        label: '${s.totalXpEarned}',
-        gradTop: const Color(0xFFFFE070), gradBot: const Color(0xFFE8B840),
-      ),
-    ]);
-  }
-
-  //  2. TIMER HERO — CENTERED warm card with circular buttons
-  //     (User liked this style from v4)
-  //     Warm cream/gold tones instead of blue
-  Widget _timerHero(StudyData s) {
-    return Container(
-      decoration: BoxDecoration(
-        color: _cardFill,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: _outline.withOpacity(0.25), width: 2.5),
-        boxShadow: [
-          BoxShadow(color: _outline.withOpacity(0.08),
-            offset: const Offset(0, 5), blurRadius: 0),
-          BoxShadow(color: _goldGlow.withOpacity(0.15),
-            offset: const Offset(0, 0), blurRadius: 20),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: Column(children: [
-          // Warm peach/pink header (NOT blue)
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 16),
-            decoration: const BoxDecoration(gradient: LinearGradient(
-              begin: Alignment.topCenter, end: Alignment.bottomCenter,
-              colors: [_pinkLt, _pinkHdr],
-            )),
-            child: Row(children: [
-              const Icon(Icons.local_fire_department_rounded,
-                size: 15, color: Colors.white),
-              const SizedBox(width: 6),
-              Text("Today's Focus", style: GoogleFonts.gaegu(
-                fontSize: 18, fontWeight: FontWeight.w700, color: _brown)),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.45),
-                  borderRadius: BorderRadius.circular(10)),
-                child: Text(
-                  '${s.todaySessions} session${s.todaySessions == 1 ? '' : 's'}',
-                  style: GoogleFonts.gaegu(
-                    fontSize: 11, fontWeight: FontWeight.w700, color: _brown)),
-              ),
-            ]),
-          ),
-          // Big centered timer + circular controls
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
-            child: Column(children: [
-              // Big time number
-              Text(
-                _fmt(s.todayMinutes),
-                style: GoogleFonts.gaegu(
-                  fontSize: 56, fontWeight: FontWeight.w700,
-                  color: _brown, height: 1.0),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                s.avgFocus > 0
-                  ? '${s.avgFocus}% average focus'
-                  : 'Ready to start studying?',
-                style: GoogleFonts.gaegu(
-                  fontSize: 14, fontWeight: FontWeight.w600, color: _brownLt),
-              ),
-              const SizedBox(height: 16),
-              // Circular control buttons (play / pause / stop)
-              Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                _CircleBtn(
-                  gradTop: _greenLt, gradBot: _greenHdr,
-                  borderColor: _greenDk, shadowColor: _greenDk,
-                  icon: Icons.play_arrow_rounded, size: 56, iconSize: 28,
-                  onTap: () => context.push(Routes.studySession),
-                ),
-                const SizedBox(width: 14),
-                _CircleBtn(
-                  gradTop: const Color(0xFFFFE888), gradBot: _goldHdr,
-                  borderColor: _goldDk, shadowColor: _goldDk,
-                  icon: Icons.pause_rounded, size: 56, iconSize: 24,
-                  onTap: () => _comingSoon('Pause/resume'),
-                ),
-                const SizedBox(width: 14),
-                _CircleBtn(
-                  gradTop: _coralLt, gradBot: _coralHdr,
-                  borderColor: const Color(0xFFD08878), shadowColor: const Color(0xFFD08878),
-                  icon: Icons.stop_rounded, size: 56, iconSize: 24,
-                  onTap: () => _comingSoon('Stop session'),
-                ),
-              ]),
-            ]),
-          ),
-          // Weekly sparkline strip
-          Container(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
-            decoration: BoxDecoration(
-              color: _outline.withOpacity(0.03),
-              border: Border(top: BorderSide(
-                color: _outline.withOpacity(0.08), width: 1))),
-            child: _weeklyStrip(s),
-          ),
-        ]),
       ),
     );
   }
 
-  Widget _weeklyStrip(StudyData s) {
-    final maxM = s.weeklyActivity.fold<int>(0, math.max);
-    const days = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-    final today = DateTime.now().weekday - 1;
-    return Row(children: [
-      Text('Week: ${_fmt(s.weeklyMinutes)}', style: GoogleFonts.gaegu(
-        fontSize: 12, fontWeight: FontWeight.w700, color: _brownLt)),
-      const Spacer(),
-      ...List.generate(7, (i) {
-        final h = maxM > 0
-            ? (s.weeklyActivity[i] / maxM * 18).clamp(0.0, 18.0) : 0.0;
-        final isT = i == today;
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 2),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Container(
-              width: 10, height: h > 0 ? h : 3,
-              decoration: BoxDecoration(
-                gradient: h > 0
-                  ? LinearGradient(
-                      begin: Alignment.topCenter, end: Alignment.bottomCenter,
-                      colors: isT
-                        ? [_pinkHdr.withOpacity(0.6), _pinkHdr]
-                        : [_greenHdr.withOpacity(0.4), _greenHdr.withOpacity(0.7)])
-                  : null,
-                color: h <= 0 ? _outline.withOpacity(0.08) : null,
-                borderRadius: BorderRadius.circular(3)),
-            ),
-            const SizedBox(height: 2),
-            Text(days[i], style: GoogleFonts.gaegu(
-              fontSize: 8, fontWeight: FontWeight.w700,
-              color: isT ? _brown : _brownLt.withOpacity(0.5))),
-          ]),
-        );
-      }),
+  //  HEADER (narrow-layout only)  — back btn + title + pills in one row
+  Widget _buildHeader(StudyData s, DashboardState dash) {
+    return Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+      _backButton(),
+      const SizedBox(width: 10),
+      Expanded(child: Text('Study Hub', style: const TextStyle(
+        fontFamily: 'Bitroad', fontSize: 24, color: _brown))),
+      _TopChip(icon: Icons.timer_rounded, label: _fmt(s.todayMinutes),
+        bgColor: const Color(0xFFF7AEAE)),
+      const SizedBox(width: 7),
+      _TopChip(icon: Icons.star_rounded, label: '${dash.totalXp} XP',
+        bgColor: const Color(0xFFE4BC83)),
+      const SizedBox(width: 7),
+      _TopChip(icon: Icons.bolt_rounded, label: '${dash.streak}',
+        bgColor: const Color(0xFFFFBC5C)),
     ]);
   }
 
-  //  3. QUICK ACTIONS — 5 chunky 3D game buttons (2 rows)
-  Widget _quickActions() {
-    return Column(children: [
-      Row(children: [
-        Expanded(child: _GameBtn(
-          icon: Icons.play_circle_filled_rounded, label: 'Session',
-          gradTop: _greenLt, gradBot: _greenHdr, border: _greenDk,
-          onTap: () => context.push(Routes.studySession),
-        )),
-        const SizedBox(width: 10),
-        Expanded(child: _GameBtn(
-          icon: Icons.library_books_rounded, label: 'Subjects',
-          gradTop: _purpleLt, gradBot: _purpleHdr, border: _purpleDk,
+  //  DESKTOP HERO-TOP (left) — back btn + title only
+  //  Mirrors .hero-top in HTML
+  Widget _buildHeroTop() {
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      _backButton(),
+      const SizedBox(width: 10),
+      Text('Study Hub', style: const TextStyle(
+        fontFamily: 'Bitroad', fontSize: 26, color: _brown)),
+    ]);
+  }
+
+  // Back button — used by both desktop hero-top and narrow header
+  Widget _backButton() {
+    return GestureDetector(
+      onTap: () => ref.read(selectedTabProvider.notifier).state = 0,
+      child: Container(
+        width: 34, height: 34,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: _outline.withOpacity(0.35), width: 1.5),
+          boxShadow: [BoxShadow(
+            color: _outline.withOpacity(0.28),
+            offset: const Offset(2, 2), blurRadius: 0)],
+        ),
+        child: Icon(Icons.chevron_left_rounded, size: 20, color: _outline),
+      ),
+    );
+  }
+
+  //  DESKTOP HERO-PILLS (right) — 3 stat pills
+  //  Mirrors .hero-pills in HTML
+  Widget _buildHeroPills(StudyData s, DashboardState dash) {
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      _TopChip(icon: Icons.timer_rounded, label: _fmt(s.todayMinutes),
+        bgColor: const Color(0xFFF7AEAE)),
+      const SizedBox(width: 7),
+      _TopChip(icon: Icons.star_rounded, label: '${dash.totalXp} XP',
+        bgColor: const Color(0xFFE4BC83)),
+      const SizedBox(width: 7),
+      _TopChip(icon: Icons.bolt_rounded, label: '${dash.streak}',
+        bgColor: const Color(0xFFFFBC5C)),
+    ]);
+  }
+
+  //  TIMER CENTER — floating, label + big time + avg focus + 3 btns
+  //  Used in BOTH desktop hero (centered) and narrow stacked layout
+  Widget _buildTimerCenter(StudyData s) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // .tc-label: Nunito 11px uppercase letter-spaced, ink-soft
+        Text(
+          "TODAY'S FOCUS",
+          style: GoogleFonts.nunito(
+            fontSize: 11, fontWeight: FontWeight.w700,
+            letterSpacing: 1.0, color: _inkSoft),
+        ),
+        const SizedBox(height: 2),
+        // .tc-time: Gaegu 4.6rem (~74px) — big bold time
+        Text(
+          _fmt(s.todayMinutes),
+          style: GoogleFonts.gaegu(
+            fontSize: 74, fontWeight: FontWeight.w700,
+            color: _brown, height: 0.85),
+        ),
+        const SizedBox(height: 6),
+        // .tc-sub
+        Text(
+          s.avgFocus > 0
+            ? '${s.avgFocus}% average focus'
+            : 'Ready to start studying?',
+          style: GoogleFonts.gaegu(
+            fontSize: 16, fontWeight: FontWeight.w700,
+            color: _inkSoft),
+        ),
+        const SizedBox(height: 18),
+        // 3 circle buttons — olive / gold / coral
+        // HTML: .cb{width:48px;height:48px; border:2.5px solid var(--bdr);
+        //       box-shadow:0 4px 0 rgba(110,88,72,.5)} — UNIFORM brown border+shadow
+        // Inner SVG: width:18px;height:18px (play triangle a bit larger visually)
+        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          _CircleBtn(
+            gradTop: _olive, gradBot: _oliveDk,
+            borderColor: _outline, shadowColor: _outline,
+            icon: Icons.play_arrow_rounded, size: 48, iconSize: 20,
+            onTap: () => context.push(Routes.studySession),
+          ),
+          const SizedBox(width: 14),
+          _CircleBtn(
+            gradTop: const Color(0xFFE4BC83), gradBot: const Color(0xFFC8A060),
+            borderColor: _outline, shadowColor: _outline,
+            icon: Icons.pause_rounded, size: 48, iconSize: 18,
+            onTap: () => _comingSoon('Pause/resume'),
+          ),
+          const SizedBox(width: 14),
+          _CircleBtn(
+            gradTop: const Color(0xFFF7AEAE), gradBot: const Color(0xFFE890B8),
+            borderColor: _outline, shadowColor: _outline,
+            icon: Icons.stop_rounded, size: 48, iconSize: 18,
+            onTap: () => _comingSoon('Stop session'),
+          ),
+        ]),
+      ],
+    );
+  }
+
+  //  LEFT COLUMN (desktop) — Quick Actions + Overview
+  //  Overview stretches to fill remaining vertical space
+  Widget _buildLeftColumnDesktop(StudyData s) {
+    // Use natural-height overview cards (stretch: false). Any leftover
+    // vertical space becomes empty padding at the bottom rather than
+    // inflating the peek cells to 150px+ tall.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildQuickActionsSection(),
+        const SizedBox(height: 16),           // .p-left{gap:16px}
+        _buildOverviewGrid(s, stretch: false),
+        // Swallow remaining space — keeps the column layout stable
+        // without forcing cards to stretch.
+        const Spacer(),
+      ],
+    );
+  }
+
+  //  RIGHT COLUMN (desktop) — Weekly (stretches) + Teasers + Tip
+  Widget _buildRightColumnDesktop(StudyData s) {
+    // Weekly Activity card flexes to fill leftover space, but a LayoutBuilder
+    // caps it at 280px so the AI tip card never gets pushed off screen on
+    // tall viewports. Any surplus vertical space becomes a gentle bottom
+    // gap rather than inflating the chart.
+    return LayoutBuilder(
+      builder: (ctx, c) {
+        // Teasers (~48px each) + tip (~50px) + 3 gaps (14px) = ~200px fixed
+        const fixedBelow = 2 * 48.0 + 50.0 + 3 * 14.0;
+        final weeklyH = (c.maxHeight - fixedBelow).clamp(200.0, 280.0);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(
+              height: weeklyH,
+              child: _buildWeeklyActivityCard(s, stretch: true),
+            ),
+            const SizedBox(height: 14),
+            _buildResourcesTeaser(),
+            const SizedBox(height: 14),
+            _buildCalendarTeaser(),
+            const SizedBox(height: 14),
+            _buildTipCard(s),
+          ],
+        );
+      },
+    );
+  }
+
+  //  SECTION TITLE helper — icon + label (matches .sec-t)
+  Widget _sectionTitle(String label, IconData icon, {Widget? trailing}) {
+    return Padding(
+      // .sec-t{margin-bottom:13px}
+      padding: const EdgeInsets.only(bottom: 13),
+      child: Row(children: [
+        // .sec-t svg: olive-dk, 16×16
+        Icon(icon, size: 16, color: _oliveDk),
+        const SizedBox(width: 7),
+        // .sec-t h3: font-family:'Bitroad'; font-size:1rem (16px)
+        Text(label, style: const TextStyle(
+          fontFamily: 'Bitroad', fontSize: 16, color: _brown)),
+        if (trailing != null) ...[const Spacer(), trailing],
+      ]),
+    );
+  }
+
+  //  QUICK ACTIONS — 5 chunky 3D game buttons (3 + 2 rows)
+  Widget _buildQuickActionsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _sectionTitle('Quick Actions', Icons.bolt_rounded),
+        // Row 1: Session (olive hero CTA), Subjects, Analytics
+        Row(children: [
+          Expanded(child: _GameBtn(
+            // HTML: plain play triangle (no circle wrapper), SOLID olive bg
+            icon: Icons.play_arrow_rounded, label: 'Session',
+            gradTop: _olive, gradBot: _olive,
+            border: _oliveDk,
+            contentColor: Colors.white,
+            onTap: () => context.push(Routes.studySession),
+          )),
+          const SizedBox(width: 8),
+          Expanded(child: _GameBtn(
+            // HTML: single-spine book ("book-open") — match with menu_book
+            icon: Icons.menu_book_rounded, label: 'Subjects',
+            gradTop: const Color(0xFFF7AEAE).withOpacity(0.42),
+            gradBot: const Color(0xFFF7AEAE).withOpacity(0.42),
+            border: _outline.withOpacity(0.22),
+            contentColor: _brown,
+            onTap: () => context.push(Routes.subjects),
+          )),
+          const SizedBox(width: 8),
+          Expanded(child: _GameBtn(
+            // HTML: heartbeat/activity line — show_chart is closer match
+            icon: Icons.show_chart_rounded, label: 'Analytics',
+            gradTop: const Color(0xFFE4BC83).withOpacity(0.48),
+            gradBot: const Color(0xFFE4BC83).withOpacity(0.48),
+            border: _outline.withOpacity(0.22),
+            contentColor: _brown,
+            onTap: () => context.push(Routes.studyAnalytics),
+          )),
+        ]),
+        const SizedBox(height: 8),
+        // Row 2: Quiz, Cards — LEFT-ALIGNED (empty 3rd slot on right, matching HTML)
+        Row(children: [
+          Expanded(child: _GameBtn(
+            // HTML: help icon (circle + ?)  — match with help_outline
+            icon: Icons.help_outline_rounded, label: 'Quiz',
+            gradTop: const Color(0xFFFFD5F5).withOpacity(0.42),
+            gradBot: const Color(0xFFFFD5F5).withOpacity(0.42),
+            border: _outline.withOpacity(0.22),
+            contentColor: _brown,
+            onTap: () => context.push(Routes.quizzes),
+          )),
+          const SizedBox(width: 8),
+          Expanded(child: _GameBtn(
+            // HTML: plain card rectangle + top line — match with credit_card
+            icon: Icons.credit_card_rounded, label: 'Cards',
+            gradTop: const Color(0xFFFDEFDB).withOpacity(0.55),
+            gradBot: const Color(0xFFFDEFDB).withOpacity(0.55),
+            border: _outline.withOpacity(0.22),
+            contentColor: _brown,
+            onTap: () => context.push(Routes.flashcards),
+          )),
+          const SizedBox(width: 8),
+          // Empty 3rd slot — matches HTML <div style="flex:1"></div>
+          const Expanded(child: SizedBox.shrink()),
+        ]),
+      ],
+    );
+  }
+
+  //  OVERVIEW GRID — 2×2 compact peek cells
+  //  When [stretch]==true (desktop), the grid fills vertically so cells
+  //  grow to occupy the full left-column remaining space.
+  Widget _buildOverviewGrid(StudyData s, {bool stretch = false}) {
+    // When [stretch]==true the Rows are wrapped in Expanded (bounded height),
+    // so CrossAxisAlignment.stretch is safe. When [stretch]==false the Rows
+    // are laid out with unbounded height inside a Column, so we must NOT use
+    // CrossAxisAlignment.stretch (would force infinite height); wrap in
+    // IntrinsicHeight so cells still end up equal-height without the crash.
+    final crossA = stretch
+      ? CrossAxisAlignment.stretch
+      : CrossAxisAlignment.center;
+    final rowSubjectsCards = Row(
+      crossAxisAlignment: crossA,
+      children: [
+        Expanded(child: _peekCell(
+          // HTML uses single-spine book (book-open) — match with menu_book
+          icon: Icons.menu_book_rounded,
+          value: '${s.subjects.length}',
+          label: 'Subjects',
+          bg: const Color(0xFFDDF6FF).withOpacity(0.38),
           onTap: () => context.push(Routes.subjects),
         )),
         const SizedBox(width: 10),
-        Expanded(child: _GameBtn(
-          icon: Icons.insights_rounded, label: 'Analytics',
-          gradTop: const Color(0xFF90D0D8), gradBot: const Color(0xFF68B8C8),
-          border: const Color(0xFF50A0B0),
-          onTap: () => context.push(Routes.studyAnalytics),
+        Expanded(child: _peekCell(
+          // HTML uses plain rect+line (credit-card shape)
+          icon: Icons.credit_card_rounded,
+          value: '${s.cardsDue}',
+          label: 'Cards Due',
+          bg: const Color(0xFFFDEFDB).withOpacity(0.42),
+          onTap: () => context.push(Routes.flashcards),
         )),
-      ]),
-      const SizedBox(height: 10),
-      Row(children: [
-        const Spacer(),
-        Expanded(flex: 2, child: _GameBtn(
-          icon: Icons.quiz_rounded, label: 'Quiz',
-          gradTop: _coralLt, gradBot: _coralHdr, border: const Color(0xFFD08878),
+      ],
+    );
+    final rowQuizWeek = Row(
+      crossAxisAlignment: crossA,
+      children: [
+        Expanded(child: _peekCell(
+          // HTML uses help icon (circle + ?)
+          icon: Icons.help_outline_rounded,
+          value: s.quizCount > 0 ? '${s.avgQuizScore.round()}%' : '--',
+          label: 'Avg Score',
+          bg: const Color(0xFFFFD5F5).withOpacity(0.3),
           onTap: () => context.push(Routes.quizzes),
         )),
         const SizedBox(width: 10),
-        Expanded(flex: 2, child: _GameBtn(
-          icon: Icons.style_rounded, label: 'Cards',
-          gradTop: _sageLt, gradBot: _sageHdr, border: _sageDk,
-          onTap: () => context.push(Routes.flashcards),
+        Expanded(child: _peekCell(
+          icon: Icons.calendar_today_rounded,
+          value: _fmt(s.weeklyMinutes),
+          label: 'This Week',
+          bg: const Color(0xFFE4BC83).withOpacity(0.24),
+          onTap: () => context.push(Routes.studyAnalytics),
         )),
-        const Spacer(),
-      ]),
-    ]);
+      ],
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _sectionTitle('Overview', Icons.grid_view_rounded),
+        // Each row stretches equally in desktop mode; fixed-height in narrow
+        if (stretch) ...[
+          Expanded(child: rowSubjectsCards),
+          const SizedBox(height: 10),
+          Expanded(child: rowQuizWeek),
+        ] else ...[
+          rowSubjectsCards,
+          const SizedBox(height: 10),
+          rowQuizWeek,
+        ],
+      ],
+    );
   }
 
-  //  4. PEEK ROW 1 — Subjects + Flashcards
-  //     Each card has a DISTINCT visual personality
-  Widget _peekRow1(StudyData s) {
-    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Expanded(child: GestureDetector(
-        onTap: () => context.push(Routes.subjects),
-        child: Container(
-          decoration: BoxDecoration(
-            color: _cardFill,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: _outline, width: 3),
-            boxShadow: [BoxShadow(color: _outline.withOpacity(0.3),
-              offset: const Offset(0, 4), blurRadius: 0)]),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            // Purple header
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(colors: [_purpleLt, _purpleHdr]),
-                borderRadius: BorderRadius.only(
-                  topLeft: Radius.circular(17), topRight: Radius.circular(17))),
-              child: Row(children: [
-                const Icon(Icons.library_books_rounded, size: 13, color: Colors.white),
-                const SizedBox(width: 6),
-                Text('Subjects', style: GoogleFonts.gaegu(
-                  fontSize: 16, fontWeight: FontWeight.w700, color: _brown)),
-                const Spacer(),
-                Icon(Icons.chevron_right_rounded, size: 16,
-                  color: Colors.white.withOpacity(0.7)),
-              ]),
-            ),
-            // Content: subject dots or empty
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: s.subjects.isEmpty
-                ? _peekEmpty('Add your courses', Icons.school_rounded, _purpleHdr)
-                : Column(children: [
-                    // Subject count + icon dots
-                    Row(children: [
-                      Text('${s.subjects.length}', style: GoogleFonts.gaegu(
-                        fontSize: 28, fontWeight: FontWeight.w700,
-                        color: _brown, height: 1.0)),
-                      const SizedBox(width: 6),
-                      Text('course${s.subjects.length == 1 ? '' : 's'}',
-                        style: GoogleFonts.gaegu(fontSize: 13,
-                          fontWeight: FontWeight.w700, color: _brownLt)),
-                    ]),
-                    const SizedBox(height: 8),
-                    // Colored dots for each subject
-                    Wrap(spacing: 6, runSpacing: 6,
-                      children: s.subjects.take(6).toList().asMap().entries.map((e) {
-                        final colors = [_skyHdr, _purpleHdr, _greenHdr, _coralHdr, _goldHdr, _pinkHdr];
-                        final clr = colors[e.key % colors.length];
-                        return Container(
-                          width: 28, height: 28,
-                          decoration: BoxDecoration(
-                            color: clr.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: clr.withOpacity(0.4), width: 1.5)),
-                          child: Icon(_subjIcon(e.value['icon']), size: 13, color: clr),
-                        );
-                      }).toList(),
-                    ),
-                  ]),
-            ),
-          ]),
-        ),
-      )),
-      const SizedBox(width: 12),
-      Expanded(child: GestureDetector(
-        onTap: () => context.push(Routes.flashcards),
-        child: Container(
-          decoration: BoxDecoration(
-            color: _cardFill,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: _outline, width: 3),
-            boxShadow: [BoxShadow(color: _outline.withOpacity(0.3),
-              offset: const Offset(0, 4), blurRadius: 0)]),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(colors: [_sageLt, _sageHdr]),
-                borderRadius: BorderRadius.only(
-                  topLeft: Radius.circular(17), topRight: Radius.circular(17))),
-              child: Row(children: [
-                const Icon(Icons.style_rounded, size: 13, color: Colors.white),
-                const SizedBox(width: 6),
-                Text('Flashcards', style: GoogleFonts.gaegu(
-                  fontSize: 16, fontWeight: FontWeight.w700, color: _brown)),
-                const Spacer(),
-                Icon(Icons.chevron_right_rounded, size: 16,
-                  color: Colors.white.withOpacity(0.7)),
-              ]),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: s.totalCards == 0
-                ? _peekEmpty('Create cards', Icons.layers_rounded, _sageHdr)
-                : Column(children: [
-                    // Due count — hero stat
-                    Row(children: [
-                      Text('${s.cardsDue}', style: GoogleFonts.gaegu(
-                        fontSize: 28, fontWeight: FontWeight.w700,
-                        color: s.cardsDue > 0 ? _coralHdr : _greenHdr,
-                        height: 1.0)),
-                      const SizedBox(width: 6),
-                      Text('due', style: GoogleFonts.gaegu(
-                        fontSize: 13, fontWeight: FontWeight.w700, color: _brownLt)),
-                    ]),
-                    const SizedBox(height: 6),
-                    // Mini stat pills
-                    Row(children: [
-                      _tinyPill(Icons.check_circle_rounded, '${s.masteredCards}', _greenHdr),
-                      const SizedBox(width: 6),
-                      _tinyPill(Icons.layers_rounded, '${s.totalCards}', _sageHdr),
-                    ]),
-                  ]),
-            ),
-          ]),
-        ),
-      )),
-    ]);
-  }
-
-  //  5. PEEK ROW 2 — Quizzes + Weekly
-  Widget _peekRow2(StudyData s) {
-    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Expanded(child: GestureDetector(
-        onTap: () => _comingSoon('Quiz logging'),
-        child: Container(
-          decoration: BoxDecoration(
-            color: _cardFill,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: _outline, width: 3),
-            boxShadow: [BoxShadow(color: _outline.withOpacity(0.3),
-              offset: const Offset(0, 4), blurRadius: 0)]),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(colors: [_pinkLt, _pinkHdr]),
-                borderRadius: BorderRadius.only(
-                  topLeft: Radius.circular(17), topRight: Radius.circular(17))),
-              child: Row(children: [
-                const Icon(Icons.quiz_rounded, size: 13, color: Colors.white),
-                const SizedBox(width: 6),
-                Text('Quizzes', style: GoogleFonts.gaegu(
-                  fontSize: 16, fontWeight: FontWeight.w700, color: _brown)),
-                const Spacer(),
-                Icon(Icons.chevron_right_rounded, size: 16,
-                  color: Colors.white.withOpacity(0.7)),
-              ]),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: s.quizCount == 0
-                ? _peekEmpty('Log your scores', Icons.assignment_rounded, _pinkHdr)
-                : Column(children: [
-                    Row(children: [
-                      // Score in a colored circle
-                      Container(
-                        width: 40, height: 40,
-                        decoration: BoxDecoration(
-                          color: (s.avgQuizScore >= 70 ? _greenHdr : _coralHdr)
-                            .withOpacity(0.15),
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: (s.avgQuizScore >= 70 ? _greenHdr : _coralHdr)
-                              .withOpacity(0.35), width: 2)),
-                        child: Center(child: Text('${s.avgQuizScore.round()}%',
-                          style: GoogleFonts.gaegu(fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: s.avgQuizScore >= 70 ? _greenDk : _coralHdr))),
-                      ),
-                      const SizedBox(width: 8),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('avg score', style: GoogleFonts.gaegu(
-                            fontSize: 11, fontWeight: FontWeight.w700, color: _brownLt)),
-                          Text('${s.quizCount} taken', style: GoogleFonts.gaegu(
-                            fontSize: 11, fontWeight: FontWeight.w600, color: _brownLt)),
-                        ],
-                      ),
-                    ]),
-                  ]),
-            ),
-          ]),
-        ),
-      )),
-      const SizedBox(width: 12),
-      Expanded(child: Container(
+  Widget _peekCell({
+    required IconData icon,
+    required String value,
+    required String label,
+    required Color bg,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
         decoration: BoxDecoration(
-          color: _cardFill,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: _outline, width: 3),
-          boxShadow: [BoxShadow(color: _outline.withOpacity(0.3),
-            offset: const Offset(0, 4), blurRadius: 0)]),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(colors: [_greenLt, _greenHdr]),
-              borderRadius: BorderRadius.only(
-                topLeft: Radius.circular(17), topRight: Radius.circular(17))),
-            child: Row(children: [
-              const Icon(Icons.bar_chart_rounded, size: 13, color: Colors.white),
-              const SizedBox(width: 6),
-              Text('This Week', style: GoogleFonts.gaegu(
-                fontSize: 16, fontWeight: FontWeight.w700, color: _brown)),
-            ]),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(children: [
-              Row(children: [
-                Text(_fmt(s.weeklyMinutes), style: GoogleFonts.gaegu(
-                  fontSize: 28, fontWeight: FontWeight.w700,
-                  color: _brown, height: 1.0)),
-              ]),
-              const SizedBox(height: 2),
-              Row(children: [
-                Text('${s.weeklySessions} session${s.weeklySessions == 1 ? '' : 's'}',
-                  style: GoogleFonts.gaegu(
-                    fontSize: 12, fontWeight: FontWeight.w600, color: _brownLt)),
-                if (s.avgFocus > 0) ...[
-                  Text(' · ${s.avgFocus}% focus', style: GoogleFonts.gaegu(
-                    fontSize: 12, fontWeight: FontWeight.w600, color: _brownLt)),
-                ],
-              ]),
-            ]),
-          ),
-        ]),
-      )),
-    ]);
+          color: bg,
+          borderRadius: BorderRadius.circular(14),
+          // .peek: border:1px solid rgba(110,88,72,.15); box-shadow:2px 2px 0 rgba(110,88,72,.1)
+          border: Border.all(color: _outline.withOpacity(0.15), width: 1),
+          boxShadow: [BoxShadow(
+            color: _outline.withOpacity(0.10),
+            offset: const Offset(2, 2), blurRadius: 0)],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Icon box 28×28
+            Container(
+              width: 28, height: 28,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.75),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: _outline.withOpacity(0.1), width: 1)),
+              child: Icon(icon, size: 14, color: _brownLt),
+            ),
+            const SizedBox(height: 6),
+            // peek-val: Bitroad 1.25rem (20px)
+            Text(value, style: const TextStyle(
+              fontFamily: 'Bitroad', fontSize: 20,
+              color: _brown, height: 1.0)),
+            const SizedBox(height: 2),
+            // peek-lb: Apercu(→Nunito) 10px uppercase tracked (letter-spacing 0.5)
+            Text(label.toUpperCase(), style: GoogleFonts.nunito(
+              fontSize: 10, fontWeight: FontWeight.w700,
+              letterSpacing: 0.5, color: _inkSoft)),
+          ],
+        ),
+      ),
+    );
   }
 
-  //  6. RESOURCES TEASER — warm gold banner
-  Widget _resourcesTeaser() {
+  //  WEEKLY ACTIVITY — section title OUTSIDE card, bars stretch
+  //  Today = coral/pink gradient; others = olive gradient
+  //  HTML structure:
+  //    <div sec-t>Weekly Activity | Details→</div>   ← outside
+  //    <div class="card week-wrap">
+  //      <div class="week-hdr">total + change</div>
+  //      <div class="week-bars">…bars stretch…</div>
+  //    </div>
+  Widget _buildWeeklyActivityCard(StudyData s, {bool stretch = false}) {
+    final maxM = s.weeklyActivity.fold<int>(0, math.max);
+    const days = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+    final today = DateTime.now().weekday - 1; // 0=Mon … 6=Sun
+
+    // Bars area — stretches to fill card in desktop; fixed 90px slot in narrow
+    // mode. Each column is [bar slot] + 5px gap + [day label ~14px]; we
+    // subtract label+gap from the available height so nothing overflows.
+    Widget barsArea() {
+      return LayoutBuilder(
+        builder: (ctx, c) {
+          const labelSpace = 20.0; // 5px gap + ~14px label + tiny buffer
+          final avail = c.hasBoundedHeight && c.maxHeight.isFinite
+            ? (c.maxHeight - labelSpace).clamp(40.0, 500.0)
+            : 70.0;
+          final maxBarH = avail;
+          const minBarH = 5.0;
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: List.generate(7, (i) {
+              final rawH = maxM > 0
+                ? (s.weeklyActivity[i] / maxM * maxBarH)
+                : 0.0;
+              final barH = rawH.clamp(minBarH, maxBarH);
+              final isT = i == today;
+              return Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 3),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        height: maxBarH,
+                        child: Align(
+                          alignment: Alignment.bottomCenter,
+                          child: Container(
+                            width: double.infinity,
+                            height: barH,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: isT
+                                  ? [const Color(0xFFF7AEAE),
+                                     const Color(0xFFE890B8)]
+                                  : [const Color(0xFFB8C87A),
+                                     const Color(0xFF98A869)],
+                              ),
+                              borderRadius: const BorderRadius.vertical(
+                                top: Radius.circular(6),
+                                bottom: Radius.circular(3)),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      Text(days[i], style: GoogleFonts.nunito(
+                        fontSize: 10, fontWeight: FontWeight.w700,
+                        color: isT ? _brown : _inkSoft)),
+                    ],
+                  ),
+                ),
+              );
+            }),
+          );
+        },
+      );
+    }
+
+    // Card contents: week-hdr (top, bordered-bottom) + bars area (fills rest)
+    final card = Container(
+      decoration: BoxDecoration(
+        // .card: background rgba(255,255,255,.88); border:1.5px; shadow:3px 3px 0
+        color: Colors.white.withOpacity(0.88),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _outline.withOpacity(0.22), width: 1.5),
+        boxShadow: [BoxShadow(
+          color: _outline.withOpacity(0.18),
+          offset: const Offset(3, 3), blurRadius: 0)],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: stretch ? MainAxisSize.max : MainAxisSize.min,
+        children: [
+          // .week-hdr — total + change, with bottom divider
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 11, 14, 11),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+              Text(_fmt(s.weeklyMinutes), style: const TextStyle(
+                fontFamily: 'Bitroad', fontSize: 22, color: _brown)),
+              const SizedBox(width: 9),
+              Text(
+                s.weeklySessions > 0
+                  ? '${s.weeklySessions} session${s.weeklySessions == 1 ? '' : 's'}'
+                  : 'this week',
+                style: GoogleFonts.nunito(
+                  fontSize: 11, fontWeight: FontWeight.w700,
+                  color: _olive)),
+            ]),
+          ),
+          Divider(height: 1, color: _outline.withOpacity(0.06)),
+          // Bars — stretch to fill remaining card height
+          if (stretch)
+            Expanded(child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+              child: barsArea(),
+            ))
+          else
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+              child: SizedBox(height: 90, child: barsArea()),
+            ),
+        ],
+      ),
+    );
+
+    // Outer wrapper: section title outside + card below (HTML parity)
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: stretch ? MainAxisSize.max : MainAxisSize.min,
+      children: [
+        _sectionTitle(
+          'Weekly Activity', Icons.bar_chart_rounded,
+          trailing: GestureDetector(
+            onTap: () => context.push(Routes.studyAnalytics),
+            child: Text('Details →', style: GoogleFonts.nunito(
+              fontSize: 12, fontWeight: FontWeight.w700, color: _brown)),
+          ),
+        ),
+        if (stretch) Expanded(child: card) else card,
+      ],
+    );
+  }
+
+  //  RESOURCES TEASER — warm gold banner
+  Widget _buildResourcesTeaser() {
     return GestureDetector(
       onTap: () => context.push(Routes.resources),
       child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft, end: Alignment.bottomRight,
-            colors: [_goldGlow.withOpacity(0.25), _goldGlow.withOpacity(0.1)]),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: _goldDk.withOpacity(0.2), width: 2)),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          color: const Color(0xFFFDEFDB).withOpacity(0.5),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: _outline.withOpacity(0.12), width: 1)),
         child: Row(children: [
           Container(
-            width: 36, height: 36,
+            width: 30, height: 30,
             decoration: BoxDecoration(
-              gradient: const LinearGradient(colors: [
-                Color(0xFFFFE888), Color(0xFFE8C840)]),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: _goldDk.withOpacity(0.35), width: 2),
-              boxShadow: [BoxShadow(color: _goldDk.withOpacity(0.15),
-                offset: const Offset(0, 2), blurRadius: 0)]),
+              color: const Color(0xFFE4BC83).withOpacity(0.5),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: _outline.withOpacity(0.2), width: 1.5)),
             child: const Icon(Icons.auto_stories_rounded,
-              size: 18, color: Colors.white),
+              size: 14, color: _brownLt),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 10),
           Expanded(child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Study Resources', style: GoogleFonts.gaegu(
-                fontSize: 16, fontWeight: FontWeight.w700, color: _brown)),
-              Text('Smart recommendations', style: GoogleFonts.gaegu(
-                fontSize: 12, fontWeight: FontWeight.w600, color: _brownLt)),
+              Text('Study Resources', style: GoogleFonts.nunito(
+                fontSize: 14, fontWeight: FontWeight.w700, color: _brown)),
+              Text('Smart recommendations', style: GoogleFonts.nunito(
+                fontSize: 11, fontWeight: FontWeight.w600, color: _inkSoft)),
             ],
           )),
-          Icon(Icons.chevron_right_rounded, size: 20,
-            color: _brownLt.withOpacity(0.4)),
+          Icon(Icons.chevron_right_rounded, size: 14,
+            color: _outline.withOpacity(0.2)),
         ]),
       ),
     );
   }
 
-  //  6b. CALENDAR TEASER — sky blue banner
-  Widget _calendarTeaser() {
+  //  CALENDAR TEASER — sky blue banner
+  Widget _buildCalendarTeaser() {
     return GestureDetector(
       onTap: () => context.push(Routes.calendar),
       child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft, end: Alignment.bottomRight,
-            colors: [_skyHdr.withOpacity(0.2), _skyHdr.withOpacity(0.08)]),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: _skyHdr.withOpacity(0.25), width: 2)),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          color: const Color(0xFFDDF6FF).withOpacity(0.4),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: _outline.withOpacity(0.12), width: 1)),
         child: Row(children: [
           Container(
-            width: 36, height: 36,
+            width: 30, height: 30,
             decoration: BoxDecoration(
-              gradient: const LinearGradient(colors: [
-                Color(0xFF9DD4F0), Color(0xFF6BB8E0)]),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: _skyDk.withOpacity(0.35), width: 2),
-              boxShadow: [BoxShadow(color: _skyDk.withOpacity(0.15),
-                offset: const Offset(0, 2), blurRadius: 0)]),
+              color: const Color(0xFFDDF6FF).withOpacity(0.7),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: _outline.withOpacity(0.2), width: 1.5)),
             child: const Icon(Icons.calendar_month_rounded,
-              size: 18, color: Colors.white),
+              size: 14, color: _brownLt),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 10),
           Expanded(child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Study Calendar', style: GoogleFonts.gaegu(
-                fontSize: 16, fontWeight: FontWeight.w700, color: _brown)),
-              Text('Schedule & Google Calendar sync', style: GoogleFonts.gaegu(
-                fontSize: 12, fontWeight: FontWeight.w600, color: _brownLt)),
+              Text('Study Calendar', style: GoogleFonts.nunito(
+                fontSize: 14, fontWeight: FontWeight.w700, color: _brown)),
+              Text('Schedule & Google Calendar sync', style: GoogleFonts.nunito(
+                fontSize: 11, fontWeight: FontWeight.w600, color: _inkSoft)),
             ],
           )),
-          Icon(Icons.chevron_right_rounded, size: 20,
-            color: _brownLt.withOpacity(0.4)),
+          Icon(Icons.chevron_right_rounded, size: 14,
+            color: _outline.withOpacity(0.2)),
         ]),
       ),
     );
   }
 
-  //  7. INSIGHT — borderless gradient (dashboard style)
-  Widget _insightCard(StudyData s) {
-    String title, msg; IconData ic; Color c1, c2, iClr;
+  //  TIP CARD — compact row (lightbulb circle + Gaegu text)
+  //  Matches prototype .tip — de-emphasised background
+  Widget _buildTipCard(StudyData s) {
+    String msg; IconData ic; Color iClr;
+
     if (s.todayMinutes >= 60) {
-      title = 'Great work today!';
-      msg = 'You studied ${_fmt(s.todayMinutes)} — remember to take breaks.';
-      ic = Icons.celebration_rounded;
-      c1 = const Color(0xFFFFF0D8); c2 = const Color(0xFFFFF8E8); iClr = _goldDk;
+      msg = 'You studied ${_fmt(s.todayMinutes)} — remember to take breaks!';
+      ic = Icons.celebration_rounded; iClr = _goldDk;
     } else if (s.cardsDue > 3) {
-      title = 'Cards are stacking up';
       msg = '${s.cardsDue} flashcards due — a quick review helps!';
-      ic = Icons.style_rounded;
-      c1 = const Color(0xFFE8F0D8); c2 = const Color(0xFFF0F8E8); iClr = _sageHdr;
+      ic = Icons.style_rounded; iClr = _sageHdr;
     } else if (s.weeklyMinutes > 0 && s.todayMinutes == 0) {
-      title = 'Keep the streak alive';
       msg = '${_fmt(s.weeklyMinutes)} this week. Start today\'s session!';
-      ic = Icons.local_fire_department_rounded;
-      c1 = const Color(0xFFFFE8DE); c2 = const Color(0xFFFFF0E8); iClr = _coralHdr;
+      ic = Icons.local_fire_department_rounded; iClr = _coralHdr;
     } else {
-      title = 'Study Tip';
       msg = 'Each 30-min session earns 25 XP. High focus gives a 25% bonus!';
-      ic = Icons.lightbulb_rounded;
-      c1 = const Color(0xFFFFF8E0); c2 = const Color(0xFFFFFAEE); iClr = _goldDk;
+      ic = Icons.lightbulb_rounded; iClr = const Color(0xFFE890B8);
     }
+
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [c1, c2]),
-        borderRadius: BorderRadius.circular(20)),
-      child: Row(children: [
+        color: const Color(0xFFFFD5F5).withOpacity(0.22),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _outline.withOpacity(0.18), width: 1)),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Container(
-          width: 40, height: 40,
+          width: 24, height: 24,
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.6),
-            borderRadius: BorderRadius.circular(12)),
-          child: Icon(ic, size: 20, color: iClr),
+            color: Colors.white,
+            shape: BoxShape.circle,
+            border: Border.all(color: _outline.withOpacity(0.3), width: 1.5)),
+          child: Icon(ic, size: 12, color: iClr),
         ),
-        const SizedBox(width: 14),
-        Expanded(child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: GoogleFonts.gaegu(
-              fontSize: 18, fontWeight: FontWeight.w700, color: _brown)),
-            const SizedBox(height: 2),
-            Text(msg, style: GoogleFonts.gaegu(
-              fontSize: 14, fontWeight: FontWeight.w600, color: _brownLt, height: 1.3)),
-          ],
-        )),
+        const SizedBox(width: 9),
+        Expanded(child: Text(msg, style: GoogleFonts.gaegu(
+          fontSize: 15, fontWeight: FontWeight.w700,
+          color: _brown, height: 1.4))),
       ]),
     );
   }
@@ -938,35 +1091,6 @@ class _StudyTabState extends ConsumerState<StudyTab>
     );
   }
 
-  Widget _peekEmpty(String text, IconData icon, Color color) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Column(children: [
-        Icon(icon, size: 22, color: color.withOpacity(0.35)),
-        const SizedBox(height: 4),
-        Text(text, style: GoogleFonts.gaegu(
-          fontSize: 12, fontWeight: FontWeight.w700, color: _brownLt),
-          textAlign: TextAlign.center),
-      ]),
-    );
-  }
-
-  Widget _tinyPill(IconData icon, String text, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.2), width: 1.5)),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(icon, size: 10, color: color),
-        const SizedBox(width: 4),
-        Text(text, style: GoogleFonts.gaegu(
-          fontSize: 11, fontWeight: FontWeight.w700, color: color)),
-      ]),
-    );
-  }
-
   IconData _subjIcon(dynamic k) {
     const m = {'book': Icons.menu_book_rounded, 'science': Icons.science_rounded,
       'math': Icons.calculate_rounded, 'code': Icons.code_rounded,
@@ -976,31 +1100,31 @@ class _StudyTabState extends ConsumerState<StudyTab>
   }
 }
 
-//  TOP CHIP — header stat badge (dashboard style)
+//  TOP CHIP — header stat pill  (matches prototype .pill exactly)
+//  Solid fill, fully-rounded, hard 2×2 offset shadow, dark border
 class _TopChip extends StatelessWidget {
   final IconData icon;
   final String label;
-  final Color gradTop, gradBot;
+  final Color bgColor;
   const _TopChip({required this.icon, required this.label,
-    required this.gradTop, required this.gradBot});
+    required this.bgColor});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter, end: Alignment.bottomCenter,
-          colors: [gradTop, gradBot]),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _outline.withOpacity(0.3), width: 2),
-        boxShadow: [BoxShadow(color: _outline.withOpacity(0.15),
-          offset: const Offset(0, 2), blurRadius: 0)]),
+        color: bgColor,
+        borderRadius: BorderRadius.circular(999),
+        // .pill: border:1.5px solid rgba(110,88,72,.35); box-shadow:2px 2px 0 rgba(.28)
+        border: Border.all(color: _outline.withOpacity(0.35), width: 1.5),
+        boxShadow: [BoxShadow(color: _outline.withOpacity(0.28),
+          offset: const Offset(2, 2), blurRadius: 0)]),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(icon, size: 13, color: Colors.white),
-        const SizedBox(width: 4),
+        Icon(icon, size: 14, color: _outline),
+        const SizedBox(width: 5),
         Text(label, style: GoogleFonts.gaegu(
-          fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white)),
+          fontSize: 15, fontWeight: FontWeight.w700, color: _brown)),
       ]),
     );
   }
@@ -1029,17 +1153,19 @@ class _CircleBtnState extends State<_CircleBtn> {
       onTapCancel: () => setState(() => _p = false),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 60),
-        transform: Matrix4.translationValues(0, _p ? 3 : 0, 0),
+        transform: Matrix4.translationValues(0, _p ? 4 : 0, 0),
         width: widget.size, height: widget.size,
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter, end: Alignment.bottomCenter,
             colors: [widget.gradTop, widget.gradBot]),
           shape: BoxShape.circle,
-          border: Border.all(color: widget.borderColor.withOpacity(0.5), width: 2.5),
+          // HTML .cb: border:2.5px solid var(--bdr) — solid, no opacity
+          border: Border.all(color: widget.borderColor, width: 2.5),
+          // HTML .cb: box-shadow:0 4px 0 rgba(110,88,72,.5)
           boxShadow: _p ? [] : [BoxShadow(
-            color: widget.shadowColor.withOpacity(0.35),
-            offset: const Offset(0, 3), blurRadius: 0)],
+            color: widget.shadowColor.withOpacity(0.5),
+            offset: const Offset(0, 4), blurRadius: 0)],
         ),
         child: Icon(widget.icon, size: widget.iconSize, color: Colors.white),
       ),
@@ -1052,9 +1178,11 @@ class _GameBtn extends StatefulWidget {
   final IconData icon;
   final String label;
   final Color gradTop, gradBot, border;
+  final Color contentColor;
   final VoidCallback onTap;
   const _GameBtn({required this.icon, required this.label,
     required this.gradTop, required this.gradBot, required this.border,
+    this.contentColor = Colors.white,
     required this.onTap});
   @override State<_GameBtn> createState() => _GameBtnState();
 }
@@ -1076,16 +1204,16 @@ class _GameBtnState extends State<_GameBtn> {
             begin: Alignment.topCenter, end: Alignment.bottomCenter,
             colors: [widget.gradTop, widget.gradBot]),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: widget.border.withOpacity(0.5), width: 2),
+          border: Border.all(color: widget.border, width: 1.5),
           boxShadow: _p ? [] : [BoxShadow(
-            color: widget.border.withOpacity(0.35),
+            color: widget.border,
             offset: const Offset(0, 3), blurRadius: 0)],
         ),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Icon(widget.icon, size: 20, color: Colors.white),
+          Icon(widget.icon, size: 20, color: widget.contentColor),
           const SizedBox(height: 3),
           Text(widget.label, style: GoogleFonts.gaegu(fontSize: 14,
-            fontWeight: FontWeight.w700, color: Colors.white),
+            fontWeight: FontWeight.w700, color: widget.contentColor),
             overflow: TextOverflow.ellipsis),
         ]),
       ),
@@ -1103,7 +1231,7 @@ class _PawPrintBg extends CustomPainter {
     for (double y = 30; y < size.height; y += sp) {
       final odd = ((y / sp).floor() % 2) == 1;
       for (double x = (odd ? rs : 0) + 30; x < size.width; x += sp) {
-        paint.color = _pawClr.withOpacity(0.06 + (idx % 5) * 0.018);
+        paint.color = _pawClr.withOpacity(0.07);
         final a = (idx % 4) * 0.3 - 0.3;
         canvas.save(); canvas.translate(x, y); canvas.rotate(a);
         canvas.drawOval(Rect.fromCenter(
