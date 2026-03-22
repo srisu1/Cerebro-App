@@ -22,7 +22,7 @@ import 'package:cerebro_app/services/api_service.dart';
 const _termsText =
     'CEREBRO Terms of Service\n\nLast updated: February 2026\n\n'
     '1. Acceptance of Terms\nBy accessing or using CEREBRO, you agree to these Terms.\n\n'
-    '2. Description of Service\nCEREBRO is a smart student companion for study tracking, '
+    '2. Description of Service\nCEREBRO is an smart student companion for study tracking, '
     'health monitoring, and daily life management.\n\n'
     '3. User Accounts\nYou are responsible for your account security.\n\n'
     '4. Acceptable Use\nYou agree not to misuse the service.\n\n'
@@ -174,6 +174,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
         gameInput: _gameInput,
         parentContext: context,
         api: ref.read(apiServiceProvider),
+        // Pre-fill with whatever the user already typed in the login email field.
+        // The dialog locks this so no one can swap it to another account's email.
+        prefillEmail: _emailC.text.trim(),
       ),
     );
   }
@@ -1116,11 +1119,13 @@ class _ForgotPasswordDialog extends StatefulWidget {
   final InputDecoration Function({required String hint, required IconData icon, Widget? suffix}) gameInput;
   final BuildContext parentContext;
   final ApiService api;
+  final String? prefillEmail;   // ← pre-filled from login field, locked for security
 
   const _ForgotPasswordDialog({
     required this.gameInput,
     required this.parentContext,
     required this.api,
+    this.prefillEmail,
   });
 
   @override
@@ -1134,11 +1139,18 @@ class _ForgotPasswordDialogState extends State<_ForgotPasswordDialog> {
   String? _error;
   String _email = '';
 
-  final _emailC = TextEditingController();
+  late final TextEditingController _emailC;
   final _codeC = TextEditingController();
   final _newPassC = TextEditingController();
   final _confirmPassC = TextEditingController();
   bool _hidePass = true;
+
+  @override
+  void initState() {
+    super.initState();
+    // Pre-fill from whatever the user typed in the login email field
+    _emailC = TextEditingController(text: widget.prefillEmail ?? '');
+  }
 
   @override
   void dispose() {
@@ -1150,7 +1162,10 @@ class _ForgotPasswordDialogState extends State<_ForgotPasswordDialog> {
   }
 
   Future<void> _requestCode() async {
-    final email = _emailC.text.trim();
+    // Use locked pre-filled email when available; otherwise use typed value
+    final email = (widget.prefillEmail != null && widget.prefillEmail!.isNotEmpty)
+        ? widget.prefillEmail!
+        : _emailC.text.trim();
     if (email.isEmpty || !email.contains('@')) {
       setState(() => _error = 'Please enter a valid email address');
       return;
@@ -1282,43 +1297,56 @@ class _ForgotPasswordDialogState extends State<_ForgotPasswordDialog> {
   }
 
   Widget _stepEmail() {
+    final locked = widget.prefillEmail != null && widget.prefillEmail!.isNotEmpty;
     return Column(mainAxisSize: MainAxisSize.min, children: [
-      Text("Enter your email address and we'll send you a reset code.",
-          style: GoogleFonts.nunito(
-              color: CerebroTheme.text2, fontSize: 14, height: 1.5)),
+      Text(
+        locked
+          ? "We'll send a reset code to your registered email address."
+          : "Enter your email address and we'll send you a reset code.",
+        style: GoogleFonts.nunito(color: CerebroTheme.text2, fontSize: 14, height: 1.5)),
       const SizedBox(height: 14),
-      TextField(
+
+      // If email is known (came from login field) → show locked chip, not editable
+      if (locked) ...[
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+          decoration: BoxDecoration(
+            color: CerebroTheme.inputBg,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: CerebroTheme.text1, width: 2)),
+          child: Row(children: [
+            Icon(Icons.email_outlined, size: 18, color: CerebroTheme.text2),
+            const SizedBox(width: 10),
+            Expanded(child: Text(widget.prefillEmail!,
+              style: GoogleFonts.nunito(fontSize: 14,
+                fontWeight: FontWeight.w600, color: CerebroTheme.text1))),
+            Icon(Icons.lock_rounded, size: 14, color: CerebroTheme.text3),
+          ]),
+        ),
+      ] else ...[
+        TextField(
           controller: _emailC,
           keyboardType: TextInputType.emailAddress,
           style: GoogleFonts.nunito(fontSize: 14),
-          decoration: widget.gameInput(
-              hint: 'your email', icon: Icons.email_outlined)),
+          decoration: widget.gameInput(hint: 'your email', icon: Icons.email_outlined)),
+      ],
+
       if (_error != null) ...[
         const SizedBox(height: 10),
-        Text(_error!,
-            style: GoogleFonts.nunito(
-                color: CerebroTheme.coral,
-                fontSize: 13,
-                fontWeight: FontWeight.w600)),
+        Text(_error!, style: GoogleFonts.nunito(
+          color: CerebroTheme.coral, fontSize: 13, fontWeight: FontWeight.w600)),
       ],
       const SizedBox(height: 18),
       Row(children: [
-        Expanded(
-            child: _GameBtn(
-                label: 'Cancel',
-                color: CerebroTheme.dividerGreen,
-                textColor: CerebroTheme.text1,
-                onTap: () => Navigator.pop(context),
-                small: true)),
+        Expanded(child: _GameBtn(
+          label: 'Cancel', color: CerebroTheme.dividerGreen,
+          textColor: CerebroTheme.text1,
+          onTap: () => Navigator.pop(context), small: true)),
         const SizedBox(width: 10),
-        Expanded(
-            child: _GameBtn(
-                label: 'Send Code',
-                color: CerebroTheme.pinkAccent,
-                textColor: CerebroTheme.text1,
-                loading: _loading,
-                onTap: _loading ? null : _requestCode,
-                small: true)),
+        Expanded(child: _GameBtn(
+          label: 'Send Code', color: CerebroTheme.pinkAccent,
+          textColor: CerebroTheme.text1,
+          loading: _loading, onTap: _loading ? null : _requestCode, small: true)),
       ]),
     ]);
   }

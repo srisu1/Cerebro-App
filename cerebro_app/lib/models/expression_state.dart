@@ -1,7 +1,15 @@
+/// Maps avatar emotional/contextual states to expression overlay assets.
+/// Each expression = eyes.png + nose.png + mouth.png in assets/avatar/expressions/{name}/
+///
+/// 13 expressions total:
+///   Existing (8): angry, anxious, calm, excited, grateful, happy, sad, tired
+///   New (5):      blink, focused, playful, sleepy, surprised
+
+/// All possible expression states the avatar can show.
 enum ExpressionState {
+  /// User's chosen eyes/mouth/nose from avatar config — no overlay.
   neutral,
 
-  // existing
   angry,
   anxious,
   calm,
@@ -11,7 +19,6 @@ enum ExpressionState {
   sad,
   tired,
 
-  // new
   blink,     // closed eyes — for periodic blink animation
   focused,   // narrowed determined eyes — study time
   playful,   // wink + cheeky grin — good streak / idle fun
@@ -19,6 +26,8 @@ enum ExpressionState {
   surprised, // wide eyes + O mouth — achievement / level up
 }
 
+/// Expressions that have REAL (non-zero) asset files.
+/// blink, focused, playful, sleepy, surprised only have 0-byte placeholders.
 const _validExpressions = {
   ExpressionState.angry,
   ExpressionState.anxious,
@@ -30,17 +39,22 @@ const _validExpressions = {
   ExpressionState.tired,
 };
 
+/// Resolves which expression to show based on context.
 class ExpressionEngine {
   ExpressionEngine._();
 
+  /// Whether this expression has real (non-zero) asset files.
   static bool hasAssets(ExpressionState state) =>
       _validExpressions.contains(state);
 
+  /// Returns the expression overlay folder name (e.g. "happy", "blink").
+  /// Returns null for [ExpressionState.neutral] (use user's own features).
   static String? folderName(ExpressionState state) {
     if (state == ExpressionState.neutral) return null;
     return state.name; // enum name matches folder name exactly
   }
 
+  /// Asset path helpers for a given expression.
   static String? eyesPath(ExpressionState state) {
     final folder = folderName(state);
     return folder == null ? null : 'assets/avatar/expressions/$folder/eyes.png';
@@ -56,8 +70,9 @@ class ExpressionEngine {
     return folder == null ? null : 'assets/avatar/expressions/$folder/mouth.png';
   }
 
-  // context mapping
+  //  CONTEXT → EXPRESSION MAPPING
 
+  /// Determine base expression from time-of-day.
   static ExpressionState fromTimeOfDay([DateTime? now]) {
     final h = (now ?? DateTime.now()).hour;
     if (h >= 0 && h < 7)   return ExpressionState.sleepy;   // late night / very early
@@ -70,6 +85,7 @@ class ExpressionEngine {
     return ExpressionState.sleepy;                            // very late night
   }
 
+  /// Map a logged mood string to an expression.
   static ExpressionState fromMood(String? moodKey) {
     if (moodKey == null) return ExpressionState.neutral;
     switch (moodKey.toLowerCase()) {
@@ -107,6 +123,7 @@ class ExpressionEngine {
     }
   }
 
+  /// Map an activity context to an expression.
   static ExpressionState fromActivity(AvatarActivity activity) {
     switch (activity) {
       case AvatarActivity.idle:
@@ -128,6 +145,8 @@ class ExpressionEngine {
     }
   }
 
+  /// Determine clothes style based on time of day.
+  /// Returns a clothes base name (without color suffix).
   static String clothesForTimeOfDay(String gender, [DateTime? now]) {
     final h = (now ?? DateTime.now()).hour;
     final isMale = gender.toLowerCase() == 'male';
@@ -141,8 +160,10 @@ class ExpressionEngine {
       return isMale ? 'c-neck' : 'off-shoulder';
     }
     if (h >= 9 && h < 17) {
-      // Study hours → uniform
-      return 'uniform';
+      // Study hours → uniform (male) / c-neck (female)
+      // 'uniform' only has male positions in the position map;
+      // female gets 'c-neck' which has proper female positioning.
+      return isMale ? 'uniform' : 'c-neck';
     }
     if (h >= 17 && h < 20) {
       // Evening → casual
@@ -156,6 +177,7 @@ class ExpressionEngine {
     return isMale ? 'sweater' : 'night-dress';
   }
 
+  /// Get a contextual speech message.
   static String speechMessage(ExpressionState state, String name, {int streak = 0}) {
     final h = DateTime.now().hour;
     switch (state) {
@@ -268,6 +290,7 @@ class ExpressionEngine {
   }
 }
 
+/// Activity contexts that influence the avatar.
 enum AvatarActivity {
   idle,
   studying,

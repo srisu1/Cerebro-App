@@ -21,7 +21,6 @@ class ApiService {
       ),
     );
 
-    
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) async {
@@ -88,7 +87,6 @@ class ApiService {
     return false;
   }
 
-  
 
   Future<Response> get(String path, {Map<String, dynamic>? queryParams}) {
     return _dio.get(path, queryParameters: queryParams);

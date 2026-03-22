@@ -1,3 +1,4 @@
+//  CEREBRO — AI Resource Recommendations Screen
 //  Personalised learning resources from AI analysis
 //  Filter chips: All · Videos · Articles · Practice · Techniques
 //  Cozy Pocket Love aesthetic

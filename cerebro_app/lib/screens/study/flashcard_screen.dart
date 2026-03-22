@@ -1,3 +1,4 @@
+//  CEREBRO — Flashcard Screen
 //  3 Tabs: Review · All Cards · Generate
 //  Flip animation · SM-2 spaced repetition · AI generation
 //  + Deck management (create/switch/edit/delete decks)
