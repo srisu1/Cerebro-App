@@ -1,3 +1,4 @@
+//  CEREBRO — Quiz Hub (3 Tabs)
 //  My Quizzes · Study Materials · Schedule
 //  Cozy Pocket Love aesthetic · Dynamic quiz generation
 

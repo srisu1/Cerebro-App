@@ -139,8 +139,8 @@ class _TitleScreenState extends ConsumerState<TitleScreen>
     final su = pr.getBool(AppConstants.setupCompleteKey) ?? false;
     final av = pr.getBool(AppConstants.avatarCreatedKey) ?? false;
     if (!mounted) return;
-    // TODO: remove this line — always show setup for demo
-    context.go('/setup'); return;
+    // TODO: remove this line — skip to home for dashboard testing
+    context.go('/home'); return;
     if (!on)    { context.go('/onboarding'); return; }
     if (!hasTk) { context.go('/login'); return; }
     if (!su)    { context.go('/setup'); return; }

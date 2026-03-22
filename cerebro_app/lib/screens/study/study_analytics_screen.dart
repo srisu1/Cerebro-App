@@ -1,3 +1,4 @@
+//  CEREBRO — Study Analytics Dashboard  (v2 – Pocket Love)
 //  Knowledge Map · Gap Detection · Predictions · Smart Schedule
 
 import 'dart:math' as math;

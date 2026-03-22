@@ -8,9 +8,7 @@ import 'package:cerebro_app/services/api_service.dart';
 import 'package:cerebro_app/services/google_oauth_service.dart';
 import 'package:cerebro_app/config/constants.dart';
 
-
 final apiServiceProvider = Provider<ApiService>((ref) => ApiService());
-
 
 enum AuthStatus { initial, authenticated, unauthenticated, loading, error }
 
@@ -33,7 +31,6 @@ class AuthState {
     );
   }
 }
-
 
 class AuthNotifier extends StateNotifier<AuthState> {
   final ApiService _api;
@@ -193,7 +190,6 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = const AuthState(status: AuthStatus.unauthenticated);
   }
 }
-
 
 final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
   final api = ref.watch(apiServiceProvider);
