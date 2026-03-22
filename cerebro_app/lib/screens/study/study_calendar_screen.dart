@@ -1,3 +1,4 @@
+//  CEREBRO — Study Calendar Screen v2
 //  Monthly calendar · event list · Google Calendar sync
 //  AI smart schedule · create/edit events
 //  Cozy Pocket Love aesthetic (pawprint bg, 3D cards, warm tones)

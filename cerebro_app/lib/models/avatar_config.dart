@@ -1,17 +1,19 @@
+/// Stores the user's avatar customization choices.
+
 class AvatarConfig {
-  final String gender;
-  final String baseSkin;
-  final String eyes;
-  final String nose;
-  final String mouth;
-  final String hairStyle;
-  final String hairColor;
-  final String clothes;
-  final String? facialHair;
-  final String? glasses;
-  final String? headwear;
-  final String? neckwear;
-  final String? extras;
+  final String gender; // 'male' or 'female'
+  final String baseSkin; // 'Base01', 'Base02', 'Base03'
+  final String eyes; // 'eyes01' through 'eyes42'
+  final String nose; // 'nose01' through 'nose10'
+  final String mouth; // 'mouth01' through 'mouth10'
+  final String hairStyle; // e.g., 'curly-short', 'bangs', etc.
+  final String hairColor; // 'black', 'blonde', 'brown', etc.
+  final String clothes; // e.g., 'sweater-blue'
+  final String? facialHair; // male only: 'style1' through 'style20'
+  final String? glasses; // e.g., 'circular-glasses'
+  final String? headwear; // e.g., 'baseball-cap'
+  final String? neckwear; // e.g., 'boy-tie'
+  final String? extras; // e.g., 'flower-red'
 
   const AvatarConfig({
     this.gender = 'female',
@@ -29,13 +31,32 @@ class AvatarConfig {
     this.extras,
   });
 
-  // asset paths
+  /// Get the full asset path for a layer
   String get basePath => 'assets/avatar/$gender/base/$baseSkin.png';
+
+  /// Head-only base image (no body). Used by [MoodSticker] / [AliveAvatar]
+  /// in head-only mode so the rendering doesn't carry the torso down
+  /// below the face.
+  String get justHeadBasePath {
+    final skinNum = baseSkin.replaceAll('Base', '');
+    return 'assets/avatar/$gender/justheadbase/justheadbase$skinNum.png';
+  }
   String get eyesPath => 'assets/avatar/$gender/eyes/$eyes.png';
   String get nosePath => 'assets/avatar/$gender/nose/$nose.png';
   String get mouthPath => 'assets/avatar/$gender/mouth/$mouth.png';
   String get hairPath => 'assets/avatar/$gender/hair/$hairStyle-$hairColor.png';
-  String get clothesPath => 'assets/avatar/$gender/clothes/$clothes.png';
+  String get clothesPath {
+    // Store-exclusive colors use assets/store/Store_items/
+    const storeColors = {'babypink', 'brown', 'olive'};
+    final parts = clothes.split('-');
+    final color = parts.last;
+    if (storeColors.contains(color)) {
+      final style = parts.sublist(0, parts.length - 1).join('-');
+      final fileName = style == 'off-shoulder' ? 'offshoulder-$color' : '$style-$color';
+      return 'assets/store/Store_items/$fileName.png';
+    }
+    return 'assets/avatar/$gender/clothes/$clothes.png';
+  }
   String? get facialHairPath =>
       facialHair != null ? 'assets/avatar/$gender/facialhair/$facialHair.png' : null;
   String? get glassesPath =>
@@ -47,9 +68,15 @@ class AvatarConfig {
   String? get extrasPath =>
       extras != null ? 'assets/avatar/$gender/accessories/$extras.png' : null;
 
+  /// Get all layer paths in render order (bottom to top)
   List<String> get layerPaths {
     final layers = <String>[
-      basePath, eyesPath, nosePath, mouthPath, clothesPath, hairPath,
+      basePath,
+      eyesPath,
+      nosePath,
+      mouthPath,
+      clothesPath,
+      hairPath,
     ];
     if (facialHairPath != null) layers.add(facialHairPath!);
     if (glassesPath != null) layers.add(glassesPath!);
@@ -96,6 +123,7 @@ class AvatarConfig {
     );
   }
 
+  /// Convert to JSON for API/storage
   Map<String, dynamic> toJson() => {
         'gender': gender,
         'base_skin': baseSkin,
@@ -112,6 +140,7 @@ class AvatarConfig {
         'extras': extras,
       };
 
+  /// Create from JSON
   factory AvatarConfig.fromJson(Map<String, dynamic> json) => AvatarConfig(
         gender: json['gender'] ?? 'female',
         baseSkin: json['base_skin'] ?? 'Base01',
@@ -128,7 +157,7 @@ class AvatarConfig {
         extras: json['extras'],
       );
 
-  // available options
+  /// Available options for each category
   static const skinTones = ['Base01', 'Base02', 'Base03'];
 
   static const hairColors = [

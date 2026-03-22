@@ -1,3 +1,5 @@
+/// Configures theme, routing, and global providers.
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cerebro_app/config/router.dart';
@@ -13,9 +15,11 @@ class CerebroApp extends ConsumerWidget {
     return MaterialApp.router(
       title: 'CEREBRO',
       debugShowCheckedModeBanner: false,
+
       theme: CerebroTheme.lightTheme,
       darkTheme: CerebroTheme.darkTheme,
       themeMode: ThemeMode.system,
+
       routerConfig: router,
     );
   }

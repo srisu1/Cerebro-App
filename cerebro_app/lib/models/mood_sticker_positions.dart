@@ -1,12 +1,18 @@
+/// Positions for rendering personalized mood stickers using
+/// the user's avatar head (justheadbase) + expression overlays.
+/// HEAD-ONLY stickers — no body, just face + hair.
+///
+/// IMPORTANT: These values are directly ported from MoodStickerPositions.cs.
+/// Nose scale = 0.10, Mouth scale = 0.12 — do NOT change these to 0.30.
+/// The expression images are scaled differently for stickers vs full avatar.
+
 import 'package:cerebro_app/models/avatar_positions.dart';
 
 class MoodStickerPositions {
   MoodStickerPositions._();
 
-  // base head position
   static const LayerPosition justHeadBase = LayerPosition(0, 0, 0.75);
 
-  // expression positions (gender-specific)
   // Eyes at 0.30, Nose at 0.10, Mouth at 0.12 — MATCHES .cs original
   static LayerPosition eyesPosition(String gender) =>
       gender.toLowerCase() == 'male'
@@ -23,7 +29,6 @@ class MoodStickerPositions {
           ? const LayerPosition(1, 38, 0.12)
           : const LayerPosition(1, 38, 0.12);
 
-  // hair positions (female)
   static const Map<String, LayerPosition> hairPositionsFemale = {
     'medium-curl':  LayerPosition(-8, -15, 0.66),
     'bangs':        LayerPosition(1, -11, 0.61),
@@ -37,7 +42,6 @@ class MoodStickerPositions {
     'bun':          LayerPosition(-12, -81, 0.62),
   };
 
-  // hair positions (male)
   static const Map<String, LayerPosition> hairPositionsMale = {
     'curly-short':    LayerPosition(1, -90, 0.65),
     'straight-short': LayerPosition(4, -86, 0.63),
@@ -51,7 +55,6 @@ class MoodStickerPositions {
     'edgy-hair':      LayerPosition(-2, -84, 0.38),
   };
 
-  // facial hair positions (male only)
   static const Map<String, LayerPosition> facialHairPositions = {
     'style1':  LayerPosition(0, 15, 0.20),
     'style2':  LayerPosition(-5, 73, 0.20),
@@ -75,6 +78,8 @@ class MoodStickerPositions {
     'style20': LayerPosition(-1, 18, 0.24),
   };
 
+
+  /// Get hair position for mood sticker.
   static LayerPosition getHairPosition(String gender, String style) {
     final map = gender.toLowerCase() == 'male'
         ? hairPositionsMale
@@ -82,6 +87,7 @@ class MoodStickerPositions {
     return map[style] ?? const LayerPosition(0, -60, 0.60);
   }
 
+  /// Get facial hair position (male only).
   static LayerPosition? getFacialHairPosition(String? style) {
     if (style == null || style.isEmpty) return null;
     return facialHairPositions[style];
