@@ -20,43 +20,68 @@ import 'package:cerebro_app/screens/home/home_screen.dart';
 import 'package:cerebro_app/providers/auth_provider.dart';
 import 'package:cerebro_app/providers/dashboard_provider.dart';
 
-// Background ombré (from avatar page)
-const _ombre1    = Color(0xFFFFFBF7);  // top – airy cream (lighter!)
-const _ombre2    = Color(0xFFFFF8F3);  // warm blush
-const _ombre3    = Color(0xFFFFF3EF);  // soft peach
-const _ombre4    = Color(0xFFFEEDE9);  // bottom – gentle pink
-const _pawClr    = Color(0xFFF8BCD0);  // softer pawprint tint
+// Everything below is derived from the user's "sage green kitchen"
+// palette — same family as the Add Med / Log Sleep / Log Symptom
+// popups on the health tab. Palette tokens:
+//
+//   #98A869 sage        · #58772F olive-dk
+//   #FFD5F5 pink-lt     · #FEA9D3 pink-dk
+//   #F7AEAE rose        · #EF6262 red
+//   #E4BC83 warm gold   · #FFBC5C orange
+//   #DDF6FF blue-lt     · #FDEFDB cream
+//   #F9FDEC cream-yellow
+//
+// Purple constants below (_purpleHdr, _bagPurp, _adBg, _adBdr)
+// are kept intentionally — user asked to preserve the purple
+// accent (shopping bag, ads banner, store header).
 
-// Outlines & text — USER LIKES THESE, keep exactly
+// Background ombré — MATCHES the main dashboard (dashboard_tab.dart)
+// so the store feels continuous with the rest of the app.
+const _ombre1    = Color(0xFFFFFBF7);  // dashboard ombre 1
+const _ombre2    = Color(0xFFFFF8F3);  // dashboard ombre 2
+const _ombre3    = Color(0xFFFFF3EF);  // dashboard ombre 3
+const _ombre4    = Color(0xFFFEEDE9);  // dashboard ombre 4 (bottom)
+const _pawClr    = Color(0xFFFFD5F5);  // palette pink-lt — pawprints
+
+// Outlines & text — structural browns, untouched.
 const _outline   = Color(0xFF6E5848);
 const _brown     = Color(0xFF4E3828);
 const _brownLt   = Color(0xFF7A5840);
 
-// Scallop tabs — white & pink alternating like reference
+// Scallop tabs — rose pink (palette) against cream white.
 const _scWhite   = Color(0xFFFFF8F4);  // inactive white (even)
-const _scPink    = Color(0xFFE8B0A8);  // inactive pink (odd)
+const _scPink    = Color(0xFFF7AEAE);  // palette rose (odd tabs)
 const _scAct     = Color(0xFFFFF6F0);  // active fill
-const _scBdr     = Color(0xFFAA8078);  // scallop border
+const _scBdr     = Color(0xFFAA8078);  // scallop border (brown)
 
 // Cards & panel
+// NOTE: `_purpleHdr` + `_bagPurp` + `_adBg` + `_adBdr` stay purple
+// per explicit user request ("keep the purple thats there").
 const _purpleHdr = Color(0xFFCDA8D8);
 const _white     = Color(0xFFFFF8F4);
 const _panelBg   = Color(0xFFFFF6EE);
 const _panelBdr  = Color(0xFF8A7060);
 
-// Currency greens — MATCHED to avatar page cutesy green
-const _greenLt   = Color(0xFFC2E8BC);  // lighter version of avatar green
-const _green     = Color(0xFFA8D5A3);  // avatar page _okGreen
-const _greenDk   = Color(0xFF88B883);  // darker complement
-const _billFill  = Color(0xFF6DA568);
-const _billTx    = Color(0xFFD0F0CC);
+// Currency greens — now pulled from the sage family so the cash
+// pills match the rest of the app instead of a separate avatar
+// mint green.
+const _greenLt   = Color(0xFFC8D9A8);  // sage tinted lighter
+const _green     = Color(0xFF98A869);  // palette sage
+const _greenDk   = Color(0xFF58772F);  // palette olive-dk
+const _billFill  = Color(0xFF98A869);  // palette sage (bill body) — brighter, matches price pill
+const _billTx    = Color(0xFFF9FDEC);  // palette cream-yellow ("$")
 
 // Misc UI
-const _closeBg   = Color(0xFFE8B8B0);  // warm pink-beige (matches theme!)
-const _adBg      = Color(0xFF7878A8);
-const _adBdr     = Color(0xFF5C5C88);
-const _goldGlow  = Color(0xFFF8E080);
-const _bagPurp   = Color(0xFFD8B0E0);
+const _closeBg   = Color(0xFFF7AEAE);  // palette rose (close btn bg)
+const _adBg      = Color(0xFF7878A8);  // KEEP purple (ads banner)
+const _adBdr     = Color(0xFF5C5C88);  // KEEP purple (ads border)
+const _goldGlow  = Color(0xFFE4BC83);  // palette warm gold
+const _bagPurp   = Color(0xFFD8B0E0);  // KEEP purple (shopping bag)
+
+// Deeper warm-gold shade used where `_goldGlow` needs a darker
+// companion (borders, shadows). Derived from palette gold, not
+// the old yellow.
+const _goldDk    = Color(0xFF8B7248);
 
 enum _TabIcon { shirt, scissors, glasses, hat, sparkle, bolt }
 const _tabDefs = <_TabDef>[
@@ -152,7 +177,11 @@ class _StoreTabState extends ConsumerState<StoreTab>
       _It(id: 'clothes_tanktop_babypink', n: 'Pink Tank Top', a: 'assets/store/Store_items/tank-top-babypink.png', p: 10, rarity: 'common'),
       _It(id: 'clothes_tanktop_brown', n: 'Brown Tank Top', a: 'assets/store/Store_items/tank-top-brown.png', p: 8, rarity: 'common'),
       _It(id: 'clothes_vneck_brown', n: 'Brown V-Neck', a: 'assets/store/Store_items/v-neck-sweater-brown.png', p: 12, rarity: 'common'),
-      _It(id: 'clothes_vneck_olive', n: 'Olive V-Neck', a: 'assets/store/Store_items/v-neck-sweater-olive.png', p: 15, rarity: 'uncommon'),
+      // Olive V-Neck removed — with 11 items the grid wrapped a
+      // single card into a lonely third row. Keeping it at 10
+      // items gives a clean 2×5 layout. The item is still
+      // registered in `avatar_customization_screen.dart` so any
+      // player who already owned it can keep wearing it.
     ]),
     _Cat(n: 'Hair', items: [
       _It(id: 'hair_pink', n: 'Pink Hair Dye', a: 'assets/avatar/female/hair/anime-hair-pink.png', p: 25, rarity: 'rare'),
@@ -206,7 +235,7 @@ class _StoreTabState extends ConsumerState<StoreTab>
             center: Alignment.center, radius: 0.9,
             colors: [
               Colors.transparent,
-              const Color(0xFFFEEDE9).withOpacity(0.12),
+              const Color(0xFFFDEFDB).withOpacity(0.12),
             ],
           ),
         ),
@@ -310,7 +339,7 @@ class _StoreTabState extends ConsumerState<StoreTab>
         decoration: BoxDecoration(
           gradient: const LinearGradient(
             begin: Alignment.topCenter, end: Alignment.bottomCenter,
-            colors: [Color(0xFFF0CCC4), _closeBg], // 3D highlight
+            colors: [Color(0xFFFAD0D0), _closeBg], // 3D highlight
           ),
           shape: BoxShape.circle,
           border: Border.all(color: _outline, width: 3),
@@ -621,7 +650,7 @@ class _StoreTabState extends ConsumerState<StoreTab>
                               decoration: BoxDecoration(
                                 gradient: const LinearGradient(
                                   begin: Alignment.topCenter, end: Alignment.bottomCenter,
-                                  colors: [Color(0xFFD0F0CA), _green]),
+                                  colors: [Color(0xFFF9FDEC), _green]),
                                 borderRadius: BorderRadius.circular(18),
                                 border: Border.all(color: _greenDk, width: 3),
                                 boxShadow: [BoxShadow(color: _greenDk.withOpacity(0.4),
@@ -640,7 +669,7 @@ class _StoreTabState extends ConsumerState<StoreTab>
                             child: Container(
                               padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 40),
                               decoration: BoxDecoration(
-                                color: const Color(0xFFD0A0A0),
+                                color: const Color(0xFFB87878),
                                 borderRadius: BorderRadius.circular(18),
                                 border: Border.all(color: _outline, width: 3),
                                 boxShadow: [BoxShadow(color: _outline.withOpacity(0.3),
@@ -693,7 +722,7 @@ class _StoreTabState extends ConsumerState<StoreTab>
                       decoration: BoxDecoration(
                         gradient: const LinearGradient(
                           begin: Alignment.topCenter, end: Alignment.bottomCenter,
-                          colors: [Color(0xFFF0CCC4), _closeBg]),
+                          colors: [Color(0xFFFAD0D0), _closeBg]),
                         shape: BoxShape.circle,
                         border: Border.all(color: _outline, width: 3),
                         boxShadow: [BoxShadow(color: _outline.withOpacity(0.3),
@@ -826,7 +855,7 @@ class _TabIconP extends CustomPainter {
           ..lineTo(sl + sw * 0.18, st + sh * 0.35) // left sleeve in
           ..lineTo(sl, st + sh * 0.2)            // left sleeve out
           ..close();
-        fill.color = const Color(0xFFB8E0F0);
+        fill.color = const Color(0xFFDDF6FF);
         c.drawPath(body, fill);
         c.drawPath(body, stroke);
         break;
@@ -836,19 +865,19 @@ class _TabIconP extends CustomPainter {
         final dr = r * 0.7;
         // Dryer body (circle)
         c.drawCircle(Offset(cx - r * 0.1, cy - r * 0.2), dr,
-          Paint()..color = const Color(0xFFF8C0D0));
+          Paint()..color = const Color(0xFFFFD5F5));
         c.drawCircle(Offset(cx - r * 0.1, cy - r * 0.2), dr, stroke);
         // Nozzle (rectangle sticking out right)
         final nz = RRect.fromRectAndRadius(
           Rect.fromLTWH(cx + dr * 0.4, cy - r * 0.45, r * 0.8, r * 0.5),
           const Radius.circular(3));
-        c.drawRRect(nz, Paint()..color = const Color(0xFFE8A8B8));
+        c.drawRRect(nz, Paint()..color = const Color(0xFFFEA9D3));
         c.drawRRect(nz, stroke);
         // Handle (rectangle going down)
         final hd = RRect.fromRectAndRadius(
           Rect.fromLTWH(cx - r * 0.35, cy + r * 0.2, r * 0.5, r * 0.9),
           const Radius.circular(4));
-        c.drawRRect(hd, Paint()..color = const Color(0xFFF8C0D0));
+        c.drawRRect(hd, Paint()..color = const Color(0xFFFFD5F5));
         c.drawRRect(hd, stroke);
         // Wind lines from nozzle
         final windP = Paint()..color = _outline.withOpacity(0.4)
@@ -862,11 +891,11 @@ class _TabIconP extends CustomPainter {
         final gr = r * 0.72;
         // Left lens
         c.drawCircle(Offset(cx - gr * 0.82, cy + r * 0.05), gr,
-          Paint()..color = const Color(0xFFB8D8F0));
+          Paint()..color = const Color(0xFFDDF6FF));
         c.drawCircle(Offset(cx - gr * 0.82, cy + r * 0.05), gr, stroke);
         // Right lens
         c.drawCircle(Offset(cx + gr * 0.82, cy + r * 0.05), gr,
-          Paint()..color = const Color(0xFFB8D8F0));
+          Paint()..color = const Color(0xFFDDF6FF));
         c.drawCircle(Offset(cx + gr * 0.82, cy + r * 0.05), gr, stroke);
         // Bridge (arc)
         final bridge = Path()
@@ -887,7 +916,7 @@ class _TabIconP extends CustomPainter {
         c.drawOval(
           Rect.fromCenter(center: Offset(cx, brimY),
             width: r * 2.6, height: r * 0.7),
-          Paint()..color = const Color(0xFFE8C878));
+          Paint()..color = const Color(0xFFE4BC83));
         c.drawOval(
           Rect.fromCenter(center: Offset(cx, brimY),
             width: r * 2.6, height: r * 0.7), stroke);
@@ -895,12 +924,12 @@ class _TabIconP extends CustomPainter {
         final crown = RRect.fromRectAndRadius(
           Rect.fromLTWH(cx - r * 0.75, cy - r * 0.8, r * 1.5, r * 1.15),
           const Radius.circular(6));
-        c.drawRRect(crown, Paint()..color = const Color(0xFFE8C878));
+        c.drawRRect(crown, Paint()..color = const Color(0xFFE4BC83));
         c.drawRRect(crown, stroke);
         // Band
         c.drawRect(
           Rect.fromLTWH(cx - r * 0.75, brimY - r * 0.15, r * 1.5, r * 0.25),
-          Paint()..color = const Color(0xFFC8A058));
+          Paint()..color = const Color(0xFF8B7248));
         break;
 
       case _TabIcon.sparkle:
@@ -912,7 +941,7 @@ class _TabIconP extends CustomPainter {
         sp.quadraticBezierTo(cx - r * 0.15, cy + r * 0.15, cx - r * 1.1, cy);
         sp.quadraticBezierTo(cx - r * 0.15, cy - r * 0.15, cx, cy - r * 1.1);
         sp.close();
-        fill.color = const Color(0xFFF8E080);
+        fill.color = const Color(0xFFE4BC83);
         c.drawPath(sp, fill);
         c.drawPath(sp, stroke);
         // Center dot
@@ -928,7 +957,7 @@ class _TabIconP extends CustomPainter {
           ..lineTo(cx + r * 0.5, cy + r * 0.05)
           ..lineTo(cx - r * 0.05, cy + r * 0.05)
           ..close();
-        fill.color = const Color(0xFFF8D048);
+        fill.color = const Color(0xFFFFBC5C);
         c.drawPath(bp, fill);
         c.drawPath(bp, stroke);
         break;
@@ -980,9 +1009,9 @@ class _KawaiiP extends CustomPainter {
       ..strokeWidth = 1.5..strokeCap = StrokeCap.round);
     // Blush
     c.drawCircle(Offset(w * 0.28, ey + 6), 5,
-      Paint()..color = const Color(0xFFF0A8A0).withOpacity(0.5));
+      Paint()..color = const Color(0xFFF7AEAE).withOpacity(0.5));
     c.drawCircle(Offset(w * 0.72, ey + 6), 5,
-      Paint()..color = const Color(0xFFF0A8A0).withOpacity(0.5));
+      Paint()..color = const Color(0xFFF7AEAE).withOpacity(0.5));
   }
   @override
   bool shouldRepaint(covariant CustomPainter o) => false;
@@ -1001,10 +1030,10 @@ class _CurPill extends StatelessWidget {
     final List<Color> pillGrad;
     final Color pillBorder;
     if (isXp) {
-      pillGrad = const [Color(0xFFFFE888), Color(0xFFE8C840)];
-      pillBorder = const Color(0xFFD0B048);
+      pillGrad = const [Color(0xFFF9FDEC), Color(0xFFE4BC83)];
+      pillBorder = const Color(0xFF8B7248);
     } else {
-      pillGrad = const [Color(0xFFD0F0CA), _green];
+      pillGrad = const [Color(0xFFF9FDEC), _green];
       pillBorder = _greenDk;
     }
 
@@ -1035,9 +1064,9 @@ class _CurPill extends StatelessWidget {
               width: 38, height: 38,
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
-                  colors: [Color(0xFFFFE888), Color(0xFFE8C840)]),
+                  colors: [Color(0xFFF9FDEC), Color(0xFFE4BC83)]),
                 shape: BoxShape.circle,
-                border: Border.all(color: const Color(0xFFD0B048), width: 2.5),
+                border: Border.all(color: const Color(0xFF8B7248), width: 2.5),
               ),
               child: const Icon(Icons.star_rounded, size: 20, color: Colors.white),
             )
@@ -1054,15 +1083,15 @@ class _CurPill extends StatelessWidget {
             decoration: BoxDecoration(
               gradient: const LinearGradient(
                 begin: Alignment.topCenter, end: Alignment.bottomCenter,
-                colors: [Color(0xFFFFF0A0), _goldGlow],
+                colors: [Color(0xFFF9FDEC), _goldGlow],
               ),
               shape: BoxShape.circle,
-              border: Border.all(color: const Color(0xFFD0B050), width: 2),
-              boxShadow: [BoxShadow(color: const Color(0xFFD0B050).withOpacity(0.3),
+              border: Border.all(color: const Color(0xFF8B7248), width: 2),
+              boxShadow: [BoxShadow(color: const Color(0xFF8B7248).withOpacity(0.3),
                   offset: const Offset(0, 2), blurRadius: 0)],
             ),
             child: const Center(child: Icon(Icons.add_rounded, size: 16,
-                color: Color(0xFF8A6820))),
+                color: Color(0xFF8B7248))),
           ),
         )),
       ],
@@ -1071,10 +1100,10 @@ class _CurPill extends StatelessWidget {
 
   static Widget _fallbackCoin() {
     return Container(width: 38, height: 38, decoration: BoxDecoration(
-      shape: BoxShape.circle, color: const Color(0xFFE8D060),
-      border: Border.all(color: const Color(0xFFC8A840), width: 2.5),
+      shape: BoxShape.circle, color: const Color(0xFFE4BC83),
+      border: Border.all(color: const Color(0xFF8B7248), width: 2.5),
     ), child: Center(child: Text('\$', style: GoogleFonts.gaegu(
-      fontSize: 16, fontWeight: FontWeight.w700, color: const Color(0xFFA08020)))));
+      fontSize: 16, fontWeight: FontWeight.w700, color: const Color(0xFF8B7248)))));
   }
 
   Widget _billIcon() {
@@ -1082,7 +1111,7 @@ class _CurPill extends StatelessWidget {
       angle: -0.15,
       child: Container(width: 30, height: 20, decoration: BoxDecoration(
         color: _billFill, borderRadius: BorderRadius.circular(3),
-        border: Border.all(color: const Color(0xFF4D8D48), width: 2.5),
+        border: Border.all(color: const Color(0xFF58772F), width: 2.5),
       ), child: Center(child: Text('\$', style: GoogleFonts.gaegu(
         fontSize: 12, fontWeight: FontWeight.w700, color: _billTx)))),
     )));
@@ -1179,7 +1208,7 @@ class _CardS extends State<_Card> {
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
                       begin: Alignment.topCenter, end: Alignment.bottomCenter,
-                      colors: [Color(0xFFD0F0CA), _green]),
+                      colors: [Color(0xFFF9FDEC), _green]),
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(color: _greenDk, width: 3),
                     boxShadow: [BoxShadow(color: _greenDk.withOpacity(0.45),
@@ -1191,7 +1220,7 @@ class _CardS extends State<_Card> {
                       child: Container(width: 24, height: 16,
                         decoration: BoxDecoration(
                           color: _billFill, borderRadius: BorderRadius.circular(2),
-                          border: Border.all(color: const Color(0xFF4D8D48), width: 1.5)),
+                          border: Border.all(color: const Color(0xFF58772F), width: 1.5)),
                         child: Center(child: Text('\$', style: GoogleFonts.gaegu(
                           fontSize: 9, fontWeight: FontWeight.w700, color: _billTx))))),
                     Expanded(child: Center(child: Text(
@@ -1216,7 +1245,7 @@ class _CardS extends State<_Card> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF0A0B0),
+                      color: const Color(0xFFF7AEAE),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: _outline, width: 2.5),
                       boxShadow: [BoxShadow(color: _outline.withOpacity(0.3),
