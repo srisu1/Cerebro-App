@@ -22,6 +22,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cerebro_app/providers/auth_provider.dart';
 import 'package:cerebro_app/providers/dashboard_provider.dart';
 import 'package:cerebro_app/screens/study/study_tab.dart';
@@ -53,6 +54,31 @@ const _purpleLt = Color(0xFFD8C0E8);
 const _purpleDk = Color(0xFFAA88C0);
 const _skyHdr   = Color(0xFF9DD4F0);
 const _skyLt    = Color(0xFFC0E0F8);
+const _skyDk    = Color(0xFF6BB8E0);
+
+// Sage/olive — user's requested primary palette (matches study_tab _olive/_oliveDk)
+const _olive    = Color(0xFF98A869);
+const _oliveLt  = Color(0xFFB8C87A);
+const _oliveDk  = Color(0xFF58772F);
+const _oliveBg  = Color(0xFFF9FDEC); // soft cream-green tint
+
+// Body softer ink — matches dashboard_tab
+const _inkSoft  = Color(0xFF9A8070);
+
+//    from the user's provided palette. The primary sage (#98A869)
+//    and deep sage (#58772F) alias to `_olive` / `_oliveDk` above,
+//    keeping existing call sites untouched while giving new layout
+//    code intent-revealing names.
+const _sagePale   = Color(0xFFF9FDEC); // soft pale green — card wash
+const _pinkSoft   = Color(0xFFFFD5F5); // details card wash
+const _pinkDeep   = Color(0xFFFEA9D3); // details accent
+const _skySoft    = Color(0xFFDDF6FF); // ambience card wash
+const _creamSoft  = Color(0xFFFDEFDB); // quote card wash + warm cream
+const _coralSoft  = Color(0xFFF7AEAE); // focused session accent
+const _tanWarm    = Color(0xFFE4BC83); // xp / gold pill
+const _orangeWarm = Color(0xFFFFBC5C); // streak pill
+// ignore: unused_element
+const _redAccent  = Color(0xFFEF6262); // reserved — alerts / emphasis
 
 enum _Phase { setup, running, paused, onBreak, completed }
 
@@ -145,6 +171,9 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
   bool _saving = false;
   bool _saved = false;
 
+  int _streakCount = 0;
+  String? _moodTag;
+
   late AnimationController _enterCtrl;
   late AnimationController _pulseCtrl;
   late AnimationController _breatheCtrl;
@@ -177,6 +206,40 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
     _quote = _quotes[math.Random().nextInt(_quotes.length)];
     _fetchSubjects();
     _fetchPastSessions();
+    _loadStreak();
+  }
+
+  String _todayKey() => DateTime.now().toIso8601String().substring(0, 10);
+  String _yesterdayKey() => DateTime.now()
+      .subtract(const Duration(days: 1))
+      .toIso8601String().substring(0, 10);
+
+  Future<void> _loadStreak() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final lastDate = prefs.getString('study_streak_last_date') ?? '';
+      int streak = prefs.getInt('study_streak_count') ?? 0;
+      if (lastDate.isNotEmpty &&
+          lastDate != _todayKey() &&
+          lastDate != _yesterdayKey()) {
+        streak = 0;
+      }
+      if (mounted) setState(() => _streakCount = streak);
+    } catch (_) {}
+  }
+
+  Future<void> _bumpStreak() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final lastDate = prefs.getString('study_streak_last_date') ?? '';
+      final today = _todayKey();
+      if (lastDate == today) return; // already counted today
+      final yesterday = _yesterdayKey();
+      final newStreak = lastDate == yesterday ? _streakCount + 1 : 1;
+      await prefs.setInt('study_streak_count', newStreak);
+      await prefs.setString('study_streak_last_date', today);
+      if (mounted) setState(() => _streakCount = newStreak);
+    } catch (_) {}
   }
 
   @override
@@ -448,6 +511,7 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
       if (_selectedSubjectId != null) body['subject_id'] = _selectedSubjectId;
       if (_titleCtrl.text.trim().isNotEmpty) body['title'] = _titleCtrl.text.trim();
       if (_notesCtrl.text.trim().isNotEmpty) body['notes'] = _notesCtrl.text.trim();
+      if (_moodTag != null) body['mood_tag'] = _moodTag;
 
       final resp = await api.post('/study/sessions', data: body);
       if (resp.statusCode == 200 || resp.statusCode == 201) {
@@ -457,6 +521,8 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
           _saved = true;
         });
         _xpCtrl.forward(from: 0);
+        // Bump daily streak
+        await _bumpStreak();
         // Check for achievements
         ref.read(dashboardProvider.notifier).checkAchievements();
         // Refresh past sessions
@@ -675,7 +741,7 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
             colors: [
               (_phase == _Phase.onBreak ? _greenHdr
                   : _phase == _Phase.completed ? _goldHdr
-                  : _typeColor(_sessionType)).withOpacity(0.1),
+                  : _typeColor(_sessionType)).withOpacity(0.12),
               Colors.transparent])))),
         // Floating particles during timer
         if (_phase == _Phase.running || _phase == _Phase.paused || _phase == _Phase.onBreak)
@@ -685,65 +751,175 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
               painter: _ParticlePainter(
                 progress: _particleCtrl.value,
                 color: _isBreakPhase ? _greenHdr : _typeColor(_sessionType))))),
-        // Main content
-        SafeArea(child: Column(children: [
-          _buildAppBar(),
-          Expanded(child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
-            child: _phase == _Phase.setup ? _buildSetup()
-                : _phase == _Phase.completed ? _buildCompletion()
-                : _buildTimer(),
-          )),
-        ])),
+        // Main content — hero & body are wrapped in ONE shared
+        // Center+ConstrainedBox(maxWidth:1240) with ONE shared hPad.
+        // The previous layout had the hero at a different x-offset
+        // than the setup cards (which had their own maxWidth +
+        // center), which is what made the hero look "thrusted left
+        // of the content" on wide displays.
+        SafeArea(child: LayoutBuilder(builder: (outerCtx, outerC) {
+          // MATCHES dashboard (study_tab.dart `_buildDesktopLayout`):
+          //   hPad scales 40 → 60 → 80 by viewport; NO maxWidth so the
+          //   content fills the whole desktop viewport the way the
+          //   dashboard does. Desktop (>900) fills the viewport with
+          //   zero scroll; narrow (<900) falls back to a scrollable
+          //   stack.
+          final bool isDesktop = outerC.maxWidth > 900;
+          final double hPad = outerC.maxWidth > 1280 ? 80
+              : outerC.maxWidth > 1024 ? 60
+              : isDesktop ? 40
+              : 22;
+          final bodyBuilder = LayoutBuilder(builder: (ctx, c) {
+            final centerY = _phase == _Phase.running ||
+                _phase == _Phase.paused || _phase == _Phase.onBreak;
+            if (isDesktop) {
+              // Desktop — fills viewport, no scroll. Outer padding is
+              //   intentionally small (6 top / 14 bottom) because the
+              //   setup body uses weighted Spacers to distribute the
+              //   viewport leftover internally (2:1 top:bottom), so
+              //   content floats in the lower-middle of the page.
+              return Padding(
+                padding: EdgeInsets.fromLTRB(hPad, 6, hPad, 14),
+                child: _phase == _Phase.setup ? _buildSetup(desktop: true)
+                    : _phase == _Phase.completed ? _buildCompletion(desktop: true)
+                    : _buildTimer(),
+              );
+            }
+            return SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(hPad, 6, hPad, 28),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: centerY ? c.maxHeight - 42 : 0),
+                child: Column(
+                  mainAxisAlignment: centerY
+                    ? MainAxisAlignment.center
+                    : MainAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _phase == _Phase.setup ? _buildSetup()
+                        : _phase == _Phase.completed ? _buildCompletion()
+                        : _buildTimer(),
+                  ],
+                ),
+              ),
+            );
+          });
+          return Column(children: [
+            _buildHero(hPad: hPad),
+            Expanded(child: bodyBuilder),
+          ]);
+        })),
         // Milestone toast
         if (_milestoneMsg != null)
           Positioned(
-            top: MediaQuery.of(context).padding.top + 56,
+            top: MediaQuery.of(context).padding.top + 72,
             left: 30, right: 30,
             child: _MilestoneToast(msg: _milestoneMsg!)),
       ]),
     );
   }
 
-  Widget _buildAppBar() {
-    return Container(
-      padding: EdgeInsets.only(
-        top: MediaQuery.of(context).padding.top + 4,
-        left: 8, right: 16, bottom: 8),
-      child: Row(children: [
-        IconButton(
-          icon: Icon(Icons.arrow_back_rounded, color: _brown, size: 22),
-          onPressed: () {
-            if (_phase == _Phase.running || _phase == _Phase.paused ||
-                _phase == _Phase.onBreak) {
+  //    LEFT, colored stat pills on the RIGHT. Title left-edge sits
+  //    at the same x as the body content below (because the back
+  //    button is a small 34px chip, not a 44px circle), which kills
+  //    the "hero thrusted left of content" misalignment.
+  Widget _buildHero({double hPad = 24}) {
+    final onTimer = _phase == _Phase.running ||
+        _phase == _Phase.paused || _phase == _Phase.onBreak;
+    final title = _phase == _Phase.setup ? 'Study Session'
+        : _phase == _Phase.completed ? 'Session Wrapped'
+        : _isBreakPhase ? 'On A Break'
+        : 'In Focus';
+    final kicker = _phase == _Phase.setup
+        ? 'shape your focus ritual'
+        : _phase == _Phase.completed
+            ? 'here\'s how it went'
+            : _isBreakPhase
+                ? 'breathe, stretch, sip'
+                : 'stay with the thread';
+    final dash = ref.watch(dashboardProvider);
+    final studiedMin = _totalStudiedSec ~/ 60;
+
+    // Mini stat pill — coral / gold / yellow like dashboard _TopChip
+    Widget pill(IconData icon, String label, Color bg) => Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: bg.withOpacity(0.38),
+        borderRadius: BorderRadius.circular(11),
+        border: Border.all(color: _outline.withOpacity(0.22), width: 1.2),
+        boxShadow: [BoxShadow(
+          color: _outline.withOpacity(0.16),
+          offset: const Offset(1.5, 2), blurRadius: 0)]),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, size: 13, color: _brown),
+        const SizedBox(width: 5),
+        Text(label, style: const TextStyle(
+          fontFamily: 'Bitroad', fontSize: 13, color: _brown, height: 1)),
+      ]),
+    );
+
+    return Padding(
+      // Bigger top breathing room — title sits noticeably below the
+      //   viewport edge instead of hugging it.
+      padding: EdgeInsets.fromLTRB(hPad, 32, hPad, 16),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+        // Back — bumped to 40px to match the heavier title type scale
+        GestureDetector(
+          onTap: () {
+            if (onTimer) {
               _showExitConfirm();
             } else {
               _stopAmbient();
               Navigator.of(context).pop();
             }
-          }),
-        Expanded(child: Text('Study Session', textAlign: TextAlign.center,
-          style: GoogleFonts.gaegu(
-            fontSize: 24, fontWeight: FontWeight.w700, color: _brown))),
-        // Live study time badge (during timer)
-        if (_phase != _Phase.setup && _phase != _Phase.completed)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          },
+          child: Container(
+            width: 40, height: 40,
             decoration: BoxDecoration(
-              gradient: LinearGradient(colors: [_goldLt, _goldHdr]),
+              color: Colors.white,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: _goldDk.withOpacity(0.3), width: 1.5),
-              boxShadow: [BoxShadow(color: _goldDk.withOpacity(0.15),
-                offset: const Offset(0, 2), blurRadius: 0)]),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(Icons.local_fire_department_rounded, size: 12, color: Colors.white),
-              const SizedBox(width: 3),
-              Text(_fmtMin(_totalStudiedSec), style: GoogleFonts.gaegu(
-                fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white)),
-            ]),
-          )
-        else
-          const SizedBox(width: 40),
+              border: Border.all(color: _outline.withOpacity(0.35), width: 1.5),
+              boxShadow: [BoxShadow(
+                color: _outline.withOpacity(0.28),
+                offset: const Offset(2, 3), blurRadius: 0)]),
+            child: const Icon(Icons.chevron_left_rounded,
+              size: 24, color: _outline),
+          ),
+        ),
+        const SizedBox(width: 14),
+        // Title — bigger Bitroad type for hero presence
+        Flexible(child: Text(title, style: const TextStyle(
+          fontFamily: 'Bitroad', fontSize: 30,
+          color: _brown, height: 1.0),
+          overflow: TextOverflow.ellipsis, maxLines: 1)),
+        if (!onTimer) ...[
+          const SizedBox(width: 12),
+          Flexible(child: Text('· $kicker',
+            style: GoogleFonts.gaegu(
+              fontSize: 15, fontWeight: FontWeight.w500,
+              fontStyle: FontStyle.italic,
+              color: _brownLt.withOpacity(0.78),
+              letterSpacing: 0.2),
+            overflow: TextOverflow.ellipsis, maxLines: 1)),
+        ],
+        const Spacer(),
+        // Stat pills — completion phase only (XP / time / streak belong
+        //   inside the Rhythm card during setup, not floating in the
+        //   header gap). User feedback: "why is the random xp pill
+        //   placed so randomly in the middle".
+        if (_phase == _Phase.completed) ...[
+          pill(Icons.timer_rounded,
+            studiedMin > 0 ? '${studiedMin}m' : '—',
+            const Color(0xFFF7AEAE)),
+          const SizedBox(width: 6),
+          pill(Icons.star_rounded, '${dash.totalXp}',
+            const Color(0xFFE4BC83)),
+          if (_streakCount > 0) ...[
+            const SizedBox(width: 6),
+            pill(Icons.bolt_rounded, '$_streakCount',
+              const Color(0xFFFFBC5C)),
+          ],
+        ],
       ]),
     );
   }
@@ -751,7 +927,9 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
   void _showExitConfirm() {
     showDialog(context: context, builder: (ctx) => AlertDialog(
       backgroundColor: _cardFill,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: _outline.withOpacity(0.3), width: 1.5)),
       title: Text('End Session?', style: GoogleFonts.gaegu(
         fontSize: 22, fontWeight: FontWeight.w700, color: _brown)),
       content: Text(
@@ -771,105 +949,495 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
   }
 
   //  1. SETUP PHASE
-  Widget _buildSetup() {
-    return Column(children: [
-      _stag(0.0, Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+  Widget _buildSetup({bool desktop = false}) {
+    return LayoutBuilder(builder: (ctx, c) {
+      // ignore: unused_local_variable
+      final _ignoredMax = c.maxWidth;
+
+      //    (Bitroad 16px label + 16x16 olive-dk icon + 7px gap +
+      //    13px bottom margin). Optional trailing "sub" sits on the
+      //    right as a tiny Gaegu whisper, so every page speaks in
+      //    the same warm voice without clutter.
+      Widget labelled(String title, IconData icon, String sub, Widget body,
+          {IconData? tagIcon}) {
+        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Padding(
+            padding: const EdgeInsets.only(bottom: 18),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+              Icon(icon, size: 19, color: _oliveDk),
+              const SizedBox(width: 9),
+              Text(title, style: const TextStyle(
+                fontFamily: 'Bitroad', fontSize: 19, color: _brown)),
+              const SizedBox(width: 12),
+              Expanded(child: Text(sub, style: GoogleFonts.gaegu(
+                fontSize: 15, fontWeight: FontWeight.w500,
+                fontStyle: FontStyle.italic,
+                color: _brownLt.withOpacity(0.85), letterSpacing: 0.2),
+                overflow: TextOverflow.ellipsis)),
+              if (tagIcon != null)
+                Icon(tagIcon, size: 16, color: _brownLt.withOpacity(0.4)),
+            ]),
+          ),
+          body,
+        ]);
+      }
+
+      final typeSection = labelled('Session Type',
+        Icons.category_rounded,
+        'what kind of work today',
+        _buildTypeChips(),
+        tagIcon: Icons.auto_awesome_rounded);
+      final detailsSection = labelled('Details',
+        Icons.edit_note_rounded,
+        'subject & title — optional',
+        _buildDetailsCard());
+      final durationSection = labelled('Focus Length',
+        Icons.timer_outlined,
+        'pick a preset or dial it in',
+        _buildDurationCard());
+      final ambientSection = labelled('Ambience',
+        Icons.graphic_eq_rounded,
+        'sound to settle into',
+        _buildAmbientCard());
+
+      //    hairline sage-dk border, soft diagonal drop so it still has
+      //    the cozy chunky feel without the muddy 3-stop gradient.
+      final startBtn = GestureDetector(
+        onTap: _startTimer,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 23),
+          decoration: BoxDecoration(
+            color: _olive, // flat #98A869, no gradient
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: _oliveDk.withOpacity(0.55), width: 1.6),
+            boxShadow: [BoxShadow(
+              color: _oliveDk.withOpacity(0.28),
+              offset: const Offset(2, 3), blurRadius: 0)]),
+          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            const Text('Begin Session', style: TextStyle(
+              fontFamily: 'Bitroad', fontSize: 24,
+              color: Colors.white, height: 1.0, letterSpacing: 0.4)),
+            const SizedBox(width: 14),
+            const Icon(Icons.arrow_forward_rounded,
+              size: 24, color: Colors.white),
+          ]),
+        ),
+      );
+
+      // Past sessions — quiet text link, not a loud sticker
+      final pastLink = GestureDetector(
+        onTap: _showPastSessions,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 18),
+          alignment: Alignment.center,
+          child: Row(mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min, children: [
+            Icon(Icons.history_rounded, size: 15,
+              color: _brownLt.withOpacity(0.75)),
+            const SizedBox(width: 7),
+            Text('Past sessions (${_pastSessions.length})',
+              style: GoogleFonts.nunito(
+                fontSize: 13, fontWeight: FontWeight.w700,
+                color: _brownLt, letterSpacing: 0.2,
+                decoration: TextDecoration.underline,
+                decorationColor: _brownLt.withOpacity(0.3))),
+          ]),
+        ),
+      );
+
+      // Each section lives in its own `_sectionCard` (white/0.88,
+      // outline 0.22, 18r, offset-0-3 hard shadow). The page reads
+      // like a natural extension of the dashboard rather than a
+      // long settings form. The HERO card at the top combines the
+      // primary choices (Type + Focus Length + Begin Session) so
+      // users can commit without scrolling.
+
+      // Hero divider — a small sage leaf anchored between two faint
+      //   sage hairlines. Carries the Rhythm card's eco motif into
+      //   the hero so the page shares a quiet visual vocabulary.
+      Widget heroDivider = Padding(
+        padding: const EdgeInsets.symmetric(vertical: 22),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+          Expanded(child: Container(height: 1.3,
+            color: _oliveDk.withOpacity(0.16))),
+          const SizedBox(width: 13),
+          Icon(Icons.eco_rounded, size: 14,
+            color: _oliveDk.withOpacity(0.5)),
+          const SizedBox(width: 13),
+          Expanded(child: Container(height: 1.3,
+            color: _oliveDk.withOpacity(0.16))),
+        ]));
+
+      // HERO card — sage wash marks it as the "commit" path. The
+      // composition is INTENTIONALLY content-sized: every block
+      // packs to its natural height with a fixed 22px breath before
+      // the CTA. No spaceBetween — that was the source of the dead
+      // cream zone when the cell stretched.
+      final heroCard = Container(
+        padding: const EdgeInsets.fromLTRB(30, 28, 30, 28),
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft, end: Alignment.bottomRight,
-            colors: [_typeColorLight(_sessionType).withOpacity(0.3),
-                     _typeColor(_sessionType).withOpacity(0.1)]),
-          borderRadius: BorderRadius.circular(14)),
-        child: Row(children: [
-          Icon(Icons.auto_awesome_rounded, size: 16, color: _typeColor(_sessionType)),
-          const SizedBox(width: 10),
-          Expanded(child: Text(_quote, style: GoogleFonts.nunito(
-            fontSize: 11, fontWeight: FontWeight.w500, fontStyle: FontStyle.italic,
-            color: _brownLt))),
-        ]),
-      )),
-      const SizedBox(height: 14),
+            colors: [
+              _sagePale.withOpacity(0.95),
+              _creamSoft.withOpacity(0.78),
+            ]),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: _oliveDk.withOpacity(0.45), width: 2),
+          boxShadow: [BoxShadow(
+            color: _oliveDk.withOpacity(0.28),
+            offset: const Offset(3, 4), blurRadius: 0)]),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            typeSection,
+            heroDivider,
+            durationSection,
+            const SizedBox(height: 30),
+            startBtn,
+          ]));
 
-      _stag(0.03, _buildTypeChips()),
-      const SizedBox(height: 14),
+      if (desktop) {
+        //   Goal: a structured control panel that breathes. Cards
+        //   should be sized to their CONTENT, not stretched to
+        //   identical rectangles.
+        //
+        //   ┌─────────────────────┬───────────────────┐
+        //   │                     │  Details (small)  │
+        //   │   HERO              │                   │
+        //   │   Session Type      ├───────────────────┤
+        //   │   Focus Length      │                   │
+        //   │   [Begin →]         │  Rhythm (small)   │
+        //   │                     │                   │
+        //   └─────────────────────┴───────────────────┘
+        //   "quote text — loose"             [Past sessions →]
 
-      _stag(0.06, _buildDetailsCard()),
-      const SizedBox(height: 14),
+        // Right column — Details on top (compact), Rhythm below.
+        //   Both shrink-wrap their content. No Expanded forcing
+        //   them to fill the hero's height.
+        final rightColumn = Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _sectionCard(
+              tint: _pinkDeep, tintSoft: _pinkSoft,
+              padding: const EdgeInsets.fromLTRB(26, 24, 26, 26),
+              child: detailsSection),
+            const SizedBox(height: 22),
+            _rhythmCard(),
+          ]);
 
-      _stag(0.09, _buildDurationCard()),
-      const SizedBox(height: 14),
+        // Top block — hero (55%) + right column (45%). Row uses
+        //   `start` so children stay at their natural heights; the
+        //   row height is the taller of the two. No viewport stretch.
+        final topBlock = Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(flex: 55, child: _stag(0.02, heroCard)),
+            const SizedBox(width: 22),
+            Expanded(flex: 45, child: _stag(0.05, rightColumn)),
+          ]);
 
-      _stag(0.12, _buildAmbientCard()),
-      const SizedBox(height: 20),
+        //   band with the label inline and the tile row flowing
+        //   beside it, hugging its content height.
+        final ambienceStrip = _stag(0.09, Container(
+          padding: const EdgeInsets.fromLTRB(26, 20, 26, 22),
+          decoration: BoxDecoration(
+            // Soft tint, hairline border — band-feeling, not card-heavy
+            color: _skySoft.withOpacity(0.55),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: _skyDk.withOpacity(0.28), width: 1.2),
+            boxShadow: [BoxShadow(
+              color: _skyDk.withOpacity(0.12),
+              offset: const Offset(2, 2), blurRadius: 0)]),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+                Icon(Icons.graphic_eq_rounded, size: 19, color: _oliveDk),
+                const SizedBox(width: 9),
+                const Text('Ambience', style: TextStyle(
+                  fontFamily: 'Bitroad', fontSize: 19, color: _brown)),
+                const SizedBox(width: 12),
+                Expanded(child: Text('sound to settle into',
+                  style: GoogleFonts.gaegu(
+                    fontSize: 15, fontWeight: FontWeight.w500,
+                    fontStyle: FontStyle.italic,
+                    color: _brownLt.withOpacity(0.85), letterSpacing: 0.2),
+                  overflow: TextOverflow.ellipsis)),
+              ]),
+              const SizedBox(height: 18),
+              _buildAmbientCard(),
+            ]),
+        ));
 
-      _stag(0.15, _GameButton(
-        icon: Icons.play_arrow_rounded,
-        label: 'Start Studying',
-        gradTop: _greenLt, gradBot: _greenHdr,
-        borderColor: _greenDk,
-        onTap: _startTimer)),
-      const SizedBox(height: 14),
-
-      _stag(0.18, Row(children: [
-        // Past sessions button
-        Expanded(child: GestureDetector(
-          onTap: _showPastSessions,
-          child: Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: _cardFill,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: _outline.withOpacity(0.1), width: 1.5)),
-            child: Row(children: [
-              Container(
-                width: 28, height: 28,
+        //   sessions chip. Lets the page exhale at the bottom.
+        final footerRow = _stag(0.13, Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Icon(Icons.format_quote_rounded, size: 18,
+              color: _goldDk.withOpacity(0.7)),
+            const SizedBox(width: 10),
+            Expanded(child: Text(_quote, style: GoogleFonts.gaegu(
+              fontSize: 15, fontWeight: FontWeight.w600,
+              fontStyle: FontStyle.italic,
+              color: _brownLt, height: 1.4),
+              maxLines: 2, overflow: TextOverflow.ellipsis)),
+            const SizedBox(width: 16),
+            GestureDetector(
+              onTap: _showPastSessions,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 13, vertical: 9),
                 decoration: BoxDecoration(
-                  color: _purpleHdr.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8)),
-                child: Icon(Icons.history_rounded, size: 14, color: _purpleHdr)),
-              const SizedBox(width: 8),
-              Expanded(child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Past Sessions', style: GoogleFonts.gaegu(
-                    fontSize: 13, fontWeight: FontWeight.w700, color: _brown)),
-                  Text('${_pastSessions.length} recorded', style: GoogleFonts.nunito(
-                    fontSize: 10, color: _brownLt)),
-                ])),
-              Icon(Icons.chevron_right_rounded, size: 16,
-                color: _brownLt.withOpacity(0.3)),
+                  color: _creamSoft.withOpacity(0.78),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: _outline.withOpacity(0.28), width: 1.3),
+                  boxShadow: [BoxShadow(
+                    color: _outline.withOpacity(0.16),
+                    offset: const Offset(2, 2), blurRadius: 0)]),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.history_rounded, size: 14, color: _brownLt),
+                  const SizedBox(width: 6),
+                  Text('Past sessions (${_pastSessions.length})',
+                    style: const TextStyle(
+                      fontFamily: 'Bitroad', fontSize: 12,
+                      color: _brown, letterSpacing: 0.2)),
+                ]),
+              ),
+            ),
+          ]));
+
+        // Body composition — weighted Spacers redistribute any
+        //   leftover viewport height so the content floats in the
+        //   lower-middle of the page. Top spacer (flex 2) gets
+        //   twice the leftover as the bottom (flex 1), giving the
+        //   content an intentional gap from the hero strip and a
+        //   tight, settled feel at the bottom instead of the
+        //   previous yawn of empty cream.
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Spacer(flex: 2),
+            topBlock,
+            const SizedBox(height: 28),
+            ambienceStrip,
+            const SizedBox(height: 24),
+            footerRow,
+            const Spacer(flex: 1),
+          ]);
+      }
+
+      // Uses the same palette tints as desktop so the visual
+      // identity is consistent across breakpoints.
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        _stag(0.02, heroCard),
+        const SizedBox(height: 14),
+        _stag(0.05, _sectionCard(
+          tint: _pinkDeep, tintSoft: _pinkSoft, child: detailsSection)),
+        const SizedBox(height: 14),
+        _stag(0.08, _sectionCard(
+          tint: _skyHdr, tintSoft: _skySoft, child: ambientSection)),
+        const SizedBox(height: 14),
+        _stag(0.11, _rhythmCard()),
+        const SizedBox(height: 14),
+        _stag(0.14, _setupQuoteCard()),
+        const SizedBox(height: 6),
+        _stag(0.17, pastLink),
+        const SizedBox(height: 4),
+      ]);
+    });
+  }
+
+  Widget _rhythmCard() {
+    final totalSessions = _pastSessions.length;
+    int totalMin = 0;
+    for (final s in _pastSessions) {
+      final v = s['duration_min'] ?? s['durationMin'] ?? s['duration'];
+      if (v is num) totalMin += v.toInt();
+    }
+    final totalHr = (totalMin / 60).toStringAsFixed(totalMin >= 60 ? 1 : 0);
+    final totalXp = ref.watch(dashboardProvider).totalXp;
+
+    Widget stat(String label, String value, String unit) => Expanded(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(label, style: GoogleFonts.nunito(
+          fontSize: 9.5, fontWeight: FontWeight.w900,
+          color: _inkSoft, letterSpacing: 1.5)),
+        const SizedBox(height: 6),
+        Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          Text(value, style: const TextStyle(
+            fontFamily: 'Bitroad', fontSize: 26, color: _brown, height: 1)),
+          const SizedBox(width: 3),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 3),
+            child: Text(unit, style: GoogleFonts.nunito(
+              fontSize: 11, fontWeight: FontWeight.w700, color: _brownLt))),
+        ]),
+      ]),
+    );
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(26, 24, 26, 26),
+      decoration: BoxDecoration(
+        // Sage wash + chunkier outline & diagonal offset shadow so
+        // the card sits alongside dashboard's other cards with the
+        // same 3D sticker feel instead of a flat pastel panel.
+        gradient: LinearGradient(
+          begin: Alignment.topLeft, end: Alignment.bottomRight,
+          colors: [
+            _oliveBg.withOpacity(0.92),
+            _cardFill.withOpacity(0.8),
+          ]),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _oliveDk.withOpacity(0.4), width: 1.8),
+        boxShadow: [BoxShadow(
+          color: _oliveDk.withOpacity(0.26),
+          offset: const Offset(3, 3), blurRadius: 0)]),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+          Icon(Icons.favorite_rounded, size: 18, color: _oliveDk),
+          const SizedBox(width: 8),
+          Text('Your Rhythm', style: const TextStyle(
+            fontFamily: 'Bitroad', fontSize: 18, color: _brown)),
+          const SizedBox(width: 11),
+          Expanded(child: Text('a quiet pulse check',
+            style: GoogleFonts.gaegu(fontSize: 14,
+              fontWeight: FontWeight.w500, fontStyle: FontStyle.italic,
+              color: _brownLt.withOpacity(0.85), letterSpacing: 0.2),
+            overflow: TextOverflow.ellipsis)),
+          // XP pill — lives in the Rhythm card header now, not floating
+          //   in the hero's empty right gap.
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+            decoration: BoxDecoration(
+              color: _tanWarm.withOpacity(0.38),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: _outline.withOpacity(0.22), width: 1.2),
+              boxShadow: [BoxShadow(
+                color: _outline.withOpacity(0.14),
+                offset: const Offset(1.5, 2), blurRadius: 0)]),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(Icons.star_rounded, size: 13, color: _brown),
+              const SizedBox(width: 4),
+              Text('$totalXp', style: const TextStyle(
+                fontFamily: 'Bitroad', fontSize: 13, color: _brown, height: 1)),
             ]),
           ),
-        )),
-        const SizedBox(width: 10),
-        // XP tip
-        Expanded(child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [const Color(0xFFFFF8E0), const Color(0xFFFFFAEE)]),
-            borderRadius: BorderRadius.circular(14)),
-          child: Row(children: [
-            Container(
-              width: 28, height: 28,
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.5),
-                borderRadius: BorderRadius.circular(8)),
-              child: Icon(Icons.star_rounded, size: 14, color: _goldDk)),
-            const SizedBox(width: 8),
-            Expanded(child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('25 XP / 30min', style: GoogleFonts.gaegu(
-                  fontSize: 13, fontWeight: FontWeight.w700, color: _brown)),
-                Text('+25% focus bonus', style: GoogleFonts.nunito(
-                  fontSize: 10, color: _brownLt)),
-              ])),
+        ]),
+        const SizedBox(height: 18),
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          stat('STREAK', '$_streakCount', _streakCount == 1 ? 'day' : 'days'),
+          stat('SESSIONS', '$totalSessions', totalSessions == 1 ? 'log' : 'logs'),
+          stat('TIME', totalHr, totalMin >= 60 ? 'hrs' : 'min'),
+        ]),
+        const SizedBox(height: 16),
+        Container(height: 1, color: _outline.withOpacity(0.1)),
+        const SizedBox(height: 16),
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Icon(Icons.eco_rounded, size: 14, color: _oliveDk),
+          const SizedBox(width: 9),
+          Expanded(child: Text(
+            _streakCount > 0
+              ? 'You\'ve shown up ${_streakCount == 1 ? "today" : "$_streakCount days in a row"}. Keep the thread.'
+              : 'No streak yet. Let today be the first knot.',
+            style: GoogleFonts.nunito(fontSize: 12,
+              fontWeight: FontWeight.w600, color: _brownLt,
+              height: 1.4))),
+        ]),
+      ]),
+    );
+  }
+
+  //    User feedback: "why does a line to carry have 2 different fonts."
+  //    Fix: drop the Bitroad microlabel; the whole card speaks in one
+  //    handwritten whisper. A tiny gold quote glyph sits alongside as
+  //    the sole non-text accent so it still reads as a card, not a
+  //    blockquote in a void.
+  Widget _setupQuoteCard() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(22, 22, 22, 22),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft, end: Alignment.bottomRight,
+          colors: [
+            const Color(0xFFFDEFDB).withOpacity(0.95),
+            const Color(0xFFFFF6E4).withOpacity(0.78),
           ]),
-        )),
-      ])),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _goldDk.withOpacity(0.42), width: 1.8),
+        boxShadow: [BoxShadow(
+          color: _goldDk.withOpacity(0.26),
+          offset: const Offset(3, 3), blurRadius: 0)]),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // Gold bar + small quote glyph anchor the card without
+        // introducing a second font voice.
+        Column(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.format_quote_rounded, size: 20, color: _goldDk),
+          const SizedBox(height: 6),
+          Container(width: 3, height: 32, decoration: BoxDecoration(
+            color: _goldDk.withOpacity(0.75),
+            borderRadius: BorderRadius.circular(2))),
+        ]),
+        const SizedBox(width: 16),
+        Expanded(child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('a line to carry in',
+              style: GoogleFonts.gaegu(
+                fontSize: 13, fontWeight: FontWeight.w600,
+                fontStyle: FontStyle.italic,
+                color: _goldDk, letterSpacing: 0.3)),
+            const SizedBox(height: 8),
+            Text(_quote, style: GoogleFonts.gaegu(
+              fontSize: 18, fontWeight: FontWeight.w600,
+              fontStyle: FontStyle.italic, color: _brown, height: 1.45)),
+          ])),
+      ]),
+    );
+  }
+
+  Widget _quoteStrip() {
+    final c = _typeColor(_sessionType);
+    final cLt = _typeColorLight(_sessionType);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft, end: Alignment.bottomRight,
+          colors: [cLt.withOpacity(0.38), c.withOpacity(0.18)]),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: c.withOpacity(0.3), width: 1.5),
+        boxShadow: [BoxShadow(color: c.withOpacity(0.12),
+          offset: const Offset(0, 2), blurRadius: 0)]),
+      child: Row(children: [
+        Icon(Icons.auto_awesome_rounded, size: 17, color: c),
+        const SizedBox(width: 10),
+        Expanded(child: Text(_quote, style: GoogleFonts.gaegu(
+          fontSize: 13, fontWeight: FontWeight.w600,
+          fontStyle: FontStyle.italic, color: _brown, height: 1.3))),
+      ]),
+    );
+  }
+
+  Widget _sectionHeader(String label, IconData icon, Color accent) {
+    return Row(children: [
+      Container(
+        width: 28, height: 28,
+        decoration: BoxDecoration(
+          color: accent.withOpacity(0.28),
+          borderRadius: BorderRadius.circular(9),
+          border: Border.all(color: accent.withOpacity(0.5), width: 1.3),
+          boxShadow: [BoxShadow(color: accent.withOpacity(0.15),
+            offset: const Offset(0, 1.5), blurRadius: 0)]),
+        child: Icon(icon, size: 15, color: _brown)),
+      const SizedBox(width: 10),
+      Text(label, style: GoogleFonts.gaegu(
+        fontSize: 19, fontWeight: FontWeight.w700, color: _brown)),
     ]);
   }
 
@@ -883,34 +1451,42 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
       Icons.headset_rounded,
     ];
 
+    // Filled chip style matching dashboard game-buttons — soft cream
+    // base, color-tinted fill when picked, chunky (3,3) diagonal
+    // offset shadow in every state so they feel 3D-stickery and sit
+    // on the olive hero card with real visual weight.
     return Row(children: List.generate(4, (i) {
       final sel = _sessionType == types[i];
       final color = _typeColor(types[i]);
-      final colorLt = _typeColorLight(types[i]);
       return Expanded(child: Padding(
         padding: EdgeInsets.only(right: i < 3 ? 8 : 0),
         child: GestureDetector(
           onTap: () => setState(() => _sessionType = types[i]),
           child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            padding: const EdgeInsets.symmetric(vertical: 10),
+            duration: const Duration(milliseconds: 180),
+            padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 6),
             decoration: BoxDecoration(
-              gradient: sel ? LinearGradient(
-                begin: Alignment.topCenter, end: Alignment.bottomCenter,
-                colors: [colorLt, color]) : null,
-              color: sel ? null : _cardFill,
-              borderRadius: BorderRadius.circular(12),
+              color: sel ? color.withOpacity(0.42)
+                  : const Color(0xFFFFF8F0),
+              borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                color: sel ? color.withOpacity(0.5) : _outline.withOpacity(0.12),
-                width: sel ? 2 : 1.5),
-              boxShadow: sel ? [BoxShadow(color: color.withOpacity(0.2),
-                offset: const Offset(0, 2), blurRadius: 0)] : []),
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Icon(icons[i], size: 18, color: sel ? Colors.white : color),
-              const SizedBox(height: 4),
-              Text(labels[i], style: GoogleFonts.gaegu(
-                fontSize: 13, fontWeight: FontWeight.w700,
-                color: sel ? Colors.white : _brown)),
+                color: sel
+                    ? color.withOpacity(0.7)
+                    : _outline.withOpacity(0.28),
+                width: 1.6),
+              boxShadow: [BoxShadow(
+                color: sel
+                    ? color.withOpacity(0.38)
+                    : _outline.withOpacity(0.18),
+                offset: const Offset(2, 3), blurRadius: 0)]),
+            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Icon(icons[i], size: 16,
+                color: sel ? _brown : _brownLt.withOpacity(0.78)),
+              const SizedBox(width: 7),
+              Flexible(child: Text(labels[i], style: TextStyle(
+                fontFamily: 'Bitroad', fontSize: 13,
+                color: sel ? _brown : _brownLt),
+                overflow: TextOverflow.ellipsis)),
             ]),
           ),
         ),
@@ -918,93 +1494,91 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
     }));
   }
 
+  //    _sectionCard in the new vertical card stack).
   Widget _buildDetailsCard() {
-    return Container(
-      decoration: BoxDecoration(
-        color: _cardFill,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: _outline.withOpacity(0.12), width: 1.5),
-        boxShadow: [BoxShadow(color: _outline.withOpacity(0.04),
-          offset: const Offset(0, 3), blurRadius: 10)]),
-      child: Column(children: [
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 14),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(colors: [_purpleLt.withOpacity(0.5), _purpleHdr.withOpacity(0.3)]),
-            borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(16), topRight: Radius.circular(16))),
-          child: Row(children: [
-            Icon(Icons.tune_rounded, size: 14, color: _purpleDk),
-            const SizedBox(width: 8),
-            Text('Session Details', style: GoogleFonts.gaegu(
-              fontSize: 16, fontWeight: FontWeight.w700, color: _brown)),
-          ]),
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('SUBJECT', style: GoogleFonts.nunito(
+          fontSize: 10, fontWeight: FontWeight.w900,
+          color: _oliveDk, letterSpacing: 0.8)),
+        const SizedBox(height: 6),
+        GestureDetector(
+          onTap: _showSubjectSheet,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.95),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: _outline.withOpacity(0.28), width: 1.5),
+              boxShadow: [BoxShadow(
+                color: _outline.withOpacity(0.14),
+                offset: const Offset(2, 2), blurRadius: 0)]),
+            child: Row(children: [
+              if (_selectedSubjectName != null) ...[
+                Container(width: 12, height: 12,
+                  decoration: BoxDecoration(
+                    color: _parseColor(_selectedSubjectColor) ?? _greenHdr,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: _outline.withOpacity(0.3), width: 1))),
+                const SizedBox(width: 10),
+                Expanded(child: Text(_selectedSubjectName!,
+                  style: GoogleFonts.nunito(fontSize: 14, color: _brown,
+                    fontWeight: FontWeight.w600))),
+              ] else ...[
+                Icon(Icons.add_circle_outline_rounded, size: 16,
+                  color: _brownLt.withOpacity(0.5)),
+                const SizedBox(width: 10),
+                Expanded(child: Text('Choose a subject (optional)',
+                  style: GoogleFonts.nunito(fontSize: 13,
+                    color: _brownLt.withOpacity(0.6)))),
+              ],
+              Icon(Icons.expand_more_rounded, size: 19,
+                color: _brownLt.withOpacity(0.4)),
+            ]),
+          ),
         ),
-        Padding(padding: const EdgeInsets.all(14), child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Subject', style: GoogleFonts.gaegu(
-              fontSize: 14, fontWeight: FontWeight.w700, color: _brown)),
-            const SizedBox(height: 6),
-            GestureDetector(
-              onTap: _showSubjectSheet,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: _outline.withOpacity(0.1), width: 1.5)),
-                child: Row(children: [
-                  if (_selectedSubjectName != null) ...[
-                    Container(width: 10, height: 10,
-                      decoration: BoxDecoration(
-                        color: _parseColor(_selectedSubjectColor) ?? _greenHdr,
-                        shape: BoxShape.circle)),
-                    const SizedBox(width: 10),
-                    Expanded(child: Text(_selectedSubjectName!,
-                      style: GoogleFonts.nunito(fontSize: 13, color: _brown,
-                        fontWeight: FontWeight.w600))),
-                  ] else ...[
-                    Icon(Icons.add_circle_outline_rounded, size: 15,
-                      color: _brownLt.withOpacity(0.4)),
-                    const SizedBox(width: 10),
-                    Expanded(child: Text('Choose a subject (optional)',
-                      style: GoogleFonts.nunito(fontSize: 13,
-                        color: _brownLt.withOpacity(0.5)))),
-                  ],
-                  Icon(Icons.expand_more_rounded, size: 18,
-                    color: _brownLt.withOpacity(0.3)),
-                ]),
-              ),
-            ),
-            const SizedBox(height: 14),
-            Text('Session Title', style: GoogleFonts.gaegu(
-              fontSize: 14, fontWeight: FontWeight.w700, color: _brown)),
-            const SizedBox(height: 6),
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: _outline.withOpacity(0.1), width: 1.5)),
-              child: TextField(
-                controller: _titleCtrl,
-                style: GoogleFonts.nunito(fontSize: 13, color: _brown),
-                decoration: InputDecoration(
-                  hintText: 'e.g. Chapter 5 Review, Midterm Prep...',
-                  hintStyle: GoogleFonts.nunito(fontSize: 13,
-                    color: _brownLt.withOpacity(0.4)),
-                  prefixIcon: Icon(Icons.edit_rounded, size: 16,
-                    color: _brownLt.withOpacity(0.3)),
-                  border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 12, vertical: 10)),
-              ),
-            ),
-          ],
-        )),
-      ]),
-    );
+        const SizedBox(height: 14),
+        //    All six InputBorder slots are explicitly set to none so
+        //    Flutter's default Material focus-border doesn't paint a
+        //    hard dark line on top of the cream Container (which is
+        //    what was happening before — visible as a thick outline).
+        Text('TITLE', style: GoogleFonts.nunito(
+          fontSize: 10, fontWeight: FontWeight.w900,
+          color: _oliveDk, letterSpacing: 0.8)),
+        const SizedBox(height: 6),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.95),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: _outline.withOpacity(0.28), width: 1.5),
+            boxShadow: [BoxShadow(
+              color: _outline.withOpacity(0.14),
+              offset: const Offset(2, 2), blurRadius: 0)]),
+          child: TextField(
+            controller: _titleCtrl,
+            cursorColor: _oliveDk,
+            cursorWidth: 1.4,
+            style: GoogleFonts.nunito(fontSize: 14, color: _brown,
+              fontWeight: FontWeight.w600),
+            decoration: InputDecoration(
+              hintText: 'e.g. Chapter 5 Review',
+              hintStyle: GoogleFonts.nunito(fontSize: 13,
+                color: _brownLt.withOpacity(0.45)),
+              prefixIcon: Icon(Icons.edit_rounded, size: 16,
+                color: _brownLt.withOpacity(0.4)),
+              filled: false,
+              fillColor: Colors.transparent,
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+              disabledBorder: InputBorder.none,
+              errorBorder: InputBorder.none,
+              focusedErrorBorder: InputBorder.none,
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 12, vertical: 12)),
+          ),
+        ),
+      ]);
   }
 
   void _showSubjectSheet() {
@@ -1076,96 +1650,82 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
     );
   }
 
+  //    in the new vertical card stack).
   Widget _buildDurationCard() {
-    return Container(
-      decoration: BoxDecoration(
-        color: _cardFill,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: _outline.withOpacity(0.12), width: 1.5),
-        boxShadow: [BoxShadow(color: _outline.withOpacity(0.04),
-          offset: const Offset(0, 3), blurRadius: 10)]),
-      child: Column(children: [
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 14),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(colors: [_greenLt.withOpacity(0.5), _greenHdr.withOpacity(0.3)]),
-            borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(16), topRight: Radius.circular(16))),
-          child: Row(children: [
-            Icon(Icons.timer_rounded, size: 14, color: _greenDk),
-            const SizedBox(width: 8),
-            Text('Duration', style: GoogleFonts.gaegu(
-              fontSize: 16, fontWeight: FontWeight.w700, color: _brown)),
-            const Spacer(),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.5),
-                borderRadius: BorderRadius.circular(8)),
-              child: Text('$_durationMin min', style: GoogleFonts.gaegu(
-                fontSize: 12, fontWeight: FontWeight.w700, color: _brown)),
+    return Column(children: [
+        Row(children: [
+          _DurationChip(min: 25, label: '25m', desc: 'Pomodoro',
+            selected: !_customDuration && _durationMin == 25,
+            onTap: () => setState(() { _customDuration = false; _durationMin = 25; })),
+          const SizedBox(width: 8),
+          _DurationChip(min: 45, label: '45m', desc: 'Deep',
+            selected: !_customDuration && _durationMin == 45,
+            onTap: () => setState(() { _customDuration = false; _durationMin = 45; })),
+          const SizedBox(width: 8),
+          _DurationChip(min: 60, label: '60m', desc: 'Marathon',
+            selected: !_customDuration && _durationMin == 60,
+            onTap: () => setState(() { _customDuration = false; _durationMin = 60; })),
+          const SizedBox(width: 8),
+          _DurationChip(min: 0, label: 'Custom', desc: '${_durationMin}m',
+            selected: _customDuration, isCustom: true,
+            onTap: () => setState(() => _customDuration = true)),
+        ]),
+        if (_customDuration) ...[
+          const SizedBox(height: 8),
+          SliderTheme(
+            data: SliderThemeData(
+              activeTrackColor: _purpleHdr,
+              inactiveTrackColor: _outline.withOpacity(0.12),
+              thumbColor: _purpleDk,
+              overlayColor: _purpleHdr.withOpacity(0.15),
+              trackHeight: 6,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 11)),
+            child: Slider(
+              value: _durationMin.toDouble(),
+              min: 5, max: 180, divisions: 35,
+              onChanged: (v) => setState(() => _durationMin = v.round()),
             ),
-          ]),
-        ),
-        Padding(padding: const EdgeInsets.all(14), child: Column(children: [
-          Row(children: [
-            _DurationChip(min: 25, label: '25m', desc: 'Pomodoro',
-              selected: !_customDuration && _durationMin == 25,
-              onTap: () => setState(() { _customDuration = false; _durationMin = 25; })),
-            const SizedBox(width: 8),
-            _DurationChip(min: 45, label: '45m', desc: 'Deep focus',
-              selected: !_customDuration && _durationMin == 45,
-              onTap: () => setState(() { _customDuration = false; _durationMin = 45; })),
-            const SizedBox(width: 8),
-            _DurationChip(min: 60, label: '60m', desc: 'Marathon',
-              selected: !_customDuration && _durationMin == 60,
-              onTap: () => setState(() { _customDuration = false; _durationMin = 60; })),
-            const SizedBox(width: 8),
-            _DurationChip(min: 0, label: 'Custom', desc: '$_durationMin min',
-              selected: _customDuration, isCustom: true,
-              onTap: () => setState(() => _customDuration = true)),
-          ]),
-          if (_customDuration) ...[
-            const SizedBox(height: 12),
-            SliderTheme(
-              data: SliderThemeData(
-                activeTrackColor: _purpleHdr,
-                inactiveTrackColor: _outline.withOpacity(0.08),
-                thumbColor: _purpleHdr,
-                overlayColor: _purpleHdr.withOpacity(0.12),
-                trackHeight: 6,
-                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 10)),
-              child: Slider(
-                value: _durationMin.toDouble(),
-                min: 5, max: 180, divisions: 35,
-                onChanged: (v) => setState(() => _durationMin = v.round()),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+              Text('5 min', style: GoogleFonts.nunito(
+                fontSize: 11, fontWeight: FontWeight.w600, color: _brownLt)),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                decoration: BoxDecoration(
+                  color: _purpleHdr.withOpacity(0.22),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: _purpleHdr.withOpacity(0.4), width: 1)),
+                child: Text('$_durationMin min', style: GoogleFonts.gaegu(
+                  fontSize: 13, fontWeight: FontWeight.w700, color: _brown)),
               ),
-            ),
-            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              Text('5 min', style: GoogleFonts.nunito(fontSize: 10, color: _brownLt)),
-              Text('180 min', style: GoogleFonts.nunito(fontSize: 10, color: _brownLt)),
+              Text('180 min', style: GoogleFonts.nunito(
+                fontSize: 11, fontWeight: FontWeight.w600, color: _brownLt)),
             ]),
-          ],
-          if (!_customDuration) ...[
-            const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: _greenHdr.withOpacity(0.06),
-                borderRadius: BorderRadius.circular(10)),
-              child: Row(children: [
-                Icon(Icons.info_outline_rounded, size: 12, color: _greenDk.withOpacity(0.6)),
-                const SizedBox(width: 8),
-                Expanded(child: Text(
-                  'Pomodoro: ${_durationMin}min focus → 5min break. Long break every 4.',
-                  style: GoogleFonts.nunito(fontSize: 11, color: _brownLt, height: 1.3))),
-              ]),
-            ),
-          ],
-        ])),
-      ]),
-    );
+          ),
+        ] else ...[
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
+            decoration: BoxDecoration(
+              color: _oliveBg,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: _oliveDk.withOpacity(0.42), width: 1.5),
+              boxShadow: [BoxShadow(
+                color: _oliveDk.withOpacity(0.16),
+                offset: const Offset(2, 2), blurRadius: 0)]),
+            child: Row(children: [
+              Icon(Icons.info_outline_rounded, size: 14, color: _oliveDk),
+              const SizedBox(width: 8),
+              Expanded(child: Text(
+                '${_durationMin}m focus \u2192 5m break \u00B7 long break every 4 pomos',
+                style: GoogleFonts.nunito(fontSize: 11.5,
+                  fontWeight: FontWeight.w700, color: _brown, height: 1.3))),
+            ]),
+          ),
+        ],
+      ]);
   }
 
   Widget _buildAmbientCard() {
@@ -1177,80 +1737,58 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
       Icons.waves_rounded, Icons.local_fire_department_rounded,
       Icons.park_rounded,
     ];
-    final colors = [_brownLt, _skyHdr, _purpleHdr, _coralHdr, _skyHdr, _coralHdr, _greenHdr];
+    final colors = [
+      _brownLt, _skyHdr, _purpleHdr, _coralHdr, _skyHdr, _coralHdr, _greenHdr];
 
-    return Container(
-      decoration: BoxDecoration(
-        color: _cardFill,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: _outline.withOpacity(0.12), width: 1.5)),
-      child: Column(children: [
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 14),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(colors: [_skyLt.withOpacity(0.4), _skyHdr.withOpacity(0.2)]),
-            borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(16), topRight: Radius.circular(16))),
-          child: Row(children: [
-            Icon(Icons.music_note_rounded, size: 14, color: _skyHdr),
-            const SizedBox(width: 8),
-            Text('Ambient Sound', style: GoogleFonts.gaegu(
-              fontSize: 16, fontWeight: FontWeight.w700, color: _brown)),
-            const Spacer(),
-            if (_audioLoading)
-              SizedBox(width: 14, height: 14,
-                child: CircularProgressIndicator(strokeWidth: 1.5, color: _skyHdr))
-            else if (_ambientSound != 'none')
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                decoration: BoxDecoration(
-                  color: _greenHdr.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(6)),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.volume_up_rounded, size: 9, color: _greenDk),
-                  const SizedBox(width: 3),
-                  Text('PLAYING', style: GoogleFonts.nunito(
-                    fontSize: 8, fontWeight: FontWeight.w700, color: _greenDk)),
-                ])),
-          ]),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
-          child: Row(children: List.generate(7, (i) {
-            final sel = _ambientSound == sounds[i];
-            return Expanded(child: Padding(
-              padding: EdgeInsets.only(right: i < 6 ? 4 : 0),
-              child: GestureDetector(
-                onTap: () {
-                  if (sounds[i] == 'none') {
-                    _stopAmbient();
-                  } else {
-                    _playAmbient(sounds[i]);
-                  }
-                },
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  decoration: BoxDecoration(
-                    color: sel ? colors[i].withOpacity(0.15) : Colors.transparent,
-                    borderRadius: BorderRadius.circular(10),
-                    border: sel ? Border.all(color: colors[i].withOpacity(0.3), width: 1.5) : null),
-                  child: Column(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(icons[i], size: 16,
-                      color: sel ? colors[i] : _brownLt.withOpacity(0.4)),
-                    const SizedBox(height: 3),
-                    Text(labels[i], style: GoogleFonts.nunito(
-                      fontSize: 9, fontWeight: sel ? FontWeight.w700 : FontWeight.w500,
-                      color: sel ? _brown : _brownLt.withOpacity(0.5))),
-                  ]),
-                ),
-              ),
-            ));
-          })),
-        ),
-      ]),
-    );
+    //    that match dashboard's chunky style — soft cream when off,
+    //    color-tinted with a hard offset shadow when picked.
+    return Row(children: List.generate(7, (i) {
+        final sel = _ambientSound == sounds[i];
+        final c = colors[i];
+        return Expanded(child: Padding(
+          padding: EdgeInsets.only(right: i < 6 ? 5 : 0),
+          child: GestureDetector(
+            onTap: () {
+              if (sounds[i] == 'none') {
+                _stopAmbient();
+              } else {
+                _playAmbient(sounds[i]);
+              }
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                color: sel
+                    ? c.withOpacity(0.36)
+                    : const Color(0xFFFFF8F0),
+                borderRadius: BorderRadius.circular(13),
+                border: Border.all(
+                  color: sel
+                      ? c.withOpacity(0.68)
+                      : _outline.withOpacity(0.25),
+                  width: 1.5),
+                boxShadow: sel
+                    ? [BoxShadow(color: c.withOpacity(0.34),
+                        offset: const Offset(2, 3), blurRadius: 0)]
+                    : [BoxShadow(color: _outline.withOpacity(0.16),
+                        offset: const Offset(2, 2), blurRadius: 0)]),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                if (_audioLoading && _ambientSound == sounds[i] && sounds[i] != 'none')
+                  SizedBox(width: 18, height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: c))
+                else
+                  Icon(icons[i], size: 19,
+                    color: sel ? _brown : _brownLt.withOpacity(0.7)),
+                const SizedBox(height: 5),
+                Text(labels[i], style: GoogleFonts.nunito(
+                  fontSize: 10.5, fontWeight: sel ? FontWeight.w800 : FontWeight.w700,
+                  color: sel ? _brown : _brownLt)),
+              ]),
+            ),
+          ),
+        ));
+      }));
   }
 
   //  2. TIMER PHASE
@@ -1259,202 +1797,578 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
         ? ((_pomodoroCount % 4 == 0) ? 15 : 5) * 60
         : _durationMin * 60;
     final progress = totalSec > 0 ? 1.0 - (_remainSec / totalSec) : 0.0;
-    final themeColor = _isBreakPhase ? _greenHdr : _typeColor(_sessionType);
-    final themeColorLt = _isBreakPhase ? _greenLt : _typeColorLight(_sessionType);
+    final themeColor = _isBreakPhase ? _olive : _typeColor(_sessionType);
+    final themeColorLt = _isBreakPhase ? _oliveLt : _typeColorLight(_sessionType);
 
-    return Column(children: [
-      const SizedBox(height: 8),
+    final xpEst = ((_totalStudiedSec / 1800) * 25).round();
+    final level = 1 + (xpEst ~/ 100);
+    final lvlFrac = ((xpEst % 100) / 100.0).clamp(0.0, 1.0);
 
-      AnimatedBuilder(
-        animation: _pulseCtrl,
-        builder: (_, __) {
-          final op = _phase == _Phase.paused ? 0.4 + _pulseCtrl.value * 0.6 : 1.0;
-          return Opacity(opacity: op, child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(colors: [themeColorLt.withOpacity(0.3), themeColor.withOpacity(0.15)]),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: themeColor.withOpacity(0.2), width: 1.5)),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(_isBreakPhase ? Icons.coffee_rounded : _typeIcon(_sessionType),
-                size: 14, color: themeColor),
-              const SizedBox(width: 6),
-              Text(
-                _isBreakPhase ? 'Break Time'
-                    : _phase == _Phase.paused ? 'Paused'
-                    : 'Focus ${_pomodoroCount + 1}${!_customDuration ? '/∞' : ''}',
-                style: GoogleFonts.gaegu(fontSize: 15, fontWeight: FontWeight.w700,
-                  color: _brown)),
-              if (_selectedSubjectName != null) ...[
-                Container(width: 1, height: 14,
-                  margin: const EdgeInsets.symmetric(horizontal: 8),
-                  color: _outline.withOpacity(0.15)),
-                Text(_selectedSubjectName!, style: GoogleFonts.nunito(
-                  fontSize: 11, fontWeight: FontWeight.w600, color: _brownLt),
-                  overflow: TextOverflow.ellipsis),
-              ],
-            ]),
-          ));
-        },
-      ),
-      const SizedBox(height: 20),
+    Widget sec(String label, IconData icon, {Color? accent, String? sub}) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+          Icon(icon, size: 19, color: accent ?? _oliveDk),
+          const SizedBox(width: 9),
+          Text(label, style: const TextStyle(
+            fontFamily: 'Bitroad', fontSize: 18, color: _brown)),
+          if (sub != null) ...[
+            const SizedBox(width: 12),
+            Expanded(child: Text(sub, style: GoogleFonts.gaegu(
+              fontSize: 14.5, fontWeight: FontWeight.w500,
+              fontStyle: FontStyle.italic,
+              color: _brownLt.withOpacity(0.85)),
+              overflow: TextOverflow.ellipsis, textAlign: TextAlign.right)),
+          ],
+        ]),
+      );
+    }
 
-      AnimatedBuilder(
+    Widget timerRing(double size) {
+      final inner = size * 0.82;
+      return AnimatedBuilder(
         animation: _breatheCtrl,
         builder: (_, __) {
-          final breathe = 1.0 + _breatheCtrl.value * 0.015;
+          final breathe = 1.0 + _breatheCtrl.value * 0.012;
           return Transform.scale(scale: breathe, child: SizedBox(
-            width: 240, height: 240,
+            width: size, height: size,
             child: Stack(alignment: Alignment.center, children: [
-              // Outer glow
               Container(
-                width: 240, height: 240,
+                width: size, height: size,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   boxShadow: [BoxShadow(
-                    color: themeColor.withOpacity(0.08 + _breatheCtrl.value * 0.04),
-                    blurRadius: 30, spreadRadius: 5)])),
-              // Progress ring
-              SizedBox(width: 240, height: 240,
+                    color: themeColor.withOpacity(0.08 + _breatheCtrl.value * 0.05),
+                    blurRadius: 30, spreadRadius: 6)])),
+              SizedBox(width: size, height: size,
                 child: CustomPaint(painter: _RingPainter(
                   progress: progress,
                   color1: themeColorLt,
                   color2: themeColor,
-                  bgColor: _outline.withOpacity(0.06)))),
-              // Inner circle
+                  bgColor: _outline.withOpacity(0.08)))),
               Container(
-                width: 195, height: 195,
+                width: inner, height: inner,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  gradient: RadialGradient(colors: [
-                    Colors.white.withOpacity(0.9),
-                    _cardFill]),
-                  border: Border.all(color: _outline.withOpacity(0.08), width: 2),
+                  color: _cardFill,
+                  border: Border.all(color: _outline.withOpacity(0.18), width: 1.5),
                   boxShadow: [BoxShadow(
-                    color: _outline.withOpacity(0.03),
-                    offset: const Offset(0, 4), blurRadius: 12)]),
+                    color: _outline.withOpacity(0.1),
+                    offset: const Offset(3, 3), blurRadius: 0)]),
                 child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                   Text(_isBreakPhase ? 'BREAK' : 'FOCUS',
                     style: GoogleFonts.nunito(
-                      fontSize: 10, fontWeight: FontWeight.w700,
-                      color: themeColor, letterSpacing: 2)),
-                  const SizedBox(height: 2),
-                  Text(_fmtTime(_remainSec), style: GoogleFonts.gaegu(
-                    fontSize: 54, fontWeight: FontWeight.w700,
+                      fontSize: size < 280 ? 11 : 12,
+                      fontWeight: FontWeight.w800,
+                      color: themeColor, letterSpacing: 2.8)),
+                  const SizedBox(height: 6),
+                  Text(_fmtTime(_remainSec), style: TextStyle(
+                    fontFamily: 'Bitroad',
+                    fontSize: size < 280 ? 58 : (size < 340 ? 72 : 86),
                     color: _brown, height: 1.0)),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 7),
                   Text(
                     _isBreakPhase ? 'relax & recharge'
                         : _remainSec > 60 ? '${(_remainSec / 60).ceil()} min left'
                         : '${_remainSec}s left',
-                    style: GoogleFonts.nunito(fontSize: 11,
-                      fontWeight: FontWeight.w600, color: _brownLt)),
+                    style: GoogleFonts.nunito(fontSize: 12,
+                      fontWeight: FontWeight.w700, color: _inkSoft)),
                 ]),
               ),
             ]),
           ));
         },
-      ),
-      const SizedBox(height: 24),
+      );
+    }
 
-      Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-        // Distraction counter (only during focus)
-        if (!_isBreakPhase)
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: _CircleBtn(
-              gradTop: _purpleLt, gradBot: _purpleHdr,
-              borderColor: _purpleDk, shadowColor: _purpleDk,
-              icon: Icons.notifications_active_rounded, size: 44, iconSize: 18,
-              onTap: () {
-                setState(() => _distractionCount++);
-                HapticFeedback.lightImpact();
-                _showMilestone('Distraction #$_distractionCount noted');
-              }),
-          ),
+    Widget phasePill() => AnimatedBuilder(
+      animation: _pulseCtrl,
+      builder: (_, __) {
+        final op = _phase == _Phase.paused ? 0.55 + _pulseCtrl.value * 0.45 : 1.0;
+        final label = _isBreakPhase ? 'Break Time'
+            : _phase == _Phase.paused ? 'Paused'
+            : 'Focus Block #${_pomodoroCount + 1}';
+        return Opacity(opacity: op, child: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center, children: [
+            Container(width: 7, height: 7,
+              decoration: BoxDecoration(
+                color: themeColor, shape: BoxShape.circle,
+                boxShadow: [BoxShadow(color: themeColor.withOpacity(0.35),
+                  blurRadius: 7, spreadRadius: 1)])),
+            const SizedBox(width: 10),
+            Text(label, style: GoogleFonts.nunito(
+              fontSize: 13.5, fontWeight: FontWeight.w800,
+              color: _brown, letterSpacing: 0.8)),
+            if (_selectedSubjectName != null) ...[
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 9),
+                child: Text('·', style: GoogleFonts.nunito(
+                  fontSize: 15, fontWeight: FontWeight.w900,
+                  color: _outline.withOpacity(0.4)))),
+              Flexible(child: Text(_selectedSubjectName!,
+                style: GoogleFonts.nunito(
+                  fontSize: 13.5, fontWeight: FontWeight.w600,
+                  color: _brownLt, letterSpacing: 0.2),
+                overflow: TextOverflow.ellipsis)),
+            ],
+          ]),
+        );
+      },
+    );
 
-        if (_phase == _Phase.paused) ...[
-          _CircleBtn(
-            gradTop: _greenLt, gradBot: _greenHdr,
-            borderColor: _greenDk, shadowColor: _greenDk,
-            icon: Icons.play_arrow_rounded, size: 60, iconSize: 30,
-            onTap: _resumeTimer),
-        ] else if (_phase == _Phase.onBreak) ...[
-          _CircleBtn(
-            gradTop: _greenLt, gradBot: _greenHdr,
-            borderColor: _greenDk, shadowColor: _greenDk,
-            icon: Icons.skip_next_rounded, size: 60, iconSize: 28,
-            onTap: _skipBreak),
-        ] else ...[
-          _CircleBtn(
-            gradTop: const Color(0xFFFFE888), gradBot: _goldHdr,
-            borderColor: _goldDk, shadowColor: _goldDk,
-            icon: Icons.pause_rounded, size: 60, iconSize: 26,
-            onTap: _pauseTimer),
-        ],
-        const SizedBox(width: 16),
+    Widget controls() => Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+      if (!_isBreakPhase)
+        Padding(
+          padding: const EdgeInsets.only(right: 14),
+          child: _CircleBtn(
+            gradTop: _purpleLt, gradBot: _purpleHdr,
+            borderColor: _purpleDk, shadowColor: _purpleDk,
+            icon: Icons.notifications_active_rounded, size: 48, iconSize: 20,
+            onTap: () {
+              setState(() => _distractionCount++);
+              HapticFeedback.lightImpact();
+              _showMilestone('Distraction #$_distractionCount noted');
+            }),
+        ),
+      if (_phase == _Phase.paused)
         _CircleBtn(
-          gradTop: _coralLt, gradBot: _coralHdr,
-          borderColor: const Color(0xFFD08878),
-          shadowColor: const Color(0xFFD08878),
-          icon: Icons.stop_rounded, size: 60, iconSize: 26,
-          onTap: _stopTimer),
-      ]),
-      const SizedBox(height: 18),
+          gradTop: _oliveLt, gradBot: _olive,
+          borderColor: _oliveDk, shadowColor: _oliveDk,
+          icon: Icons.play_arrow_rounded, size: 64, iconSize: 32,
+          onTap: _resumeTimer)
+      else if (_phase == _Phase.onBreak)
+        _CircleBtn(
+          gradTop: _oliveLt, gradBot: _olive,
+          borderColor: _oliveDk, shadowColor: _oliveDk,
+          icon: Icons.skip_next_rounded, size: 64, iconSize: 30,
+          onTap: _skipBreak)
+      else
+        _CircleBtn(
+          gradTop: const Color(0xFFFFE888), gradBot: _goldHdr,
+          borderColor: _goldDk, shadowColor: _goldDk,
+          icon: Icons.pause_rounded, size: 64, iconSize: 28,
+          onTap: _pauseTimer),
+      const SizedBox(width: 14),
+      _CircleBtn(
+        gradTop: _coralLt, gradBot: _coralHdr,
+        borderColor: const Color(0xFFD08878),
+        shadowColor: const Color(0xFFD08878),
+        icon: Icons.stop_rounded, size: 64, iconSize: 28,
+        onTap: _stopTimer),
+    ]);
 
-      Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+    Widget statCard({
+      required IconData icon, required String value,
+      required String label, required Color bg, required Color iconColor,
+    }) {
+      return Container(
+        padding: const EdgeInsets.fromLTRB(14, 13, 14, 14),
         decoration: BoxDecoration(
-          color: _cardFill,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: _outline.withOpacity(0.1), width: 1.5)),
+          color: Colors.white.withOpacity(0.88),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: _outline.withOpacity(0.22), width: 1.5),
+          boxShadow: [BoxShadow(
+            color: _outline.withOpacity(0.15),
+            offset: const Offset(0, 2.5), blurRadius: 0)]),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min, children: [
+            Row(children: [
+              Icon(icon, size: 14, color: iconColor),
+              const SizedBox(width: 7),
+              Expanded(child: Text(label.toUpperCase(),
+                style: GoogleFonts.nunito(
+                  fontSize: 10, fontWeight: FontWeight.w900,
+                  letterSpacing: 0.9, color: _inkSoft),
+                overflow: TextOverflow.ellipsis)),
+            ]),
+            const SizedBox(height: 9),
+            Text(value, style: const TextStyle(
+              fontFamily: 'Bitroad', fontSize: 25, color: _brown, height: 1.0)),
+          ]),
+      );
+    }
+
+    Widget xpMeter() => Container(
+      padding: const EdgeInsets.fromLTRB(18, 15, 18, 16),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.88),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _outline.withOpacity(0.22), width: 1.5),
+        boxShadow: [BoxShadow(
+          color: _outline.withOpacity(0.15),
+          offset: const Offset(0, 2.5), blurRadius: 0)]),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Text('LVL $level', style: GoogleFonts.nunito(
+            fontSize: 11, fontWeight: FontWeight.w900,
+            color: _oliveDk, letterSpacing: 1.1)),
+          const SizedBox(width: 9),
+          Expanded(child: Text(
+            '${((1 - lvlFrac) * 100).round()} XP to next',
+            style: GoogleFonts.nunito(
+              fontSize: 11, fontWeight: FontWeight.w700,
+              color: _inkSoft, letterSpacing: 0.3))),
+          Text('$xpEst', style: const TextStyle(
+            fontFamily: 'Bitroad', fontSize: 17, color: _brown)),
+          const SizedBox(width: 4),
+          Text('xp', style: GoogleFonts.nunito(
+            fontSize: 11, fontWeight: FontWeight.w800,
+            color: _brownLt, letterSpacing: 0.4)),
+        ]),
+        const SizedBox(height: 10),
+        Stack(children: [
+          Container(height: 6,
+            decoration: BoxDecoration(
+              color: _outline.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(3))),
+          FractionallySizedBox(widthFactor: lvlFrac, child: Container(
+            height: 6,
+            decoration: BoxDecoration(
+              color: _olive,
+              borderRadius: BorderRadius.circular(3)))),
+        ]),
+      ]),
+    );
+
+    Widget notesBtn() => GestureDetector(
+      onTap: _openNotesModal,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft, end: Alignment.bottomRight,
+            colors: [
+              _skyLt.withOpacity(0.6),
+              _cardFill.withOpacity(0.72),
+            ]),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: _skyHdr.withOpacity(0.32), width: 1.5),
+          boxShadow: [BoxShadow(
+            color: _skyHdr.withOpacity(0.16),
+            offset: const Offset(0, 2.5), blurRadius: 0)]),
         child: Row(children: [
-          _miniStat(Icons.timer_rounded, _fmtMin(_totalStudiedSec), 'studied', _pinkHdr),
-          Container(width: 1, height: 24, color: _outline.withOpacity(0.08)),
-          _miniStat(Icons.repeat_rounded, '$_pomodoroCount', 'pomodoros', _greenHdr),
-          Container(width: 1, height: 24, color: _outline.withOpacity(0.08)),
-          _miniStat(Icons.star_rounded, '~${((_totalStudiedSec / 1800) * 25).round()}',
-            'XP est.', _goldHdr),
-          if (_distractionCount > 0) ...[
-            Container(width: 1, height: 24, color: _outline.withOpacity(0.08)),
-            _miniStat(Icons.notifications_active_rounded, '$_distractionCount',
-              'distractions', _purpleHdr),
-          ],
+          Icon(Icons.edit_note_rounded, size: 19, color: _skyDk),
+          const SizedBox(width: 10),
+          Expanded(child: Text(
+            _notesCtrl.text.trim().isEmpty ? 'Open notes' : 'Edit notes',
+            style: const TextStyle(
+              fontFamily: 'Bitroad', fontSize: 15,
+              color: _brown, letterSpacing: 0.2))),
+          if (_notesCtrl.text.trim().isNotEmpty)
+            Text('${_notesCtrl.text.trim().length}',
+              style: GoogleFonts.nunito(
+                fontSize: 12, fontWeight: FontWeight.w700,
+                color: _inkSoft, letterSpacing: 0.3)),
+          const SizedBox(width: 7),
+          Icon(Icons.chevron_right_rounded, size: 16,
+            color: _brownLt.withOpacity(0.5)),
         ]),
       ),
-      const SizedBox(height: 12),
+    );
 
-      if (_ambientSound != 'none')
-        Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+    Widget ambientChip() => GestureDetector(
+      onTap: _stopAmbient,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFF8F0),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: _outline.withOpacity(0.22), width: 1.5),
+          boxShadow: [BoxShadow(
+            color: _outline.withOpacity(0.14),
+            offset: const Offset(0, 2.5), blurRadius: 0)]),
+        child: Row(children: [
+          Icon(_ambientIcon(_ambientSound), size: 16, color: _skyDk),
+          const SizedBox(width: 9),
+          Expanded(child: Text(_ambientLabel(_ambientSound),
+            style: const TextStyle(
+              fontFamily: 'Bitroad', fontSize: 15,
+              color: _brown, letterSpacing: 0.2))),
+          Icon(Icons.close_rounded, size: 15,
+            color: _brownLt.withOpacity(0.55)),
+        ]),
+      ),
+    );
+
+    return LayoutBuilder(builder: (ctx, c) {
+      final wide = c.maxWidth > 820;
+      // On wide screens we constrain to 1280 for balance; center gets ~45%
+      final cw = wide ? math.min(c.maxWidth, 1280.0) : c.maxWidth;
+      final centerW = wide ? cw * 0.45 : cw;
+      final ringSize = wide
+          ? (centerW * 0.82).clamp(340.0, 460.0)
+          : (cw * 0.68).clamp(240.0, 320.0);
+
+      Widget subjectCard() {
+        final title = (_titleCtrl.text.trim().isEmpty)
+            ? 'Untitled thread'
+            : _titleCtrl.text.trim();
+        final sub = _selectedSubjectName ?? 'No subject';
+        final dot = _parseColor(_selectedSubjectColor) ?? _olive;
+        return Container(
+          padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
           decoration: BoxDecoration(
-            color: _skyHdr.withOpacity(0.08),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: _skyHdr.withOpacity(0.15), width: 1)),
-          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Icon(_ambientIcon(_ambientSound), size: 14, color: _skyHdr),
-            const SizedBox(width: 6),
-            Text('${_ambientLabel(_ambientSound)} playing',
-              style: GoogleFonts.nunito(fontSize: 11,
-                fontWeight: FontWeight.w600, color: _brownLt)),
-            const SizedBox(width: 8),
-            GestureDetector(
-              onTap: _stopAmbient,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: _coralHdr.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(6)),
-                child: Text('Stop', style: GoogleFonts.nunito(
-                  fontSize: 9, fontWeight: FontWeight.w700, color: _coralHdr)),
-              ),
-            ),
+            // Purple wash — books / context vibe
+            gradient: LinearGradient(
+              begin: Alignment.topLeft, end: Alignment.bottomRight,
+              colors: [
+                _purpleLt.withOpacity(0.45),
+                _cardFill.withOpacity(0.6),
+              ]),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: _purpleDk.withOpacity(0.22), width: 1)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Icon(Icons.bookmark_rounded, size: 14, color: _purpleDk),
+              const SizedBox(width: 7),
+              Text('WORKING ON', style: GoogleFonts.nunito(
+                fontSize: 10.5, fontWeight: FontWeight.w900,
+                color: _purpleDk, letterSpacing: 1.4)),
+            ]),
+            const SizedBox(height: 10),
+            Text(title, style: const TextStyle(
+              fontFamily: 'Bitroad', fontSize: 17,
+              color: _brown, height: 1.15),
+              maxLines: 2, overflow: TextOverflow.ellipsis),
+            const SizedBox(height: 11),
+            Row(children: [
+              Container(width: 8, height: 8, decoration: BoxDecoration(
+                color: _selectedSubjectName == null
+                  ? _outline.withOpacity(0.25) : dot,
+                shape: BoxShape.circle)),
+              const SizedBox(width: 8),
+              Flexible(child: Text(sub, style: GoogleFonts.gaegu(
+                fontSize: 15, fontWeight: FontWeight.w500,
+                fontStyle: FontStyle.italic,
+                color: _brownLt), overflow: TextOverflow.ellipsis)),
+            ]),
           ]),
-        ),
+        );
+      }
 
-      _buildNotesSection(),
-    ]);
+      Widget tempoCard() {
+        final elapsedMin = _totalStudiedSec ~/ 60;
+        return Container(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+          decoration: BoxDecoration(
+            // Coral pink wash — heartbeat / pulse vibe
+            gradient: LinearGradient(
+              begin: Alignment.topLeft, end: Alignment.bottomRight,
+              colors: [
+                _coralLt.withOpacity(0.55),
+                _cardFill.withOpacity(0.6),
+              ]),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: _coralHdr.withOpacity(0.25), width: 1)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Icon(Icons.favorite_rounded, size: 14, color: _coralHdr),
+              const SizedBox(width: 7),
+              Text('SESSION TEMPO', style: GoogleFonts.nunito(
+                fontSize: 10.5, fontWeight: FontWeight.w900,
+                color: _coralHdr, letterSpacing: 1.4)),
+            ]),
+            const SizedBox(height: 14),
+            Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              Text('$elapsedMin', style: const TextStyle(
+                fontFamily: 'Bitroad', fontSize: 38, color: _brown, height: 1)),
+              const SizedBox(width: 5),
+              Padding(padding: const EdgeInsets.only(bottom: 5),
+                child: Text('min in', style: GoogleFonts.nunito(
+                  fontSize: 12, fontWeight: FontWeight.w700, color: _brownLt))),
+              const Spacer(),
+              if (_streakCount > 0) Padding(padding: const EdgeInsets.only(bottom: 5),
+                child: Row(children: [
+                  Icon(Icons.local_fire_department_rounded,
+                    size: 14, color: _coralHdr.withOpacity(0.85)),
+                  const SizedBox(width: 4),
+                  Text('day $_streakCount', style: GoogleFonts.nunito(
+                    fontSize: 12, fontWeight: FontWeight.w800, color: _brown,
+                    letterSpacing: 0.2)),
+                ])),
+            ]),
+            const SizedBox(height: 6),
+            Text(
+              _isBreakPhase
+                ? 'breath the thread loose for a moment'
+                : _pomodoroCount >= 2
+                  ? 'you\'ve crossed $_pomodoroCount pomos today'
+                  : 'settle in — the page is listening',
+              style: GoogleFonts.gaegu(fontSize: 14,
+                fontWeight: FontWeight.w500, fontStyle: FontStyle.italic,
+                color: _brownLt, height: 1.3)),
+          ]),
+        );
+      }
+
+      if (wide) {
+        // Desktop: left stats column | center timer | right workspace column
+        final body = Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          // LEFT — stats + meta
+          Expanded(flex: 3, child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              sec('Session Stats', Icons.insights_rounded,
+                accent: _pinkHdr, sub: 'how it\'s going'),
+              Row(children: [
+                Expanded(child: statCard(
+                  icon: Icons.timer_rounded,
+                  value: _fmtMin(_totalStudiedSec), label: 'Studied',
+                  bg: const Color(0xFFFFD5F5).withOpacity(0.45),
+                  iconColor: _pinkHdr)),
+                const SizedBox(width: 10),
+                Expanded(child: statCard(
+                  icon: Icons.repeat_rounded,
+                  value: '$_pomodoroCount', label: 'Pomos',
+                  bg: _oliveBg, iconColor: _oliveDk)),
+              ]),
+              const SizedBox(height: 10),
+              Row(children: [
+                Expanded(child: statCard(
+                  icon: Icons.bolt_rounded,
+                  value: '$xpEst', label: 'XP Earned',
+                  bg: const Color(0xFFFDEFDB).withOpacity(0.65),
+                  iconColor: _goldDk)),
+                const SizedBox(width: 10),
+                Expanded(child: statCard(
+                  icon: Icons.notifications_active_rounded,
+                  value: '$_distractionCount', label: 'Flags',
+                  bg: _purpleLt.withOpacity(0.4),
+                  iconColor: _purpleDk)),
+              ]),
+              const SizedBox(height: 12),
+              xpMeter(),
+              const SizedBox(height: 18),
+              sec('Context', Icons.menu_book_rounded,
+                accent: _purpleDk, sub: 'what you\'re on'),
+              subjectCard(),
+            ]),
+          ),
+          const SizedBox(width: 32),
+          // CENTER — ring + pill + controls
+          Expanded(flex: 5, child: Column(
+            mainAxisAlignment: MainAxisAlignment.center, children: [
+              const SizedBox(height: 8),
+              phasePill(),
+              const SizedBox(height: 26),
+              timerRing(ringSize),
+              const SizedBox(height: 30),
+              controls(),
+              const SizedBox(height: 26),
+              // Breathing caption under controls — keeps vertical balance
+              Text(
+                _isBreakPhase
+                  ? 'Rest is part of the work.'
+                  : _phase == _Phase.paused
+                    ? 'Paused — resume when ready.'
+                    : 'One thread. Gentle pressure.',
+                style: GoogleFonts.gaegu(fontSize: 16,
+                  fontWeight: FontWeight.w500, fontStyle: FontStyle.italic,
+                  color: _inkSoft, letterSpacing: 0.2)),
+            ]),
+          ),
+          const SizedBox(width: 32),
+          // RIGHT — workspace + tempo + quiet nudge
+          Expanded(flex: 3, child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              sec('Workspace', Icons.workspaces_rounded,
+                accent: _skyHdr, sub: 'your tools'),
+              notesBtn(),
+              if (_ambientSound != 'none') ...[
+                const SizedBox(height: 10),
+                ambientChip(),
+              ],
+              const SizedBox(height: 18),
+              sec('Pulse', Icons.favorite_rounded,
+                accent: _coralHdr, sub: 'the rhythm'),
+              tempoCard(),
+              const SizedBox(height: 22),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 0, 4, 0),
+                child: Text(
+                  _isBreakPhase
+                      ? 'Stretch. Breathe. Rest your eyes —\nyou\'ve earned it.'
+                      : _distractionCount > 2
+                          ? 'Close the extra tabs.\nOne thread at a time.'
+                          : 'Settle in. Your future self\nis rooting for you.',
+                  style: GoogleFonts.gaegu(
+                    fontSize: 15, fontWeight: FontWeight.w600,
+                    fontStyle: FontStyle.italic,
+                    color: _brownLt, height: 1.5)),
+              ),
+            ]),
+          ),
+        ]);
+
+        //   screen: leftover viewport space is redistributed above
+        //   and below the body (2:1) so the columns float in the
+        //   lower-middle of the page instead of hugging the hero.
+        //   The Column owns the tight vertical constraints; Center
+        //   wraps the Row so its horizontal max-width cap still works.
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Spacer(flex: 2),
+            Center(child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1280),
+              child: body,
+            )),
+            const Spacer(flex: 1),
+          ],
+        );
+      }
+
+      return Column(children: [
+        const SizedBox(height: 4),
+        phasePill(),
+        const SizedBox(height: 14),
+        timerRing(ringSize),
+        const SizedBox(height: 16),
+        controls(),
+        const SizedBox(height: 14),
+        // XP meter
+        xpMeter(),
+        const SizedBox(height: 10),
+        // Stats 2x2
+        Row(children: [
+          Expanded(child: statCard(
+            icon: Icons.timer_rounded,
+            value: _fmtMin(_totalStudiedSec), label: 'Studied',
+            bg: const Color(0xFFFFD5F5).withOpacity(0.45),
+            iconColor: _pinkHdr)),
+          const SizedBox(width: 8),
+          Expanded(child: statCard(
+            icon: Icons.repeat_rounded,
+            value: '$_pomodoroCount', label: 'Pomos',
+            bg: _oliveBg, iconColor: _oliveDk)),
+          const SizedBox(width: 8),
+          Expanded(child: statCard(
+            icon: Icons.bolt_rounded,
+            value: '$xpEst', label: 'XP',
+            bg: const Color(0xFFFDEFDB).withOpacity(0.65),
+            iconColor: _goldDk)),
+          if (_distractionCount > 0) ...[
+            const SizedBox(width: 8),
+            Expanded(child: statCard(
+              icon: Icons.notifications_active_rounded,
+              value: '$_distractionCount', label: 'Flags',
+              bg: _purpleLt.withOpacity(0.4),
+              iconColor: _purpleDk)),
+          ],
+        ]),
+        const SizedBox(height: 10),
+        // Notes + ambient row
+        Row(children: [
+          Expanded(child: notesBtn()),
+          if (_ambientSound != 'none') ...[
+            const SizedBox(width: 8),
+            Expanded(child: ambientChip()),
+          ],
+        ]),
+        const SizedBox(height: 6),
+      ]);
+    });
   }
 
   IconData _ambientIcon(String s) {
@@ -1494,186 +2408,191 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
     ]));
   }
 
+  void _openNotesModal() {
+    Navigator.of(context).push(PageRouteBuilder(
+      opaque: false,
+      barrierColor: _outline.withOpacity(0.28),
+      transitionDuration: const Duration(milliseconds: 220),
+      pageBuilder: (ctx, anim, __) => FadeTransition(
+        opacity: anim,
+        child: _NotesEditorRoute(
+          notesCtrl: _notesCtrl,
+          topicCtrl: _topicCtrl,
+          topics: _topics,
+          bold: _bold,
+          italic: _italic,
+          onBoldChange: (v) => setState(() => _bold = v),
+          onItalicChange: (v) => setState(() => _italic = v),
+          onTopicsChange: () => setState(() {}),
+          onExportPdf: _exportNotesPdf,
+          onRefresh: () => setState(() {}),
+          sessionTitle: _titleCtrl.text.trim().isEmpty
+              ? 'Untitled Session' : _titleCtrl.text.trim(),
+          subjectName: _selectedSubjectName,
+          subjectColor: _parseColor(_selectedSubjectColor),
+          studiedMin: _totalStudiedSec ~/ 60,
+          sessionType: _sessionType,
+        ),
+      ),
+    ));
+  }
+
   Widget _buildNotesSection() {
     return Container(
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: _cardFill,
+        color: _cardFill.withOpacity(0.72),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: _outline.withOpacity(0.12), width: 1.5),
-        boxShadow: [BoxShadow(color: _outline.withOpacity(0.04),
-          offset: const Offset(0, 3), blurRadius: 10)]),
+        border: Border.all(color: _outline.withOpacity(0.22), width: 1.5),
+        boxShadow: [BoxShadow(color: _outline.withOpacity(0.1),
+          offset: const Offset(0, 3), blurRadius: 0)]),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(
+            width: 28, height: 28,
+            decoration: BoxDecoration(
+              color: _goldHdr.withOpacity(0.3),
+              borderRadius: BorderRadius.circular(9),
+              border: Border.all(color: _goldDk.withOpacity(0.5), width: 1.3)),
+            child: Icon(Icons.sticky_note_2_rounded, size: 15, color: _brown)),
+          const SizedBox(width: 10),
+          Text('Session Notes', style: GoogleFonts.gaegu(
+            fontSize: 18, fontWeight: FontWeight.w700, color: _brown)),
+          const Spacer(),
+          GestureDetector(
+            onTap: _exportNotesPdf,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: _coralLt.withOpacity(0.5),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: _coralHdr, width: 1.2),
+                boxShadow: [BoxShadow(color: _coralHdr.withOpacity(0.2),
+                  offset: const Offset(0, 1.5), blurRadius: 0)]),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.picture_as_pdf_rounded, size: 13, color: _coralHdr),
+                const SizedBox(width: 4),
+                Text('PDF', style: GoogleFonts.gaegu(
+                  fontSize: 12, fontWeight: FontWeight.w700, color: _brown)),
+              ]),
+            ),
+          ),
+        ]),
+        const SizedBox(height: 12),
+
+        Row(children: [
+          Icon(Icons.tag_rounded, size: 13, color: _purpleDk),
+          const SizedBox(width: 6),
+          Text('Topics', style: GoogleFonts.gaegu(
+            fontSize: 13, fontWeight: FontWeight.w700, color: _brownLt)),
+        ]),
+        const SizedBox(height: 6),
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 14),
+          padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            gradient: LinearGradient(colors: [
-              _goldLt.withOpacity(0.4), _goldHdr.withOpacity(0.2)]),
-            borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(16), topRight: Radius.circular(16))),
-          child: Row(children: [
-            Icon(Icons.sticky_note_2_rounded, size: 15, color: _goldDk),
-            const SizedBox(width: 8),
-            Text('Session Notes', style: GoogleFonts.gaegu(
-              fontSize: 16, fontWeight: FontWeight.w700, color: _brown)),
-            const Spacer(),
-            // PDF export button
-            GestureDetector(
-              onTap: _exportNotesPdf,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.5),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: _goldDk.withOpacity(0.2), width: 1)),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.picture_as_pdf_rounded, size: 12, color: _coralHdr),
-                  const SizedBox(width: 4),
-                  Text('Export PDF', style: GoogleFonts.nunito(
-                    fontSize: 10, fontWeight: FontWeight.w700, color: _brown)),
-                ]),
-              ),
-            ),
+            color: Colors.white.withOpacity(0.92),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: _outline.withOpacity(0.15), width: 1.2)),
+          child: Wrap(spacing: 6, runSpacing: 6, children: [
+            ..._topics.map((t) => Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(colors: [
+                  _purpleLt.withOpacity(0.5), _purpleHdr.withOpacity(0.3)]),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: _purpleHdr.withOpacity(0.4), width: 1)),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Text(t, style: GoogleFonts.nunito(
+                  fontSize: 11, fontWeight: FontWeight.w700, color: _brown)),
+                const SizedBox(width: 4),
+                GestureDetector(
+                  onTap: () => setState(() => _topics.remove(t)),
+                  child: Icon(Icons.close_rounded, size: 12,
+                    color: _purpleDk.withOpacity(0.6))),
+              ]),
+            )),
+            SizedBox(width: 120, height: 26, child: TextField(
+              controller: _topicCtrl,
+              style: GoogleFonts.nunito(fontSize: 11,
+                color: _brown, fontWeight: FontWeight.w600),
+              decoration: InputDecoration(
+                hintText: '+ add topic',
+                hintStyle: GoogleFonts.nunito(fontSize: 11,
+                  color: _brownLt.withOpacity(0.5)),
+                border: InputBorder.none, isDense: true,
+                contentPadding: EdgeInsets.zero),
+              onSubmitted: (v) {
+                if (v.trim().isNotEmpty) {
+                  setState(() { _topics.add(v.trim()); _topicCtrl.clear(); });
+                }
+              },
+            )),
           ]),
         ),
+        const SizedBox(height: 14),
 
-        Padding(padding: const EdgeInsets.all(14), child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(children: [
-              Icon(Icons.tag_rounded, size: 13, color: _purpleHdr),
-              const SizedBox(width: 6),
-              Text('Topics', style: GoogleFonts.gaegu(
-                fontSize: 14, fontWeight: FontWeight.w700, color: _brown)),
-            ]),
-            const SizedBox(height: 8),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: _outline.withOpacity(0.06), width: 1)),
-              child: Wrap(spacing: 6, runSpacing: 6, children: [
-                ..._topics.map((t) => Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(colors: [
-                      _purpleLt.withOpacity(0.3), _purpleHdr.withOpacity(0.15)]),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: _purpleHdr.withOpacity(0.2), width: 1)),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Text(t, style: GoogleFonts.nunito(
-                      fontSize: 11, fontWeight: FontWeight.w600, color: _brown)),
-                    const SizedBox(width: 4),
-                    GestureDetector(
-                      onTap: () => setState(() => _topics.remove(t)),
-                      child: Icon(Icons.close_rounded, size: 11,
-                        color: _purpleHdr.withOpacity(0.5))),
-                  ]),
-                )),
-                // Inline add
-                SizedBox(width: 120, height: 26, child: TextField(
-                  controller: _topicCtrl,
-                  style: GoogleFonts.nunito(fontSize: 11, color: _brown),
-                  decoration: InputDecoration(
-                    hintText: '+ add topic',
-                    hintStyle: GoogleFonts.nunito(fontSize: 11,
-                      color: _brownLt.withOpacity(0.3)),
-                    border: InputBorder.none, isDense: true,
-                    contentPadding: EdgeInsets.zero),
-                  onSubmitted: (v) {
-                    if (v.trim().isNotEmpty) {
-                      setState(() { _topics.add(v.trim()); _topicCtrl.clear(); });
-                    }
-                  },
-                )),
-              ]),
-            ),
-            const SizedBox(height: 14),
+        Row(children: [
+          Icon(Icons.edit_rounded, size: 13, color: _goldDk),
+          const SizedBox(width: 6),
+          Text('Notes', style: GoogleFonts.gaegu(
+            fontSize: 13, fontWeight: FontWeight.w700, color: _brownLt)),
+          const Spacer(),
+          _fmtBtn(Icons.format_bold_rounded, _bold,
+            () => setState(() => _bold = !_bold)),
+          const SizedBox(width: 4),
+          _fmtBtn(Icons.format_italic_rounded, _italic,
+            () => setState(() => _italic = !_italic)),
+          const SizedBox(width: 4),
+          _fmtBtn(Icons.format_list_bulleted_rounded, false, () {
+            final t = _notesCtrl.text;
+            final ins = t.isEmpty || t.endsWith('\n') ? '• ' : '\n• ';
+            _notesCtrl.text = t + ins;
+            _notesCtrl.selection = TextSelection.collapsed(
+              offset: _notesCtrl.text.length);
+          }),
+          const SizedBox(width: 4),
+          _fmtBtn(Icons.format_list_numbered_rounded, false, () {
+            final lines = _notesCtrl.text.split('\n');
+            final n = lines.where((l) => RegExp(r'^\d+\.').hasMatch(l)).length + 1;
+            final ins = _notesCtrl.text.isEmpty || _notesCtrl.text.endsWith('\n')
+                ? '$n. ' : '\n$n. ';
+            _notesCtrl.text = _notesCtrl.text + ins;
+            _notesCtrl.selection = TextSelection.collapsed(
+              offset: _notesCtrl.text.length);
+          }),
+          const SizedBox(width: 4),
+          _fmtBtn(Icons.title_rounded, false, () {
+            final ins = _notesCtrl.text.isEmpty || _notesCtrl.text.endsWith('\n')
+                ? '## ' : '\n## ';
+            _notesCtrl.text = _notesCtrl.text + ins;
+            _notesCtrl.selection = TextSelection.collapsed(
+              offset: _notesCtrl.text.length);
+          }),
+        ]),
+        const SizedBox(height: 8),
 
-            Row(children: [
-              Icon(Icons.edit_rounded, size: 13, color: _goldDk),
-              const SizedBox(width: 6),
-              Text('Notes', style: GoogleFonts.gaegu(
-                fontSize: 14, fontWeight: FontWeight.w700, color: _brown)),
-              const Spacer(),
-              _fmtBtn(Icons.format_bold_rounded, _bold,
-                () => setState(() => _bold = !_bold)),
-              const SizedBox(width: 4),
-              _fmtBtn(Icons.format_italic_rounded, _italic,
-                () => setState(() => _italic = !_italic)),
-              const SizedBox(width: 4),
-              _fmtBtn(Icons.format_list_bulleted_rounded, false, () {
-                final t = _notesCtrl.text;
-                final ins = t.isEmpty || t.endsWith('\n') ? '• ' : '\n• ';
-                _notesCtrl.text = t + ins;
-                _notesCtrl.selection = TextSelection.collapsed(
-                  offset: _notesCtrl.text.length);
-              }),
-              const SizedBox(width: 4),
-              _fmtBtn(Icons.format_list_numbered_rounded, false, () {
-                final lines = _notesCtrl.text.split('\n');
-                final n = lines.where((l) => RegExp(r'^\d+\.').hasMatch(l)).length + 1;
-                final ins = _notesCtrl.text.isEmpty || _notesCtrl.text.endsWith('\n')
-                    ? '$n. ' : '\n$n. ';
-                _notesCtrl.text = _notesCtrl.text + ins;
-                _notesCtrl.selection = TextSelection.collapsed(
-                  offset: _notesCtrl.text.length);
-              }),
-              const SizedBox(width: 4),
-              _fmtBtn(Icons.title_rounded, false, () {
-                final ins = _notesCtrl.text.isEmpty || _notesCtrl.text.endsWith('\n')
-                    ? '## ' : '\n## ';
-                _notesCtrl.text = _notesCtrl.text + ins;
-                _notesCtrl.selection = TextSelection.collapsed(
-                  offset: _notesCtrl.text.length);
-              }),
-            ]),
-            const SizedBox(height: 8),
-
-            Container(
-              constraints: const BoxConstraints(minHeight: 120, maxHeight: 220),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: _outline.withOpacity(0.06), width: 1),
-                boxShadow: [BoxShadow(color: _outline.withOpacity(0.02),
-                  offset: const Offset(0, 1), blurRadius: 4)]),
-              child: TextField(
-                controller: _notesCtrl,
-                style: GoogleFonts.nunito(
-                  fontSize: 13, color: _brown, height: 1.6,
-                  fontWeight: _bold ? FontWeight.w700 : FontWeight.w400,
-                  fontStyle: _italic ? FontStyle.italic : FontStyle.normal),
-                maxLines: null, minLines: 5,
-                decoration: InputDecoration(
-                  hintText: 'Key takeaways, formulas, ideas, things to review...\n\nUse the toolbar above for formatting.',
-                  hintStyle: GoogleFonts.nunito(fontSize: 12,
-                    color: _brownLt.withOpacity(0.25), height: 1.6),
-                  border: InputBorder.none,
-                  contentPadding: const EdgeInsets.all(14)),
-              ),
-            ),
-            const SizedBox(height: 8),
-
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: _purpleHdr.withOpacity(0.04),
-                borderRadius: BorderRadius.circular(8)),
-              child: Row(children: [
-                Icon(Icons.info_outline_rounded, size: 11,
-                  color: _purpleDk.withOpacity(0.4)),
-                const SizedBox(width: 6),
-                Expanded(child: Text(
-                  'Notes save with your session. Export as PDF anytime.',
-                  style: GoogleFonts.nunito(fontSize: 10,
-                    color: _brownLt, height: 1.3))),
-              ]),
-            ),
-          ],
-        )),
+        Container(
+          constraints: const BoxConstraints(minHeight: 130, maxHeight: 240),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.92),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: _outline.withOpacity(0.15), width: 1.2)),
+          child: TextField(
+            controller: _notesCtrl,
+            style: GoogleFonts.nunito(
+              fontSize: 14, color: _brown, height: 1.6,
+              fontWeight: _bold ? FontWeight.w700 : FontWeight.w500,
+              fontStyle: _italic ? FontStyle.italic : FontStyle.normal),
+            maxLines: null, minLines: 5,
+            decoration: InputDecoration(
+              hintText: 'Key takeaways, formulas, ideas...',
+              hintStyle: GoogleFonts.nunito(fontSize: 13,
+                color: _brownLt.withOpacity(0.4), height: 1.6),
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.all(14)),
+          ),
+        ),
       ]),
     );
   }
@@ -1696,238 +2615,464 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
   }
 
   //  3. COMPLETION PHASE
-  Widget _buildCompletion() {
+  Widget _buildCompletion({bool desktop = false}) {
     final mins = (_totalStudiedSec / 60).ceil();
     final baseXp = (mins / 30 * 25).floor();
     final bonusXp = _focusScore >= 80 ? (baseXp * 0.25).floor() : 0;
 
-    return Column(children: [
-      const SizedBox(height: 8),
+    return LayoutBuilder(builder: (ctx, c) {
+      final wide = c.maxWidth > 720;
 
-      _stag(0.0, Column(children: [
-        SizedBox(height: 80, child: CustomPaint(
-          painter: _ConfettiPainter(progress: _enterCtrl.value),
-          size: const Size(double.infinity, 80))),
-        Container(
-          width: 72, height: 72,
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              begin: Alignment.topLeft, end: Alignment.bottomRight,
-              colors: [Color(0xFFFFE888), Color(0xFFE8C840)]),
-            shape: BoxShape.circle,
-            border: Border.all(color: _goldDk.withOpacity(0.4), width: 3),
-            boxShadow: [
-              BoxShadow(color: _goldDk.withOpacity(0.25),
-                offset: const Offset(0, 4), blurRadius: 0),
-              BoxShadow(color: _goldHdr.withOpacity(0.15),
-                blurRadius: 20, spreadRadius: 5)]),
-          child: const Icon(Icons.emoji_events_rounded, size: 36, color: Colors.white),
-        ),
-        const SizedBox(height: 14),
-        Text('Session Complete!', style: GoogleFonts.gaegu(
-          fontSize: 30, fontWeight: FontWeight.w700, color: _brown)),
-        const SizedBox(height: 4),
-        if (_titleCtrl.text.trim().isNotEmpty)
-          Text(_titleCtrl.text.trim(), style: GoogleFonts.nunito(
-            fontSize: 13, fontWeight: FontWeight.w600, color: _brownLt)),
-      ])),
-      const SizedBox(height: 20),
-
-      _stag(0.1, Container(
-        width: double.infinity,
-        decoration: BoxDecoration(
-          color: _cardFill,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: _outline.withOpacity(0.12), width: 1.5),
-          boxShadow: [BoxShadow(color: _outline.withOpacity(0.04),
-            offset: const Offset(0, 4), blurRadius: 12)]),
-        child: Column(children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 14),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(colors: [_pinkLt.withOpacity(0.4), _pinkHdr.withOpacity(0.25)]),
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(18), topRight: Radius.circular(18))),
-            child: Text('Session Summary', style: GoogleFonts.gaegu(
-              fontSize: 16, fontWeight: FontWeight.w700, color: _brown)),
-          ),
-          Padding(padding: const EdgeInsets.all(16), child: Column(children: [
-            _summaryRow(Icons.timer_rounded, 'Time Studied', '${mins} min', _pinkHdr),
-            _summaryRow(Icons.repeat_rounded, 'Pomodoros', '$_pomodoroCount completed', _greenHdr),
-            _summaryRow(_typeIcon(_sessionType), 'Session Type',
-              _sessionType[0].toUpperCase() + _sessionType.substring(1), _typeColor(_sessionType)),
-            if (_selectedSubjectName != null)
-              _summaryRow(Icons.menu_book_rounded, 'Subject', _selectedSubjectName!, _purpleHdr),
-            if (_topics.isNotEmpty)
-              _summaryRow(Icons.tag_rounded, 'Topics', _topics.join(', '), _skyHdr),
-            if (_distractionCount > 0)
-              _summaryRow(Icons.notifications_active_rounded, 'Distractions',
-                '$_distractionCount noted', _coralHdr),
-          ])),
-        ]),
-      )),
-      const SizedBox(height: 16),
-
-      _stag(0.15, Container(
-        width: double.infinity,
-        decoration: BoxDecoration(
-          color: _cardFill,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: _outline.withOpacity(0.12), width: 1.5)),
-        child: Column(children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 14),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(colors: [_purpleLt.withOpacity(0.4), _purpleHdr.withOpacity(0.25)]),
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(18), topRight: Radius.circular(18))),
+      final hero = Column(
+        crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Padding(
+            padding: const EdgeInsets.only(left: 2),
             child: Row(children: [
-              Text('Focus Score', style: GoogleFonts.gaegu(
-                fontSize: 16, fontWeight: FontWeight.w700, color: _brown)),
-              const Spacer(),
-              Text('$_focusScore%', style: GoogleFonts.gaegu(
-                fontSize: 18, fontWeight: FontWeight.w700,
-                color: _focusColor(_focusScore))),
+              Container(width: 7, height: 7, decoration: const BoxDecoration(
+                color: _oliveDk, shape: BoxShape.circle)),
+              const SizedBox(width: 10),
+              Text('YOU STUDIED FOR', style: GoogleFonts.nunito(
+                fontSize: 11, fontWeight: FontWeight.w900,
+                color: _oliveDk, letterSpacing: 1.8)),
+              const SizedBox(width: 11),
+              Flexible(child: Text('what a session',
+                style: GoogleFonts.gaegu(
+                  fontSize: 14.5, fontWeight: FontWeight.w500,
+                  fontStyle: FontStyle.italic, color: _brownLt),
+                overflow: TextOverflow.ellipsis)),
             ]),
           ),
-          Padding(padding: const EdgeInsets.fromLTRB(16, 16, 16, 12), child: Column(children: [
-            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [20, 40, 60, 80, 100].map((v) {
-                final sel = (_focusScore - v).abs() < 10;
-                return GestureDetector(
-                  onTap: () => setState(() => _focusScore = v),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    width: sel ? 44 : 36, height: sel ? 44 : 36,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: sel ? _focusColor(v).withOpacity(0.15) : Colors.transparent,
-                      border: sel ? Border.all(color: _focusColor(v).withOpacity(0.3), width: 2) : null),
-                    child: CustomPaint(painter: _FacePainter(
-                      score: v,
-                      color: sel ? _focusColor(v) : _brownLt.withOpacity(0.4),
-                      size: sel ? 44 : 36)),
-                  ),
-                );
-              }).toList()),
-            const SizedBox(height: 8),
-            SliderTheme(
-              data: SliderThemeData(
-                activeTrackColor: _focusColor(_focusScore),
-                inactiveTrackColor: _outline.withOpacity(0.06),
-                thumbColor: _focusColor(_focusScore),
-                overlayColor: _focusColor(_focusScore).withOpacity(0.12),
-                trackHeight: 6,
-                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 10)),
-              child: Slider(
-                value: _focusScore.toDouble(),
-                min: 1, max: 100,
-                onChanged: (v) => setState(() => _focusScore = v.round()),
-              ),
+          const SizedBox(height: 10),
+          Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Text('$mins', style: const TextStyle(
+              fontFamily: 'Bitroad', fontSize: 82, color: _brown, height: 0.95)),
+            const SizedBox(width: 8),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text('min', style: GoogleFonts.nunito(
+                fontSize: 19, fontWeight: FontWeight.w800,
+                color: _brownLt, letterSpacing: 0.3)),
             ),
-            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              Text('Distracted', style: GoogleFonts.nunito(fontSize: 10, color: _brownLt)),
-              Text('Laser focus', style: GoogleFonts.nunito(fontSize: 10, color: _brownLt)),
-            ]),
-            if (_focusScore >= 80) ...[
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: _greenHdr.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: _greenHdr.withOpacity(0.2), width: 1)),
+            const Spacer(),
+            if (_streakCount > 0)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.bolt_rounded, size: 14, color: _greenDk),
-                  const SizedBox(width: 4),
-                  Text('+25% XP focus bonus!', style: GoogleFonts.nunito(
-                    fontSize: 11, fontWeight: FontWeight.w700, color: _greenDk)),
+                  Icon(Icons.local_fire_department_rounded,
+                    size: 16, color: _goldDk),
+                  const SizedBox(width: 6),
+                  Text('$_streakCount-day streak',
+                    style: GoogleFonts.nunito(
+                      fontSize: 13.5, fontWeight: FontWeight.w800,
+                      color: _brownLt, letterSpacing: 0.3)),
                 ]),
               ),
+          ]),
+          const SizedBox(height: 10),
+          Row(children: [
+            Icon(_typeIcon(_sessionType), size: 15,
+              color: _typeColor(_sessionType)),
+            const SizedBox(width: 7),
+            Text(
+              _sessionType[0].toUpperCase() + _sessionType.substring(1),
+              style: GoogleFonts.nunito(
+                fontSize: 13.5, fontWeight: FontWeight.w800,
+                color: _brown, letterSpacing: 0.3)),
+            if (_titleCtrl.text.trim().isNotEmpty) ...[
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 9),
+                child: Text('·', style: GoogleFonts.nunito(
+                  fontSize: 15, fontWeight: FontWeight.w900,
+                  color: _outline.withOpacity(0.4)))),
+              Flexible(child: Text(_titleCtrl.text.trim(),
+                style: GoogleFonts.nunito(
+                  fontSize: 13.5, fontWeight: FontWeight.w600,
+                  fontStyle: FontStyle.italic, color: _inkSoft),
+                overflow: TextOverflow.ellipsis, maxLines: 1)),
             ],
-          ])),
+          ]),
+        ]);
+
+      final summary = Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(24, 22, 24, 22),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft, end: Alignment.bottomRight,
+            colors: [
+              _pinkLt.withOpacity(0.4),
+              _cardFill.withOpacity(0.7),
+            ]),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: _pinkHdr.withOpacity(0.32), width: 1.5),
+          boxShadow: [BoxShadow(
+            color: _pinkHdr.withOpacity(0.16),
+            offset: const Offset(0, 3), blurRadius: 0)]),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Container(width: 7, height: 7, decoration: const BoxDecoration(
+              color: _pinkHdr, shape: BoxShape.circle)),
+            const SizedBox(width: 10),
+            Text('THE NUMBERS', style: GoogleFonts.nunito(
+              fontSize: 11, fontWeight: FontWeight.w900,
+              color: _pinkHdr, letterSpacing: 1.8)),
+            const SizedBox(width: 11),
+            Flexible(child: Text('tiny wins, written down',
+              style: GoogleFonts.gaegu(
+                fontSize: 14, fontWeight: FontWeight.w500,
+                fontStyle: FontStyle.italic, color: _brownLt),
+              overflow: TextOverflow.ellipsis)),
+          ]),
+          const SizedBox(height: 16),
+          _summaryRow(Icons.timer_rounded, 'Time',
+            '$mins min', _pinkHdr),
+          _summaryRow(Icons.repeat_rounded, 'Pomodoros',
+            '$_pomodoroCount', _greenHdr),
+          if (_selectedSubjectName != null)
+            _summaryRow(Icons.menu_book_rounded, 'Subject',
+              _selectedSubjectName!, _purpleHdr),
+          if (_topics.isNotEmpty)
+            _summaryRow(Icons.tag_rounded, 'Topics',
+              _topics.length == 1 ? _topics.first : '${_topics.length} tags',
+              _skyHdr),
+          if (_distractionCount > 0)
+            _summaryRow(Icons.notifications_active_rounded, 'Distractions',
+              '$_distractionCount', _coralHdr),
         ]),
-      )),
-      const SizedBox(height: 16),
+      );
 
-      if (!_saved) ...[
-        _buildNotesSection(),
-        const SizedBox(height: 16),
-      ],
+      final focusCard = Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(24, 22, 24, 22),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft, end: Alignment.bottomRight,
+            colors: [
+              _skyLt.withOpacity(0.45),
+              _cardFill.withOpacity(0.75),
+            ]),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: _skyHdr.withOpacity(0.32), width: 1.5),
+          boxShadow: [BoxShadow(
+            color: _skyHdr.withOpacity(0.16),
+            offset: const Offset(0, 3), blurRadius: 0)]),
+        child: Column(children: [
+          Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Expanded(child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min, children: [
+                Row(children: [
+                  Container(width: 7, height: 7, decoration: const BoxDecoration(
+                    color: _skyHdr, shape: BoxShape.circle)),
+                  const SizedBox(width: 10),
+                  Text('HOW FOCUSED', style: GoogleFonts.nunito(
+                    fontSize: 11, fontWeight: FontWeight.w900,
+                    color: _skyHdr, letterSpacing: 1.8)),
+                ]),
+                const SizedBox(height: 4),
+                Text('be honest — no judgement',
+                  style: GoogleFonts.gaegu(
+                    fontSize: 13.5, fontWeight: FontWeight.w500,
+                    fontStyle: FontStyle.italic, color: _brownLt)),
+              ])),
+            Text('$_focusScore', style: TextStyle(
+              fontFamily: 'Bitroad', fontSize: 30,
+              color: _focusColor(_focusScore), height: 1.0)),
+            const SizedBox(width: 3),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text('%', style: GoogleFonts.nunito(
+                fontSize: 13.5, fontWeight: FontWeight.w800,
+                color: _focusColor(_focusScore))),
+            ),
+          ]),
+          const SizedBox(height: 12),
+          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [20, 40, 60, 80, 100].map((v) {
+              final sel = (_focusScore - v).abs() < 10;
+              return GestureDetector(
+                onTap: () => setState(() => _focusScore = v),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  width: sel ? 42 : 34, height: sel ? 42 : 34,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: sel ? _focusColor(v).withOpacity(0.18)
+                        : Colors.transparent,
+                    border: sel ? Border.all(
+                      color: _focusColor(v), width: 1.8) : null),
+                  child: CustomPaint(painter: _FacePainter(
+                    score: v,
+                    color: sel ? _focusColor(v) : _brownLt.withOpacity(0.4),
+                    size: sel ? 42 : 34)),
+                ),
+              );
+            }).toList()),
+          const SizedBox(height: 4),
+          SliderTheme(
+            data: SliderThemeData(
+              activeTrackColor: _focusColor(_focusScore),
+              inactiveTrackColor: _outline.withOpacity(0.1),
+              thumbColor: _focusColor(_focusScore),
+              overlayColor: _focusColor(_focusScore).withOpacity(0.15),
+              trackHeight: 5,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 10)),
+            child: Slider(
+              value: _focusScore.toDouble(),
+              min: 1, max: 100,
+              onChanged: (v) => setState(() => _focusScore = v.round()),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Distracted', style: GoogleFonts.nunito(
+                  fontSize: 11.5, fontWeight: FontWeight.w600, color: _brownLt)),
+                if (_focusScore >= 80)
+                  Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.bolt_rounded, size: 13, color: _greenDk),
+                    const SizedBox(width: 4),
+                    Text('+25% XP bonus', style: GoogleFonts.nunito(
+                      fontSize: 11.5, fontWeight: FontWeight.w800, color: _greenDk)),
+                  ])
+                else
+                  Text('Laser focus', style: GoogleFonts.nunito(
+                    fontSize: 11.5, fontWeight: FontWeight.w600, color: _brownLt)),
+              ]),
+          ),
+        ]),
+      );
 
-      if (_saved) ...[
-        _stag(0.2, AnimatedBuilder(
-          animation: _xpCtrl,
-          builder: (_, __) {
-            final t = Curves.easeOutBack.transform(_xpCtrl.value);
-            return Opacity(opacity: t.clamp(0.0, 1.0), child: Transform.scale(
-              scale: 0.8 + 0.2 * t,
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft, end: Alignment.bottomRight,
-                    colors: [Color(0xFFFFF8E0), Color(0xFFFFF0C0)]),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: _goldDk.withOpacity(0.3), width: 2),
-                  boxShadow: [BoxShadow(color: _goldDk.withOpacity(0.15),
-                    offset: const Offset(0, 4), blurRadius: 0)]),
-                child: Column(children: [
-                  Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                    Icon(Icons.star_rounded, size: 28, color: Color(0xFFE8C840)),
-                    const SizedBox(width: 8),
-                    Text('+${_xpEarned > 0 ? _xpEarned : baseXp + bonusXp} XP', style: GoogleFonts.gaegu(
-                      fontSize: 32, fontWeight: FontWeight.w700, color: _brown)),
+      final notesBtn = GestureDetector(
+        onTap: _openNotesModal,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFF8F0),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: _outline.withOpacity(0.22), width: 1.5),
+            boxShadow: [BoxShadow(
+              color: _outline.withOpacity(0.16),
+              offset: const Offset(0, 2.5), blurRadius: 0)]),
+          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            Icon(Icons.edit_note_rounded, size: 19, color: _oliveDk),
+            const SizedBox(width: 10),
+            Text(_notesCtrl.text.trim().isEmpty
+                ? 'Add notes' : 'View notes',
+              style: const TextStyle(
+                fontFamily: 'Bitroad', fontSize: 16,
+                color: _brown, letterSpacing: 0.2)),
+          ]),
+        ),
+      );
+
+      final xpBanner = _saved ? AnimatedBuilder(
+        animation: _xpCtrl,
+        builder: (_, __) {
+          final t = Curves.easeOutBack.transform(_xpCtrl.value);
+          return Opacity(opacity: t.clamp(0.0, 1.0), child: Transform.translate(
+            offset: Offset(0, 8 * (1 - t)),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(24, 22, 24, 22),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft, end: Alignment.bottomRight,
+                  colors: [
+                    const Color(0xFFFDEFDB).withOpacity(0.92),
+                    const Color(0xFFFFF6E4).withOpacity(0.7),
                   ]),
-                  const SizedBox(height: 8),
-                  Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                    _xpChip('Base', '$baseXp XP', _goldHdr),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: _goldDk.withOpacity(0.28), width: 1.5),
+                boxShadow: [BoxShadow(
+                  color: _goldDk.withOpacity(0.18),
+                  offset: const Offset(0, 3), blurRadius: 0)]),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min, children: [
+                    Text('XP EARNED', style: GoogleFonts.nunito(
+                      fontSize: 11, fontWeight: FontWeight.w900,
+                      color: _goldDk, letterSpacing: 1.4)),
+                    const SizedBox(height: 6),
+                    Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                      Text('+${_xpEarned > 0 ? _xpEarned : baseXp + bonusXp}',
+                        style: const TextStyle(
+                          fontFamily: 'Bitroad', fontSize: 38,
+                          color: _brown, height: 0.95)),
+                      const SizedBox(width: 5),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 5),
+                        child: Text('xp', style: GoogleFonts.nunito(
+                          fontSize: 15, fontWeight: FontWeight.w800,
+                          color: _brownLt)),
+                      ),
+                    ]),
+                  ]),
+                const Spacer(),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min, children: [
+                    Text('base $baseXp', style: GoogleFonts.nunito(
+                      fontSize: 12.5, fontWeight: FontWeight.w700,
+                      color: _inkSoft)),
                     if (bonusXp > 0) ...[
-                      const SizedBox(width: 8),
-                      Text('+', style: GoogleFonts.gaegu(fontSize: 16, color: _brownLt)),
-                      const SizedBox(width: 8),
-                      _xpChip('Focus Bonus', '+$bonusXp XP', _greenHdr),
+                      const SizedBox(height: 4),
+                      Text('+$bonusXp focus bonus',
+                        style: GoogleFonts.nunito(
+                          fontSize: 12.5, fontWeight: FontWeight.w800,
+                          color: _oliveDk)),
                     ],
                   ]),
-                ]),
-              ),
-            ));
-          },
-        )),
-        const SizedBox(height: 16),
-      ],
+              ]),
+            ),
+          ));
+        },
+      ) : const SizedBox.shrink();
 
-      if (!_saved) ...[
-        _GameButton(
-          icon: Icons.save_rounded,
-          label: _saving ? 'Saving...' : 'Save Session',
-          gradTop: _greenLt, gradBot: _greenHdr,
-          borderColor: _greenDk, loading: _saving,
-          onTap: _saveSession),
-        const SizedBox(height: 10),
-        GestureDetector(
-          onTap: () => Navigator.pop(context),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Text('Discard', style: GoogleFonts.gaegu(
-              fontSize: 16, fontWeight: FontWeight.w700, color: _brownLt)))),
-      ] else ...[
-        _GameButton(
-          icon: Icons.check_rounded,
-          label: 'Done',
-          gradTop: _pinkLt, gradBot: _pinkHdr,
-          borderColor: _pinkHdr,
-          onTap: () {
-            ref.read(dashboardProvider.notifier).refresh();
-            ref.read(studyProvider.notifier).refresh();
-            Navigator.pop(context);
-          }),
-      ],
-      const SizedBox(height: 16),
-    ]);
+      final primaryBtn = !_saved
+          ? _GameButton(
+              icon: Icons.save_rounded,
+              label: _saving ? 'Saving...' : 'Save Session',
+              gradTop: _oliveLt, gradBot: _olive,
+              borderColor: _oliveDk, loading: _saving,
+              onTap: _saveSession)
+          : _GameButton(
+              icon: Icons.check_rounded,
+              label: 'Done',
+              gradTop: _oliveLt, gradBot: _olive,
+              borderColor: _oliveDk,
+              onTap: () {
+                ref.read(dashboardProvider.notifier).refresh();
+                ref.read(studyProvider.notifier).refresh();
+                Navigator.pop(context);
+              });
+
+      final discardBtn = !_saved ? GestureDetector(
+        onTap: () => Navigator.pop(context),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 22),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFF8F0),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: _outline.withOpacity(0.22), width: 1.5),
+            boxShadow: [BoxShadow(
+              color: _outline.withOpacity(0.14),
+              offset: const Offset(0, 2.5), blurRadius: 0)]),
+          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            Text('Discard', style: const TextStyle(
+              fontFamily: 'Bitroad', fontSize: 16,
+              color: _brownLt, letterSpacing: 0.3)),
+          ]),
+        ),
+      ) : const SizedBox.shrink();
+
+      // Silence unused local (kept for legacy callers)
+      // ignore: unused_local_variable
+      final _ignoredWide = wide;
+
+      final actionsRow = Row(children: [
+        if (!_saved) ...[
+          Expanded(flex: 3, child: discardBtn),
+          const SizedBox(width: 10),
+          Expanded(flex: 7, child: primaryBtn),
+        ] else
+          Expanded(child: primaryBtn),
+      ]);
+
+      if (desktop) {
+        // DESKTOP — 3-row layout (was 2-column with spaceBetween).
+        //
+        // The old 2-column grid paired hero↕mood↕notes on the left with
+        // summary↕focus↕actions on the right, then used spaceBetween
+        // to stretch the gaps. Because the right column had much more
+        // content than the left, the left column's gaps had to grow
+        // enormous to balance — that's the "hollow card" feeling.
+        //
+        // New layout pairs cards HORIZONTALLY so each row's two cards
+        // have similar natural heights (hero↔summary, mood↔focus):
+        //   Row 1: hero (olive) | summary (pink)     — meta + numbers
+        //   Row 2: mood (coral) | focus (sky)        — how it felt
+        //   Row 3 (optional):  xp banner            — if saved
+        //   Row 4: notes + discard + save            — inline actions
+        // Weighted Spacer top/bottom centers the stack a little low.
+
+        final topRow = Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(flex: 5, child: _sectionCard(
+              tint: _oliveDk,
+              tintSoft: _oliveBg,
+              padding: const EdgeInsets.fromLTRB(28, 26, 28, 28),
+              child: hero)),
+            const SizedBox(width: 18),
+            Expanded(flex: 5, child: summary),
+          ]);
+
+        final midRow = Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(child: _buildMoodCard()),
+            const SizedBox(width: 18),
+            Expanded(child: focusCard),
+          ]);
+
+        final bottomStrip = !_saved
+          ? Row(children: [
+              Expanded(flex: 4, child: notesBtn),
+              const SizedBox(width: 10),
+              Expanded(flex: 3, child: discardBtn),
+              const SizedBox(width: 10),
+              Expanded(flex: 5, child: primaryBtn),
+            ])
+          : Row(children: [
+              Expanded(flex: 4, child: notesBtn),
+              const SizedBox(width: 10),
+              Expanded(flex: 6, child: primaryBtn),
+            ]);
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Spacer(flex: 2),
+            _stag(0.02, topRow),
+            const SizedBox(height: 18),
+            _stag(0.10, midRow),
+            if (_saved) ...[
+              const SizedBox(height: 18),
+              _stag(0.14, xpBanner),
+            ],
+            const SizedBox(height: 20),
+            _stag(0.18, bottomStrip),
+            const Spacer(flex: 1),
+          ]);
+      }
+
+      // NARROW — vertical card stack
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        _stag(0.00, _sectionCard(
+          tint: _oliveDk,
+          tintSoft: _oliveBg,
+          padding: const EdgeInsets.fromLTRB(22, 20, 22, 22),
+          child: hero)),
+        const SizedBox(height: 14),
+        _stag(0.05, summary),
+        const SizedBox(height: 14),
+        _stag(0.09, focusCard),
+        const SizedBox(height: 14),
+        _stag(0.13, _buildMoodCard()),
+        const SizedBox(height: 14),
+        _stag(0.16, notesBtn),
+        if (_saved) ...[
+          const SizedBox(height: 14),
+          _stag(0.20, xpBanner),
+        ],
+        const SizedBox(height: 16),
+        _stag(0.22, actionsRow),
+        const SizedBox(height: 6),
+      ]);
+    });
   }
 
   Color _focusColor(int score) {
@@ -1939,20 +3084,16 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
 
   Widget _summaryRow(IconData icon, String label, String value, Color color) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: 9),
       child: Row(children: [
-        Container(
-          width: 28, height: 28,
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8)),
-          child: Icon(icon, size: 14, color: color)),
-        const SizedBox(width: 12),
+        Icon(icon, size: 15, color: color),
+        const SizedBox(width: 10),
         Text(label, style: GoogleFonts.nunito(
-          fontSize: 12, fontWeight: FontWeight.w600, color: _brownLt)),
+          fontSize: 13, fontWeight: FontWeight.w800, color: _inkSoft,
+          letterSpacing: 0.4)),
         const Spacer(),
-        Flexible(child: Text(value, style: GoogleFonts.gaegu(
-          fontSize: 15, fontWeight: FontWeight.w700, color: _brown),
+        Flexible(child: Text(value, style: const TextStyle(
+          fontFamily: 'Bitroad', fontSize: 16, color: _brown),
           textAlign: TextAlign.right, overflow: TextOverflow.ellipsis)),
       ]),
     );
@@ -1960,16 +3101,18 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
 
   Widget _xpChip(String label, String value, Color color) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
+        color: color.withOpacity(0.18),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.25), width: 1)),
-      child: Column(children: [
-        Text(value, style: GoogleFonts.gaegu(
-          fontSize: 14, fontWeight: FontWeight.w700, color: _brown)),
-        Text(label, style: GoogleFonts.nunito(
-          fontSize: 9, fontWeight: FontWeight.w600, color: _brownLt)),
+        border: Border.all(color: color.withOpacity(0.45), width: 1.2)),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Text(label.toUpperCase(), style: GoogleFonts.nunito(
+          fontSize: 9, fontWeight: FontWeight.w900,
+          color: color, letterSpacing: 0.6)),
+        const SizedBox(width: 5),
+        Text(value, style: const TextStyle(
+          fontFamily: 'Bitroad', fontSize: 13, color: _brown)),
       ]),
     );
   }
@@ -1983,6 +3126,133 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
         return Opacity(opacity: t, child: Transform.translate(
             offset: Offset(0, 20 * (1 - t)), child: child));
       },
+    );
+  }
+
+  //    Colors.white.withOpacity(0.88), 18px radius, 1.5px outline @
+  //    0.22 opacity, hard 3px-offset shadow with 0 blur. The whole
+  //    setup becomes a vertical stack of these so it reads like a
+  //    natural extension of the dashboard, not a settings form.
+  //    and completion screens speak in the same tinted-card voice as
+  //    the study dashboard (pink / sky / olive / gold / purple).
+  //    `tint`      = the header/accent hue (pinkHdr, skyHdr, oliveDk, goldDk…)
+  //    `tintSoft`  = the softer wash fed to the gradient top-left; falls
+  //                  back to a lightened variant of `tint` when omitted.
+  //    When no tint is given, the card stays plain cream like the
+  //    dashboard's neutral surfaces.
+  Widget _sectionCard({
+    required Widget child,
+    EdgeInsets padding = const EdgeInsets.fromLTRB(20, 18, 20, 20),
+    Color? tint,
+    Color? tintSoft,
+  }) {
+    final hasTint = tint != null;
+    final softWash = tintSoft ?? (hasTint ? tint.withOpacity(0.35) : null);
+    return Container(
+      padding: padding,
+      decoration: BoxDecoration(
+        // Dashboard parity: cream base + diagonal (3,3) hard-offset
+        // shadow + outline border stronger than before (1.8 / 0.32)
+        // so cards read as chunky 3D surfaces, not pastel washes.
+        color: hasTint ? null : _cardFill.withOpacity(0.94),
+        gradient: hasTint
+            ? LinearGradient(
+                begin: Alignment.topLeft, end: Alignment.bottomRight,
+                colors: [
+                  softWash!.withOpacity(0.6),
+                  _cardFill.withOpacity(0.82),
+                ])
+            : null,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: hasTint
+              ? tint.withOpacity(0.42)
+              : _outline.withOpacity(0.32),
+          width: 1.8),
+        boxShadow: [BoxShadow(
+          color: hasTint
+              ? tint.withOpacity(0.26)
+              : _outline.withOpacity(0.24),
+          offset: const Offset(3, 3), blurRadius: 0)]),
+      child: child,
+    );
+  }
+
+  Widget _buildMoodCard() {
+    final moods = <Map<String, dynamic>>[
+      {'k': 'crushed', 'l': 'Crushed',
+        'i': Icons.local_fire_department_rounded, 'c': _coralHdr},
+      {'k': 'solid',   'l': 'Solid',
+        'i': Icons.sentiment_very_satisfied_rounded, 'c': _greenHdr},
+      {'k': 'ok',      'l': 'OK',
+        'i': Icons.sentiment_satisfied_rounded, 'c': _goldHdr},
+      {'k': 'tough',   'l': 'Tough',
+        'i': Icons.sentiment_dissatisfied_rounded, 'c': _purpleHdr},
+      {'k': 'rough',   'l': 'Rough',
+        'i': Icons.sentiment_very_dissatisfied_rounded, 'c': _skyHdr},
+    ];
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft, end: Alignment.bottomRight,
+          colors: [
+            _coralLt.withOpacity(0.4),
+            _cardFill.withOpacity(0.7),
+          ]),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _coralHdr.withOpacity(0.26), width: 1)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(width: 7, height: 7, decoration: const BoxDecoration(
+            color: _coralHdr, shape: BoxShape.circle)),
+          const SizedBox(width: 10),
+          Text('HOW DID IT FEEL', style: GoogleFonts.nunito(
+            fontSize: 11, fontWeight: FontWeight.w900,
+            color: _coralHdr, letterSpacing: 1.6)),
+          const SizedBox(width: 11),
+          Flexible(child: Text('name the weather',
+            style: GoogleFonts.gaegu(
+              fontSize: 14, fontWeight: FontWeight.w500,
+              fontStyle: FontStyle.italic, color: _brownLt),
+            overflow: TextOverflow.ellipsis)),
+        ]),
+        const SizedBox(height: 16),
+        Row(children: List.generate(moods.length, (i) {
+          final m = moods[i];
+          final sel = _moodTag == m['k'];
+          final c = m['c'] as Color;
+          return Expanded(child: Padding(
+            padding: EdgeInsets.only(right: i < moods.length - 1 ? 8 : 0),
+            child: GestureDetector(
+              onTap: () => setState(() =>
+                _moodTag = sel ? null : m['k'] as String),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 160),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                decoration: BoxDecoration(
+                  color: sel ? c.withOpacity(0.14) : Colors.transparent,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: sel ? c.withOpacity(0.7) : _outline.withOpacity(0.12),
+                    width: sel ? 1.4 : 1)),
+                child: Column(children: [
+                  Icon(m['i'] as IconData, size: 26,
+                    color: sel ? c : _brownLt.withOpacity(0.5)),
+                  const SizedBox(height: 7),
+                  Text(m['l'] as String, style: GoogleFonts.nunito(
+                    fontSize: 12.5,
+                    fontWeight: sel ? FontWeight.w800 : FontWeight.w600,
+                    color: sel ? _brown : _brownLt,
+                    letterSpacing: 0.2)),
+                ]),
+              ),
+            ),
+          ));
+        })),
+      ]),
     );
   }
 }
@@ -2566,20 +3836,26 @@ class _PastSessionsSheetState extends State<_PastSessionsSheet> {
       builder: (_, scrollCtrl) => Column(children: [
         // Handle + header
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
           child: Column(children: [
-            Container(width: 36, height: 4,
-              decoration: BoxDecoration(color: _outline.withOpacity(0.12),
+            Container(width: 40, height: 4,
+              decoration: BoxDecoration(color: _outline.withOpacity(0.15),
                 borderRadius: BorderRadius.circular(2))),
-            const SizedBox(height: 12),
-            Row(children: [
-              Text('Past Sessions', style: GoogleFonts.gaegu(
-                fontSize: 22, fontWeight: FontWeight.w700, color: _brown)),
-              const Spacer(),
-              Text('${filtered.length} of ${widget.sessions.length}',
-                style: GoogleFonts.nunito(fontSize: 12, color: _brownLt)),
-              const SizedBox(width: 8),
-              // Select mode toggle
+            const SizedBox(height: 16),
+            Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              Expanded(child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min, children: [
+                  Text('Past Sessions', style: const TextStyle(
+                    fontFamily: 'Bitroad', fontSize: 24,
+                    color: _brown, height: 1.05)),
+                  const SizedBox(height: 3),
+                  Text('${filtered.length} of ${widget.sessions.length} in view',
+                    style: GoogleFonts.nunito(fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: _inkSoft, letterSpacing: 0.3)),
+                ])),
+              // Select mode toggle — quiet
               GestureDetector(
                 onTap: () => setState(() {
                   _selectMode = !_selectMode;
@@ -2587,76 +3863,74 @@ class _PastSessionsSheetState extends State<_PastSessionsSheet> {
                 }),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 150),
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                   decoration: BoxDecoration(
                     color: _selectMode
-                        ? _skyHdr.withOpacity(0.15) : Colors.white,
-                    borderRadius: BorderRadius.circular(8),
+                        ? _oliveBg : _cardFill.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(10),
                     border: Border.all(
                       color: _selectMode
-                          ? _skyHdr.withOpacity(0.35) : _outline.withOpacity(0.1),
+                          ? _oliveDk.withOpacity(0.4) : _outline.withOpacity(0.16),
                       width: 1)),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(_selectMode ? Icons.check_box_rounded : Icons.checklist_rounded,
-                      size: 13,
-                      color: _selectMode ? _skyHdr : _brownLt.withOpacity(0.5)),
-                    const SizedBox(width: 4),
-                    Text(_selectMode ? 'Done' : 'Select',
-                      style: GoogleFonts.nunito(fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: _selectMode ? _skyHdr : _brownLt)),
-                  ]),
+                  child: Text(_selectMode ? 'Done' : 'Select',
+                    style: GoogleFonts.nunito(fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: _selectMode ? _oliveDk : _brownLt,
+                      letterSpacing: 0.3)),
                 ),
               ),
-              const SizedBox(width: 6),
-              // Export all as PDF
+              const SizedBox(width: 7),
+              // Export all as PDF — quiet
               GestureDetector(
                 onTap: () => _exportSessionsPdf(filtered),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                   decoration: BoxDecoration(
-                    color: _coralHdr.withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: _coralHdr.withOpacity(0.2), width: 1)),
+                    color: _cardFill.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: _outline.withOpacity(0.16), width: 1)),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(Icons.picture_as_pdf_rounded, size: 13, color: _coralHdr),
-                    const SizedBox(width: 4),
+                    Icon(Icons.picture_as_pdf_rounded,
+                      size: 12, color: _coralHdr.withOpacity(0.85)),
+                    const SizedBox(width: 5),
                     Text('PDF', style: GoogleFonts.nunito(
-                      fontSize: 11, fontWeight: FontWeight.w700, color: _brown)),
+                      fontSize: 11, fontWeight: FontWeight.w800,
+                      color: _brown, letterSpacing: 0.3)),
                   ]),
                 ),
               ),
             ]),
           ]),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 14),
 
-        // Search bar
+        // Search bar — soft pill, no heavy borders
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Container(
             decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: _outline.withOpacity(0.08), width: 1.5)),
+              color: _cardFill.withOpacity(0.55),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: _outline.withOpacity(0.14), width: 1)),
             child: TextField(
               controller: _searchCtrl,
               style: GoogleFonts.nunito(fontSize: 13, color: _brown),
               onChanged: (v) => setState(() => _query = v),
               decoration: InputDecoration(
-                hintText: 'Search sessions...',
+                hintText: 'Search by title, notes, topic...',
                 hintStyle: GoogleFonts.nunito(fontSize: 13,
-                  color: _brownLt.withOpacity(0.35)),
-                prefixIcon: Icon(Icons.search_rounded, size: 18,
-                  color: _brownLt.withOpacity(0.35)),
+                  color: _brownLt.withOpacity(0.4)),
+                prefixIcon: Icon(Icons.search_rounded, size: 17,
+                  color: _brownLt.withOpacity(0.45)),
                 suffixIcon: _query.isNotEmpty ? GestureDetector(
                   onTap: () { _searchCtrl.clear(); setState(() => _query = ''); },
-                  child: Icon(Icons.close_rounded, size: 16,
-                    color: _brownLt.withOpacity(0.4)),
+                  child: Icon(Icons.close_rounded, size: 15,
+                    color: _brownLt.withOpacity(0.5)),
                 ) : null,
                 border: InputBorder.none,
                 contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 12, vertical: 10)),
+                  horizontal: 12, vertical: 11)),
             ),
           ),
         ),
@@ -2793,19 +4067,23 @@ class _PastSessionsSheetState extends State<_PastSessionsSheet> {
       onTap: () => setState(() => _filterType = type),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         decoration: BoxDecoration(
-          color: sel ? color.withOpacity(0.15) : Colors.white,
+          color: sel ? color.withOpacity(0.16) : Colors.transparent,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: sel ? color.withOpacity(0.35) : _outline.withOpacity(0.08),
-            width: sel ? 1.5 : 1)),
+            color: sel ? color.withOpacity(0.45) : _outline.withOpacity(0.16),
+            width: 1)),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, size: 13, color: sel ? color : _brownLt.withOpacity(0.4)),
-          const SizedBox(width: 5),
+          if (sel) ...[
+            Container(width: 5, height: 5,
+              decoration: BoxDecoration(
+                color: color, shape: BoxShape.circle)),
+            const SizedBox(width: 7),
+          ],
           Text(label, style: GoogleFonts.nunito(
-            fontSize: 11, fontWeight: sel ? FontWeight.w700 : FontWeight.w500,
-            color: sel ? _brown : _brownLt)),
+            fontSize: 11, fontWeight: FontWeight.w800,
+            color: sel ? _brown : _brownLt, letterSpacing: 0.3)),
         ]),
       ),
     );
@@ -2825,13 +4103,12 @@ class _PastSessionsSheetState extends State<_PastSessionsSheet> {
     final isSelected = _selected.contains(index);
 
     Color typeColor;
-    Color typeColorLt;
     switch (type) {
-      case 'focused': typeColor = _pinkHdr; typeColorLt = _pinkLt; break;
-      case 'review': typeColor = _skyHdr; typeColorLt = _skyLt; break;
-      case 'practice': typeColor = _greenHdr; typeColorLt = _greenLt; break;
-      case 'lecture': typeColor = _purpleHdr; typeColorLt = _purpleLt; break;
-      default: typeColor = _pinkHdr; typeColorLt = _pinkLt;
+      case 'focused': typeColor = _pinkHdr; break;
+      case 'review': typeColor = _skyHdr; break;
+      case 'practice': typeColor = _greenHdr; break;
+      case 'lecture': typeColor = _purpleHdr; break;
+      default: typeColor = _pinkHdr;
     }
 
     IconData typeIcon;
@@ -2856,68 +4133,86 @@ class _PastSessionsSheetState extends State<_PastSessionsSheet> {
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        margin: const EdgeInsets.only(bottom: 8),
+        margin: const EdgeInsets.only(bottom: 10),
         decoration: BoxDecoration(
-          color: isSelected ? _skyHdr.withOpacity(0.04) : Colors.white,
+          color: isSelected
+              ? _oliveBg.withOpacity(0.6)
+              : _cardFill.withOpacity(0.6),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: isSelected
-                ? _skyHdr.withOpacity(0.35)
-                : isExpanded ? typeColor.withOpacity(0.25) : _outline.withOpacity(0.08),
-            width: isSelected || isExpanded ? 2 : 1.5)),
+          border: Border(
+            left: BorderSide(color: typeColor.withOpacity(0.65),
+              width: isExpanded ? 4 : 3),
+            top: BorderSide(
+              color: isSelected
+                  ? _oliveDk.withOpacity(0.4)
+                  : _outline.withOpacity(0.14), width: 1),
+            right: BorderSide(
+              color: isSelected
+                  ? _oliveDk.withOpacity(0.4)
+                  : _outline.withOpacity(0.14), width: 1),
+            bottom: BorderSide(
+              color: isSelected
+                  ? _oliveDk.withOpacity(0.4)
+                  : _outline.withOpacity(0.14), width: 1))),
         child: Column(children: [
-          // Header strip
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(colors: [
-                typeColorLt.withOpacity(0.3), typeColor.withOpacity(0.15)]),
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(12), topRight: Radius.circular(12))),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 12, 4),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                if (_selectMode) ...[
+                  Icon(
+                    isSelected ? Icons.check_circle_rounded
+                        : Icons.radio_button_unchecked_rounded,
+                    size: 18,
+                    color: isSelected ? _oliveDk : _brownLt.withOpacity(0.35)),
+                  const SizedBox(width: 9),
+                ],
+                Icon(typeIcon, size: 13, color: typeColor),
+                const SizedBox(width: 6),
+                Text(type[0].toUpperCase() + type.substring(1),
+                  style: GoogleFonts.nunito(
+                    fontSize: 11, fontWeight: FontWeight.w900,
+                    color: _brown, letterSpacing: 0.6)),
+                if (title != null && title.isNotEmpty) ...[
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 7),
+                    child: Text('·', style: GoogleFonts.nunito(
+                      fontSize: 14, fontWeight: FontWeight.w900,
+                      color: _outline.withOpacity(0.4)))),
+                  Expanded(child: Text(title, style: GoogleFonts.nunito(
+                    fontSize: 12, fontWeight: FontWeight.w700,
+                    color: _brown, letterSpacing: 0.2),
+                    overflow: TextOverflow.ellipsis)),
+                ] else
+                  const Spacer(),
+                if (created != null)
+                  Text('${created.month}/${created.day}',
+                    style: GoogleFonts.nunito(
+                      fontSize: 10, fontWeight: FontWeight.w700,
+                      color: _inkSoft, letterSpacing: 0.3)),
+                if (!_selectMode) ...[
+                  const SizedBox(width: 6),
+                  AnimatedRotation(
+                    turns: isExpanded ? 0.5 : 0.0,
+                    duration: const Duration(milliseconds: 200),
+                    child: Icon(Icons.expand_more_rounded, size: 16,
+                      color: _brownLt.withOpacity(0.45))),
+                ],
+              ]),
+          ),
+          // Stats row — quiet inline stats
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 4, 14, 12),
             child: Row(children: [
-              // Checkbox in select mode
-              if (_selectMode) ...[
-                Icon(
-                  isSelected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
-                  size: 18,
-                  color: isSelected ? _skyHdr : _brownLt.withOpacity(0.3)),
-                const SizedBox(width: 6),
-              ],
-              Icon(typeIcon, size: 14, color: typeColor),
-              const SizedBox(width: 6),
-              Text(type[0].toUpperCase() + type.substring(1),
-                style: GoogleFonts.gaegu(fontSize: 14,
-                  fontWeight: FontWeight.w700, color: _brown)),
-              if (title != null && title.isNotEmpty) ...[
-                Text(' — ', style: GoogleFonts.nunito(fontSize: 11, color: _brownLt)),
-                Expanded(child: Text(title, style: GoogleFonts.nunito(
-                  fontSize: 11, fontWeight: FontWeight.w600, color: _brown),
-                  overflow: TextOverflow.ellipsis)),
-              ] else
-                const Spacer(),
-              if (created != null)
-                Text('${created.month}/${created.day}', style: GoogleFonts.nunito(
-                  fontSize: 11, color: _brownLt)),
-              if (!_selectMode) ...[
-                const SizedBox(width: 6),
-                AnimatedRotation(
-                  turns: isExpanded ? 0.5 : 0.0,
-                  duration: const Duration(milliseconds: 200),
-                  child: Icon(Icons.expand_more_rounded, size: 16,
-                    color: _brownLt.withOpacity(0.4))),
+              _tinyPill(Icons.timer_rounded, '${mins}m', _pinkHdr),
+              const SizedBox(width: 7),
+              _tinyPill(Icons.bolt_rounded, '+$xp', _goldDk),
+              if (focus != null) ...[
+                const SizedBox(width: 7),
+                _tinyPill(Icons.speed_rounded, '$focus%', _greenDk),
               ],
             ]),
           ),
-          // Stats row always visible
-          Padding(padding: const EdgeInsets.fromLTRB(12, 8, 12, 8), child: Row(children: [
-            _tinyPill(Icons.timer_rounded, '${mins}m', _pinkHdr),
-            const SizedBox(width: 6),
-            _tinyPill(Icons.star_rounded, '+${xp} XP', _goldHdr),
-            if (focus != null) ...[
-              const SizedBox(width: 6),
-              _tinyPill(Icons.speed_rounded, '${focus}%', _greenHdr),
-            ],
-          ])),
           // Expanded detail
           if (isExpanded && !_selectMode) ...[
             Divider(height: 1, color: _outline.withOpacity(0.06)),
@@ -3041,19 +4336,13 @@ class _PastSessionsSheetState extends State<_PastSessionsSheet> {
   }
 
   Widget _tinyPill(IconData icon, String text, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.2), width: 1)),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(icon, size: 10, color: color),
-        const SizedBox(width: 3),
-        Text(text, style: GoogleFonts.gaegu(
-          fontSize: 11, fontWeight: FontWeight.w700, color: color)),
-      ]),
-    );
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      Icon(icon, size: 12, color: color.withOpacity(0.85)),
+      const SizedBox(width: 5),
+      Text(text, style: GoogleFonts.nunito(
+        fontSize: 12, fontWeight: FontWeight.w800,
+        color: _brown, letterSpacing: 0.2)),
+    ]);
   }
 }
 
@@ -3125,17 +4414,20 @@ class _RingPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = size.width / 2 - 10;
-    const strokeW = 10.0;
+    const bgStrokeW = 6.0;
+    const fgStrokeW = 8.0;
 
+    // Quiet background track — thinner, lower contrast
     canvas.drawCircle(center, radius,
-      Paint()..style = PaintingStyle.stroke..strokeWidth = strokeW..color = bgColor);
+      Paint()..style = PaintingStyle.stroke..strokeWidth = bgStrokeW
+        ..color = bgColor);
 
     if (progress > 0) {
       final sweep = 2 * math.pi * progress;
       canvas.drawArc(
         Rect.fromCircle(center: center, radius: radius),
         -math.pi / 2, sweep, false,
-        Paint()..style = PaintingStyle.stroke..strokeWidth = strokeW
+        Paint()..style = PaintingStyle.stroke..strokeWidth = fgStrokeW
           ..strokeCap = StrokeCap.round
           ..color = Color.lerp(color1, color2, progress) ?? color2);
     }
@@ -3229,16 +4521,17 @@ class _MilestoneToast extends StatelessWidget {
           offset: Offset(0, -20 * (1 - t)),
           child: child)),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
-          gradient: const LinearGradient(colors: [Color(0xFFFFF8E0), Color(0xFFFFF0C0)]),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: _goldDk.withOpacity(0.3), width: 2),
-          boxShadow: [BoxShadow(color: _goldDk.withOpacity(0.15),
-            offset: const Offset(0, 3), blurRadius: 0)]),
+          color: _cardFill.withOpacity(0.96),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: _outline.withOpacity(0.16), width: 1),
+          boxShadow: [BoxShadow(color: _brown.withOpacity(0.06),
+            offset: const Offset(0, 4), blurRadius: 14)]),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(Icons.celebration_rounded, size: 16, color: _goldDk),
-          const SizedBox(width: 8),
+          Container(width: 3, height: 20, decoration: BoxDecoration(
+            color: _goldDk, borderRadius: BorderRadius.circular(2))),
+          const SizedBox(width: 10),
           Flexible(child: Text(msg, style: GoogleFonts.gaegu(
             fontSize: 15, fontWeight: FontWeight.w700, color: _brown))),
         ]),
@@ -3259,32 +4552,40 @@ class _DurationChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final accent = isCustom ? _purpleDk : _oliveDk;
     return Expanded(child: GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(vertical: 10),
+        padding: const EdgeInsets.symmetric(vertical: 14),
         decoration: BoxDecoration(
-          gradient: selected ? LinearGradient(
-            begin: Alignment.topCenter, end: Alignment.bottomCenter,
-            colors: isCustom ? [_purpleLt, _purpleHdr] : [_greenLt, _greenHdr]) : null,
-          color: selected ? null : Colors.white,
-          borderRadius: BorderRadius.circular(12),
+          color: selected
+              ? accent.withOpacity(0.42)
+              : const Color(0xFFFFF8F0),
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: selected
-                ? (isCustom ? _purpleDk : _greenDk).withOpacity(0.4)
-                : _outline.withOpacity(0.1),
-            width: selected ? 2 : 1.5),
-          boxShadow: selected ? [BoxShadow(
-            color: (isCustom ? _purpleDk : _greenDk).withOpacity(0.15),
-            offset: const Offset(0, 2), blurRadius: 0)] : []),
+                ? accent.withOpacity(0.75)
+                : _outline.withOpacity(0.28),
+            width: 1.6),
+          boxShadow: [
+            BoxShadow(
+              color: selected
+                  ? accent.withOpacity(0.32)
+                  : _outline.withOpacity(0.18),
+              offset: const Offset(2, 3),
+              blurRadius: 0,
+            ),
+          ],
+        ),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text(label, style: GoogleFonts.gaegu(
-            fontSize: 15, fontWeight: FontWeight.w700,
-            color: selected ? Colors.white : _brown)),
+          Text(label, style: const TextStyle(
+            fontFamily: 'Bitroad', fontSize: 16, color: _brown)),
+          const SizedBox(height: 2),
           Text(desc, style: GoogleFonts.nunito(
-            fontSize: 9, fontWeight: FontWeight.w500,
-            color: selected ? Colors.white.withOpacity(0.8) : _brownLt)),
+            fontSize: 9.5, fontWeight: FontWeight.w800,
+            color: selected ? _brown.withOpacity(0.75) : _inkSoft,
+            letterSpacing: 0.6)),
         ]),
       ),
     ));
@@ -3314,17 +4615,17 @@ class _CircleBtnState extends State<_CircleBtn> {
       onTapCancel: () => setState(() => _p = false),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 60),
-        transform: Matrix4.translationValues(0, _p ? 3 : 0, 0),
+        transform: Matrix4.translationValues(0, _p ? 2 : 0, 0),
         width: widget.size, height: widget.size,
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter, end: Alignment.bottomCenter,
             colors: [widget.gradTop, widget.gradBot]),
           shape: BoxShape.circle,
-          border: Border.all(color: widget.borderColor.withOpacity(0.5), width: 2.5),
+          border: Border.all(color: widget.borderColor.withOpacity(0.35), width: 1.4),
           boxShadow: _p ? [] : [BoxShadow(
-            color: widget.shadowColor.withOpacity(0.35),
-            offset: const Offset(0, 3), blurRadius: 0)]),
+            color: widget.shadowColor.withOpacity(0.18),
+            offset: const Offset(0, 4), blurRadius: 12)]),
         child: Icon(widget.icon, size: widget.iconSize, color: Colors.white),
       ),
     );
@@ -3354,7 +4655,7 @@ class _GameButtonState extends State<_GameButton> {
       onTapCancel: () => setState(() => _p = false),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 60),
-        transform: Matrix4.translationValues(0, _p ? 4 : 0, 0),
+        transform: Matrix4.translationValues(0, _p ? 2 : 0, 0),
         width: double.infinity,
         padding: const EdgeInsets.symmetric(vertical: 14),
         decoration: BoxDecoration(
@@ -3362,10 +4663,10 @@ class _GameButtonState extends State<_GameButton> {
             begin: Alignment.topCenter, end: Alignment.bottomCenter,
             colors: [widget.gradTop, widget.gradBot]),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: widget.borderColor.withOpacity(0.5), width: 2.5),
+          border: Border.all(color: widget.borderColor.withOpacity(0.35), width: 1.4),
           boxShadow: _p ? [] : [BoxShadow(
-            color: widget.borderColor.withOpacity(0.35),
-            offset: const Offset(0, 4), blurRadius: 0)]),
+            color: widget.borderColor.withOpacity(0.22),
+            offset: const Offset(0, 5), blurRadius: 14)]),
         child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
           if (widget.loading)
             SizedBox(width: 20, height: 20,
@@ -3373,8 +4674,8 @@ class _GameButtonState extends State<_GameButton> {
           else
             Icon(widget.icon, size: 22, color: Colors.white),
           const SizedBox(width: 8),
-          Text(widget.label, style: GoogleFonts.gaegu(
-            fontSize: 22, fontWeight: FontWeight.w700, color: Colors.white)),
+          Text(widget.label, style: const TextStyle(
+            fontFamily: 'Bitroad', fontSize: 18, color: Colors.white)),
         ]),
       ),
     );
@@ -3408,4 +4709,595 @@ class _PawPrintBg extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter old) => false;
+}
+
+//   • thin horizontal hairlines every 32px — the "lines" on the page
+//   • soft vertical margin line at x=52 — the classic notebook gutter
+//   • both drawn in very low-opacity _outline so they recede behind text
+class _RuledPaperBg extends CustomPainter {
+  final Color line;
+  final Color margin;
+  final double lineSpacing;
+  final double marginX;
+  _RuledPaperBg({
+    required this.line,
+    required this.margin,
+    this.lineSpacing = 32,
+    this.marginX = 52,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final linePaint = Paint()
+      ..color = line
+      ..strokeWidth = 1
+      ..style = PaintingStyle.stroke;
+    // horizontal rules — start a bit below the top so the first line
+    // sits under the first line of text, not flush with the container edge
+    for (double y = lineSpacing + 4; y < size.height - 8; y += lineSpacing) {
+      canvas.drawLine(Offset(18, y), Offset(size.width - 18, y), linePaint);
+    }
+    // left-margin vertical gutter line — warm pink-ish accent, like a
+    // real composition notebook
+    final marginPaint = Paint()
+      ..color = margin
+      ..strokeWidth = 1
+      ..style = PaintingStyle.stroke;
+    canvas.drawLine(
+      Offset(marginX, 8),
+      Offset(marginX, size.height - 8),
+      marginPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _RuledPaperBg old) =>
+      old.line != line || old.margin != margin ||
+      old.lineSpacing != lineSpacing || old.marginX != marginX;
+}
+
+//  NOTES EDITOR — full-screen notes-app route
+class _NotesEditorRoute extends StatefulWidget {
+  final TextEditingController notesCtrl;
+  final TextEditingController topicCtrl;
+  final List<String> topics;
+  final bool bold;
+  final bool italic;
+  final ValueChanged<bool> onBoldChange;
+  final ValueChanged<bool> onItalicChange;
+  final VoidCallback onTopicsChange;
+  final VoidCallback onExportPdf;
+  final VoidCallback onRefresh;
+  final String sessionTitle;
+  final String? subjectName;
+  final Color? subjectColor;
+  final int studiedMin;
+  final String sessionType;
+
+  const _NotesEditorRoute({
+    required this.notesCtrl,
+    required this.topicCtrl,
+    required this.topics,
+    required this.bold,
+    required this.italic,
+    required this.onBoldChange,
+    required this.onItalicChange,
+    required this.onTopicsChange,
+    required this.onExportPdf,
+    required this.onRefresh,
+    required this.sessionTitle,
+    required this.subjectName,
+    required this.subjectColor,
+    required this.studiedMin,
+    required this.sessionType,
+  });
+
+  @override
+  State<_NotesEditorRoute> createState() => _NotesEditorRouteState();
+}
+
+class _NotesEditorRouteState extends State<_NotesEditorRoute> {
+  late bool _bold;
+  late bool _italic;
+
+  @override
+  void initState() {
+    super.initState();
+    _bold = widget.bold;
+    _italic = widget.italic;
+  }
+
+  int get _wordCount {
+    final t = widget.notesCtrl.text.trim();
+    if (t.isEmpty) return 0;
+    return t.split(RegExp(r'\s+')).length;
+  }
+
+  int get _charCount => widget.notesCtrl.text.length;
+  int get _lineCount => widget.notesCtrl.text.split('\n').length;
+
+  void _insertAtCursor(String txt) {
+    final t = widget.notesCtrl.text;
+    final sel = widget.notesCtrl.selection;
+    final start = sel.isValid ? sel.start : t.length;
+    final end = sel.isValid ? sel.end : t.length;
+    final newT = t.replaceRange(start, end, txt);
+    widget.notesCtrl.text = newT;
+    widget.notesCtrl.selection = TextSelection.collapsed(offset: start + txt.length);
+    setState(() {});
+    widget.onRefresh();
+  }
+
+  void _addBullet() {
+    final t = widget.notesCtrl.text;
+    final ins = t.isEmpty || t.endsWith('\n') ? '\u2022 ' : '\n\u2022 ';
+    _insertAtCursor(ins);
+  }
+
+  void _addNumbered() {
+    final lines = widget.notesCtrl.text.split('\n');
+    final n = lines.where((l) => RegExp(r'^\d+\.').hasMatch(l)).length + 1;
+    final t = widget.notesCtrl.text;
+    final ins = t.isEmpty || t.endsWith('\n') ? '$n. ' : '\n$n. ';
+    _insertAtCursor(ins);
+  }
+
+  void _addHeading() {
+    final t = widget.notesCtrl.text;
+    final ins = t.isEmpty || t.endsWith('\n') ? '## ' : '\n## ';
+    _insertAtCursor(ins);
+  }
+
+  void _addCheck() {
+    final t = widget.notesCtrl.text;
+    final ins = t.isEmpty || t.endsWith('\n') ? '\u25A1 ' : '\n\u25A1 ';
+    _insertAtCursor(ins);
+  }
+
+  Widget _toolBtn(IconData icon, bool active, VoidCallback onTap, {String? tip}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 32, height: 32,
+        decoration: BoxDecoration(
+          color: active ? _oliveBg.withOpacity(0.7) : Colors.transparent,
+          borderRadius: BorderRadius.circular(9),
+          border: Border.all(
+            color: active ? _oliveDk.withOpacity(0.45)
+                : _outline.withOpacity(0.14), width: 1)),
+        child: Icon(icon, size: 15,
+          color: active ? _oliveDk : _brownLt.withOpacity(0.75)),
+      ),
+    );
+  }
+
+  // Matches dashboard _sectionTitle: olive 16×16 icon + Bitroad 16
+  // label + 7px gap + 13px bottom margin. The optional Gaegu sub
+  // becomes a right-aligned whisper so the header reads calm but
+  // has a single tiny italic pop.
+  Widget _sectionHdr(String label, IconData icon, {Color? accent, String? sub}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+        Icon(icon, size: 19, color: accent ?? _oliveDk),
+        const SizedBox(width: 9),
+        Text(label, style: const TextStyle(
+          fontFamily: 'Bitroad', fontSize: 19, color: _brown)),
+        if (sub != null) ...[
+          const SizedBox(width: 12),
+          Expanded(child: Text(sub, style: GoogleFonts.gaegu(
+            fontSize: 14.5, fontWeight: FontWeight.w500,
+            fontStyle: FontStyle.italic,
+            color: _brownLt.withOpacity(0.85)),
+            overflow: TextOverflow.ellipsis, textAlign: TextAlign.right)),
+        ],
+      ]),
+    );
+  }
+
+  @override
+  Widget build(BuildContext ctx) {
+    final mq = MediaQuery.of(ctx);
+
+    Widget sectionDivider() => Padding(
+      padding: const EdgeInsets.symmetric(vertical: 18),
+      child: Container(height: 1, color: _outline.withOpacity(0.1)),
+    );
+
+    Widget documentSection() => Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min, children: [
+        _sectionHdr('Document', Icons.description_rounded,
+          accent: _oliveDk, sub: 'this session'),
+        Text(widget.sessionTitle, style: const TextStyle(
+          fontFamily: 'Bitroad', fontSize: 17, color: _brown,
+          height: 1.2)),
+        if (widget.subjectName != null) Padding(
+          padding: const EdgeInsets.only(top: 9),
+          child: Row(children: [
+            Container(width: 8, height: 8, decoration: BoxDecoration(
+              color: widget.subjectColor ?? _olive,
+              shape: BoxShape.circle)),
+            const SizedBox(width: 8),
+            Flexible(child: Text(widget.subjectName!,
+              style: GoogleFonts.nunito(fontSize: 13,
+                fontWeight: FontWeight.w700, color: _brownLt),
+              overflow: TextOverflow.ellipsis)),
+          ]),
+        ),
+        const SizedBox(height: 18),
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('STUDIED', style: GoogleFonts.nunito(
+                fontSize: 10.5, fontWeight: FontWeight.w900,
+                color: _inkSoft, letterSpacing: 1.4)),
+              const SizedBox(height: 6),
+              Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                Text('${widget.studiedMin}', style: const TextStyle(
+                  fontFamily: 'Bitroad', fontSize: 24, color: _brown, height: 1)),
+                const SizedBox(width: 4),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 3),
+                  child: Text('min', style: GoogleFonts.nunito(
+                    fontSize: 12, fontWeight: FontWeight.w700, color: _brownLt))),
+              ]),
+            ])),
+          Expanded(child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('TYPE', style: GoogleFonts.nunito(
+                fontSize: 10.5, fontWeight: FontWeight.w900,
+                color: _inkSoft, letterSpacing: 1.4)),
+              const SizedBox(height: 6),
+              Text(widget.sessionType, style: GoogleFonts.nunito(
+                fontSize: 15, fontWeight: FontWeight.w800,
+                color: _brown)),
+            ])),
+        ]),
+      ]);
+
+    Widget topicsSection() => Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min, children: [
+        _sectionHdr('Topics', Icons.tag_rounded,
+          accent: _purpleDk, sub: 'tag the thinking'),
+        if (widget.topics.isEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text('no topics yet — tag your work below',
+              style: GoogleFonts.nunito(
+                fontSize: 13, fontWeight: FontWeight.w600,
+                fontStyle: FontStyle.italic,
+                color: _brownLt.withOpacity(0.75))),
+          )
+        else
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Wrap(spacing: 8, runSpacing: 8,
+              children: widget.topics.map((t) => Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                decoration: BoxDecoration(
+                  color: _purpleLt.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(
+                    color: _purpleHdr.withOpacity(0.35), width: 1)),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Text(t, style: GoogleFonts.nunito(
+                    fontSize: 13, fontWeight: FontWeight.w700,
+                    color: _brown, letterSpacing: 0.2)),
+                  const SizedBox(width: 7),
+                  GestureDetector(
+                    onTap: () {
+                      setState(() => widget.topics.remove(t));
+                      widget.onTopicsChange();
+                    },
+                    child: Icon(Icons.close_rounded, size: 13,
+                      color: _purpleDk.withOpacity(0.6))),
+                ]),
+              )).toList()),
+          ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.7),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: _outline.withOpacity(0.15), width: 1)),
+          child: Row(children: [
+            Icon(Icons.add_rounded, size: 16,
+              color: _brownLt.withOpacity(0.8)),
+            const SizedBox(width: 7),
+            Expanded(child: TextField(
+              controller: widget.topicCtrl,
+              style: GoogleFonts.nunito(
+                fontSize: 13.5, color: _brown, fontWeight: FontWeight.w700),
+              decoration: InputDecoration(
+                hintText: 'Add topic & press enter',
+                hintStyle: GoogleFonts.nunito(
+                  fontSize: 13.5, color: _brownLt.withOpacity(0.45)),
+                border: InputBorder.none, isDense: true,
+                contentPadding: EdgeInsets.zero),
+              onSubmitted: (v) {
+                if (v.trim().isNotEmpty) {
+                  setState(() {
+                    widget.topics.add(v.trim());
+                    widget.topicCtrl.clear();
+                  });
+                  widget.onTopicsChange();
+                }
+              },
+            )),
+          ]),
+        ),
+      ]);
+
+    // NOTE: "Document Stats" sidebar section removed — word/char count
+    // now lives in ONE place (bottom-right of the paper itself). The
+    // sidebar was showing the same numbers a second time.
+
+    Widget briefPanel() => Container(
+      padding: const EdgeInsets.fromLTRB(22, 22, 22, 22),
+      decoration: BoxDecoration(
+        color: _cardFill.withOpacity(0.55),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _outline.withOpacity(0.14), width: 1)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min, children: [
+          documentSection(),
+          sectionDivider(),
+          topicsSection(),
+        ]),
+    );
+
+    //   ONE surface. No banner-bar / toolbar-bar / page / footer-bar
+    //   stack. Just a single cream page with ruled lines, an inline
+    //   italic prompt at the top, a tiny floating tool-pill in the
+    //   corner, and a single quiet word counter at the bottom.
+    //
+    //   Everything else was redundant: the outer rounded rectangle
+    //   was reading as "a white box AROUND a paper", the prompt
+    //   banner doubled the page header, the toolbar ribbon competed
+    //   with the page, and word/char count appeared three times.
+    final promptText = widget.topics.isNotEmpty
+      ? 'what stuck with you about ${widget.topics.first}?'
+      : widget.subjectName != null
+        ? 'what\'s one thing worth remembering from ${widget.subjectName}?'
+        : 'what\'s one thing worth remembering from today?';
+
+    Widget editor() => ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: Stack(fit: StackFit.expand, children: [
+        Positioned.fill(child: Container(
+          decoration: BoxDecoration(gradient: LinearGradient(
+            begin: Alignment.topLeft, end: Alignment.bottomRight,
+            colors: [
+              const Color(0xFFFDF6E9),
+              const Color(0xFFFFFAF2),
+            ])))),
+        Positioned.fill(child: IgnorePointer(child: CustomPaint(
+          painter: _RuledPaperBg(
+            line: _outline.withOpacity(0.07),
+            margin: _coralHdr.withOpacity(0.30),
+          )))),
+        Positioned(left: 0, right: 0, bottom: 0, height: 26,
+          child: IgnorePointer(child: Container(
+            decoration: BoxDecoration(gradient: LinearGradient(
+              begin: Alignment.topCenter, end: Alignment.bottomCenter,
+              colors: [
+                Colors.transparent,
+                _brown.withOpacity(0.05),
+              ]))))),
+        //    the paper. Must be Positioned.fill so the Stack sizes
+        //    properly; TextField wrapped in a transparent Material
+        //    so it does NOT render an opaque white surface over the
+        //    ruled background.
+        Positioned.fill(child: Padding(
+          padding: const EdgeInsets.fromLTRB(64, 26, 28, 60),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Inline prompt — feels like a friend wrote a note at
+              // the top of the page for you. Gaegu italic in olive.
+              RichText(text: TextSpan(children: [
+                TextSpan(text: 'today — ', style: GoogleFonts.gaegu(
+                  fontSize: 17, fontStyle: FontStyle.italic,
+                  fontWeight: FontWeight.w700, color: _oliveDk)),
+                TextSpan(text: promptText, style: GoogleFonts.gaegu(
+                  fontSize: 17, fontStyle: FontStyle.italic,
+                  fontWeight: FontWeight.w500,
+                  color: _brownLt.withOpacity(0.85))),
+              ])),
+              const SizedBox(height: 18),
+              // The writing area — transparent Material so no white
+              // surface is painted; TextField sits directly on the
+              // ruled paper background.
+              Expanded(child: Material(
+                type: MaterialType.transparency,
+                child: TextField(
+                  controller: widget.notesCtrl,
+                  cursorColor: _coralHdr,
+                  cursorWidth: 1.6,
+                  style: GoogleFonts.nunito(
+                    fontSize: 16, color: _brown, height: 32 / 16,
+                    fontWeight: _bold ? FontWeight.w800 : FontWeight.w500,
+                    fontStyle: _italic ? FontStyle.italic : FontStyle.normal),
+                  maxLines: null, expands: true,
+                  autofocus: true,
+                  textAlignVertical: TextAlignVertical.top,
+                  decoration: InputDecoration(
+                    hintText: 'start writing…',
+                    hintStyle: GoogleFonts.gaegu(
+                      fontSize: 17, color: _brownLt.withOpacity(0.4),
+                      fontStyle: FontStyle.italic, height: 32 / 17),
+                    filled: false,
+                    fillColor: Colors.transparent,
+                    border: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    disabledBorder: InputBorder.none,
+                    errorBorder: InputBorder.none,
+                    focusedErrorBorder: InputBorder.none,
+                    isDense: true,
+                    contentPadding: EdgeInsets.zero),
+                  onChanged: (_) {
+                    setState(() {});
+                    widget.onRefresh();
+                  },
+                ),
+              )),
+            ]),
+        )),
+        //    over the paper like a clipped-on toolbar
+        Positioned(
+          top: 14, right: 14,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.92),
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(color: _outline.withOpacity(0.14), width: 1),
+              boxShadow: [BoxShadow(
+                color: _brown.withOpacity(0.06),
+                blurRadius: 10, offset: const Offset(0, 2))]),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              _toolBtn(Icons.format_bold_rounded, _bold, () {
+                setState(() => _bold = !_bold);
+                widget.onBoldChange(_bold);
+              }),
+              const SizedBox(width: 4),
+              _toolBtn(Icons.format_italic_rounded, _italic, () {
+                setState(() => _italic = !_italic);
+                widget.onItalicChange(_italic);
+              }),
+              const SizedBox(width: 8),
+              Container(width: 1, height: 18, color: _outline.withOpacity(0.18)),
+              const SizedBox(width: 8),
+              _toolBtn(Icons.title_rounded, false, _addHeading),
+              const SizedBox(width: 4),
+              _toolBtn(Icons.format_list_bulleted_rounded, false, _addBullet),
+              const SizedBox(width: 4),
+              _toolBtn(Icons.format_list_numbered_rounded, false, _addNumbered),
+              const SizedBox(width: 4),
+              _toolBtn(Icons.check_box_outline_blank_rounded, false, _addCheck),
+            ]),
+          ),
+        ),
+        //    Single source of truth for word count, no sidebar dup.
+        Positioned(
+          left: 64, right: 24, bottom: 20,
+          child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+            Container(width: 6, height: 6, decoration: BoxDecoration(
+              color: _oliveDk.withOpacity(0.6), shape: BoxShape.circle)),
+            const SizedBox(width: 8),
+            Text('autosaved', style: GoogleFonts.gaegu(
+              fontSize: 14, fontStyle: FontStyle.italic,
+              color: _brownLt.withOpacity(0.7))),
+            const Spacer(),
+            Text('$_wordCount words',
+              style: GoogleFonts.gaegu(
+                fontSize: 15, fontStyle: FontStyle.italic,
+                color: _brownLt.withOpacity(0.75))),
+          ]),
+        ),
+      ]),
+    );
+
+    return Material(
+      color: Colors.transparent,
+      child: Stack(children: [
+        // Backdrop blur via gradient
+        Container(decoration: BoxDecoration(gradient: const LinearGradient(
+          begin: Alignment.topLeft, end: Alignment.bottomRight,
+          colors: [_ombre1, _ombre3]))),
+        // Paw print backdrop
+        Positioned.fill(child: CustomPaint(painter: _PawPrintBg())),
+        SafeArea(child: Padding(
+          padding: const EdgeInsets.fromLTRB(22, 18, 22, 16),
+          child: Column(children: [
+            Row(children: [
+              GestureDetector(
+                onTap: () => Navigator.of(ctx).pop(),
+                child: Container(
+                  width: 44, height: 44,
+                  decoration: BoxDecoration(
+                    color: _cardFill.withOpacity(0.85),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: _outline.withOpacity(0.22), width: 1.2)),
+                  child: Icon(Icons.arrow_back_rounded,
+                    size: 22, color: _brown))),
+              const SizedBox(width: 16),
+              Expanded(child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min, children: [
+                  const Text('Notebook', style: TextStyle(
+                    fontFamily: 'Bitroad', fontSize: 30,
+                    color: _brown, height: 1.05)),
+                  const SizedBox(height: 4),
+                  Text('capture your thinking',
+                    style: GoogleFonts.nunito(fontSize: 13,
+                      fontWeight: FontWeight.w700, color: _inkSoft,
+                      letterSpacing: 0.3),
+                    overflow: TextOverflow.ellipsis),
+                ])),
+              const SizedBox(width: 10),
+              GestureDetector(
+                onTap: widget.onExportPdf,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 15, vertical: 11),
+                  decoration: BoxDecoration(
+                    color: _cardFill.withOpacity(0.6),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: _outline.withOpacity(0.2), width: 1)),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.picture_as_pdf_rounded,
+                      size: 14, color: _coralHdr.withOpacity(0.85)),
+                    const SizedBox(width: 7),
+                    Text('Export', style: GoogleFonts.nunito(
+                      fontSize: 13, fontWeight: FontWeight.w800,
+                      color: _brown, letterSpacing: 0.3)),
+                  ]),
+                ),
+              ),
+            ]),
+            const SizedBox(height: 18),
+            Expanded(child: Padding(
+              padding: EdgeInsets.only(bottom: mq.viewInsets.bottom),
+              child: LayoutBuilder(builder: (ctx, c) {
+                final wide = c.maxWidth > 720;
+                if (wide) {
+                  return Row(crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Unified sidebar — fills full height
+                      SizedBox(
+                        width: 320,
+                        height: c.maxHeight,
+                        child: SingleChildScrollView(
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(minHeight: c.maxHeight),
+                            child: briefPanel(),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 24),
+                      // Editor — fills remaining
+                      Expanded(child: editor()),
+                    ]);
+                }
+                // Narrow stacked
+                return SingleChildScrollView(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      briefPanel(),
+                      const SizedBox(height: 14),
+                      SizedBox(height: c.maxHeight * 0.62, child: editor()),
+                    ]),
+                );
+              }),
+            )),
+          ]),
+        )),
+      ]),
+    );
+  }
 }
