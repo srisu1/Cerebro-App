@@ -117,33 +117,36 @@ class _DailyTabState extends ConsumerState<DailyTab>
     _prefs = await SharedPreferences.getInstance();
     final today = _todayKey();
 
-    // Morning items (persist across days).
+    // Morning items (persist across days). ALL lists must be growable
+    // because _addMorningItem / _addEveningItem call .add() on them.
     final mItemsJson = _prefs.getString('daily_morning_items');
     _morningItems = mItemsJson != null
-        ? List<String>.from(jsonDecode(mItemsJson))
-        : List<String>.from(_defaultMorning);
+        ? List<String>.from(jsonDecode(mItemsJson) as List, growable: true)
+        : List<String>.from(_defaultMorning, growable: true);
 
     // Morning done (per-day).
     final mDoneJson = _prefs.getString('daily_morning_done_$today');
     _morningDone = mDoneJson != null
-        ? List<bool>.from(jsonDecode(mDoneJson))
-        : List<bool>.filled(_morningItems.length, false);
+        ? List<bool>.from(jsonDecode(mDoneJson) as List, growable: true)
+        : List<bool>.filled(_morningItems.length, false, growable: true);
     // Guard against length mismatch after edits:
     if (_morningDone.length != _morningItems.length) {
-      _morningDone = List<bool>.filled(_morningItems.length, false);
+      _morningDone =
+          List<bool>.filled(_morningItems.length, false, growable: true);
     }
 
     // Evening items + done.
     final eItemsJson = _prefs.getString('daily_evening_items');
     _eveningItems = eItemsJson != null
-        ? List<String>.from(jsonDecode(eItemsJson))
-        : List<String>.from(_defaultEvening);
+        ? List<String>.from(jsonDecode(eItemsJson) as List, growable: true)
+        : List<String>.from(_defaultEvening, growable: true);
     final eDoneJson = _prefs.getString('daily_evening_done_$today');
     _eveningDone = eDoneJson != null
-        ? List<bool>.from(jsonDecode(eDoneJson))
-        : List<bool>.filled(_eveningItems.length, false);
+        ? List<bool>.from(jsonDecode(eDoneJson) as List, growable: true)
+        : List<bool>.filled(_eveningItems.length, false, growable: true);
     if (_eveningDone.length != _eveningItems.length) {
-      _eveningDone = List<bool>.filled(_eveningItems.length, false);
+      _eveningDone =
+          List<bool>.filled(_eveningItems.length, false, growable: true);
     }
 
     if (!mounted) return;
@@ -593,9 +596,11 @@ class _DailyTabState extends ConsumerState<DailyTab>
   }
 
   Widget _card({required Widget child}) {
+    // Warmer cream tint + lower opacity so the ombre + paw-print bg
+    // shows through and the page does not feel "white".
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.92),
+        color: _cardFill.withOpacity(0.72),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: _outline.withOpacity(0.22), width: 1.5),
         boxShadow: [
@@ -1070,11 +1075,13 @@ class _DailyTabState extends ConsumerState<DailyTab>
             opacity: anim.value,
             child: Transform.scale(
               scale: 0.92 + 0.08 * anim.value,
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(28),
-                  child: Container(
-                    constraints: const BoxConstraints(maxWidth: 340),
+              child: Material(
+                type: MaterialType.transparency,
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(28),
+                    child: Container(
+                      constraints: const BoxConstraints(maxWidth: 340),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(18),
@@ -1173,6 +1180,7 @@ class _DailyTabState extends ConsumerState<DailyTab>
                             ),
                           ]),
                         ]),
+                    ),
                   ),
                 ),
               ),
@@ -1626,139 +1634,145 @@ class _RoutineTextDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(28),
-        child: Container(
-          constraints: const BoxConstraints(maxWidth: 360),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: _outline, width: 2),
-            boxShadow: [
-              BoxShadow(
-                color: _outline.withOpacity(0.4),
-                offset: const Offset(0, 5),
-                blurRadius: 0,
-              ),
-            ],
+    return Material(
+      type: MaterialType.transparency,
+      child: Center(
+        child: SingleChildScrollView(
+          padding: EdgeInsets.only(
+            left: 28,
+            right: 28,
+            top: 28,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 28,
           ),
-          padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Row(children: [
-              Icon(Icons.edit_rounded, size: 20, color: _oliveDk),
-              const SizedBox(width: 8),
-              Text(
-                title,
-                style: const TextStyle(
-                  fontFamily: 'Bitroad',
-                  fontSize: 19,
-                  color: _brown,
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 360),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: _outline, width: 2),
+              boxShadow: [
+                BoxShadow(
+                  color: _outline.withOpacity(0.4),
+                  offset: const Offset(0, 5),
+                  blurRadius: 0,
                 ),
-              ),
-              const Spacer(),
-              GestureDetector(
-                onTap: () => Navigator.of(context).pop(),
-                child: Icon(Icons.close_rounded,
-                    size: 20, color: _brownSoft),
-              ),
-            ]),
-            const SizedBox(height: 14),
-            Theme(
-              data: Theme.of(context).copyWith(
-                inputDecorationTheme: const InputDecorationTheme(
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                ),
-              ),
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                decoration: BoxDecoration(
-                  color: _cream.withOpacity(0.5),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                      color: _outline.withOpacity(0.3), width: 1.2),
-                ),
-                child: TextField(
-                  controller: controller,
-                  autofocus: true,
-                  onSubmitted: (v) => onSubmit(v),
-                  decoration: InputDecoration(
-                    hintText: 'Step name',
-                    hintStyle: GoogleFonts.nunito(
-                        fontSize: 14, color: _brownSoft),
-                    border: InputBorder.none,
-                    isDense: true,
-                  ),
-                  style: GoogleFonts.nunito(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: _brown,
-                  ),
-                ),
-              ),
+              ],
             ),
-            const SizedBox(height: 16),
-            Row(children: [
-              Expanded(
-                child: GestureDetector(
-                  onTap: () => Navigator.of(context).pop(),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 11),
-                    decoration: BoxDecoration(
-                      color: _cream,
-                      borderRadius: BorderRadius.circular(11),
-                      border: Border.all(
-                          color: _outline.withOpacity(0.3), width: 1.2),
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(children: [
+                  Icon(Icons.edit_rounded, size: 20, color: _oliveDk),
+                  const SizedBox(width: 8),
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontFamily: 'Bitroad',
+                      fontSize: 19,
+                      color: _brown,
                     ),
-                    child: Center(
-                      child: Text(
-                        'Cancel',
-                        style: GoogleFonts.nunito(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w800,
-                          color: _brown,
+                  ),
+                  const Spacer(),
+                  GestureDetector(
+                    onTap: () => Navigator.of(context).pop(),
+                    child: Icon(Icons.close_rounded,
+                        size: 20, color: _brownSoft),
+                  ),
+                ]),
+                const SizedBox(height: 14),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: _cream.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                        color: _outline.withOpacity(0.3), width: 1.2),
+                  ),
+                  child: TextField(
+                    controller: controller,
+                    autofocus: true,
+                    onSubmitted: (v) => onSubmit(v),
+                    decoration: InputDecoration(
+                      hintText: 'Step name',
+                      hintStyle: GoogleFonts.nunito(
+                          fontSize: 14, color: _brownSoft),
+                      border: InputBorder.none,
+                      isDense: true,
+                    ),
+                    style: GoogleFonts.nunito(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: _brown,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(children: [
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => Navigator.of(context).pop(),
+                      child: Container(
+                        padding:
+                            const EdgeInsets.symmetric(vertical: 11),
+                        decoration: BoxDecoration(
+                          color: _cream,
+                          borderRadius: BorderRadius.circular(11),
+                          border: Border.all(
+                              color: _outline.withOpacity(0.3),
+                              width: 1.2),
+                        ),
+                        child: Center(
+                          child: Text(
+                            'Cancel',
+                            style: GoogleFonts.nunito(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              color: _brown,
+                            ),
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: GestureDetector(
-                  onTap: () => onSubmit(controller.text),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 11),
-                    decoration: BoxDecoration(
-                      color: _olive,
-                      borderRadius: BorderRadius.circular(11),
-                      border: Border.all(color: _oliveDk, width: 1.5),
-                      boxShadow: [
-                        BoxShadow(
-                          color: _oliveDk.withOpacity(0.35),
-                          offset: const Offset(1, 2),
-                          blurRadius: 0,
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => onSubmit(controller.text),
+                      child: Container(
+                        padding:
+                            const EdgeInsets.symmetric(vertical: 11),
+                        decoration: BoxDecoration(
+                          color: _olive,
+                          borderRadius: BorderRadius.circular(11),
+                          border:
+                              Border.all(color: _oliveDk, width: 1.5),
+                          boxShadow: [
+                            BoxShadow(
+                              color: _oliveDk.withOpacity(0.35),
+                              offset: const Offset(1, 2),
+                              blurRadius: 0,
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
-                    child: Center(
-                      child: Text(
-                        primaryLabel,
-                        style: GoogleFonts.nunito(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
+                        child: Center(
+                          child: Text(
+                            primaryLabel,
+                            style: GoogleFonts.nunito(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                            ),
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
-              ),
-            ]),
-          ]),
+                ]),
+              ],
+            ),
+          ),
         ),
       ),
     );
