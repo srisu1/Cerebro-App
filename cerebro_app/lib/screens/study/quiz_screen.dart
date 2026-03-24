@@ -13,6 +13,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:dio/dio.dart';
 import 'package:cerebro_app/providers/auth_provider.dart';
 import 'package:cerebro_app/config/router.dart';
+import 'package:cerebro_app/widgets/upload_notes_modal.dart';
 
 const _ombre1   = Color(0xFFFFFBF7);
 const _ombre2   = Color(0xFFFFF8F3);
@@ -22,19 +23,19 @@ const _cardFill = Color(0xFFFFF8F4);
 const _outline  = Color(0xFF6E5848);
 const _brown    = Color(0xFF4E3828);
 const _brownLt  = Color(0xFF7A5840);
-const _coralHdr = Color(0xFFF0A898);
-const _coralLt  = Color(0xFFF8C0B0);
-const _coralDk  = Color(0xFFD08878);
-const _greenHdr = Color(0xFFA8D5A3);
-const _greenLt  = Color(0xFFC2E8BC);
-const _greenDk  = Color(0xFF88B883);
-const _goldHdr  = Color(0xFFF0D878);
-const _goldLt   = Color(0xFFFFF0C0);
-const _purpleHdr = Color(0xFFCDA8D8);
-const _purpleLt = Color(0xFFD8C0E8);
-const _skyHdr   = Color(0xFF9DD4F0);
-const _skyLt    = Color(0xFFB8E0F8);
-const _pawClr   = Color(0xFFF8BCD0);
+const _coralHdr = Color(0xFFE8B8A8); // softer terracotta
+const _coralLt  = Color(0xFFF2CFC2);
+const _coralDk  = Color(0xFFC8997F);
+const _greenHdr = Color(0xFFB5C4A0); // muted sage
+const _greenLt  = Color(0xFFCCD8B8);
+const _greenDk  = Color(0xFF98A869);
+const _goldHdr  = Color(0xFFE8D4A0); // muted butter
+const _goldLt   = Color(0xFFF4E6BE);
+const _purpleHdr = Color(0xFFC9B8D9); // muted lav
+const _purpleLt = Color(0xFFDCCEE6);
+const _skyHdr   = Color(0xFFB6CBD6); // muted slate
+const _skyLt    = Color(0xFFCCDCE4);
+const _pawClr   = Color(0xFFEAD0CE); // muted blush
 
 class QuizScreen extends ConsumerStatefulWidget {
   const QuizScreen({super.key});
@@ -105,6 +106,13 @@ class _QuizScreenState extends ConsumerState<QuizScreen>
 
   @override
   Widget build(BuildContext context) {
+    // Quiz Hub now follows the same constrained-width layout as My Subjects
+    // and Subject Detail: scale gutters with viewport, but cap the column
+    // so wide-desktop displays don't stretch quiz cards into a giant
+    // letterbox. 0.94 / max 1500 keeps the value in lockstep with the
+    // sibling screens for visual rhythm.
+    final screenW = MediaQuery.of(context).size.width;
+    final contentW = (screenW * 0.94).clamp(360.0, 1500.0);
     return Scaffold(
       backgroundColor: _ombre1,
       body: Stack(children: [
@@ -116,93 +124,121 @@ class _QuizScreenState extends ConsumerState<QuizScreen>
                      _ombre3.withOpacity(0.5), _ombre4.withOpacity(0.6)],
           )),
         ))),
-        SafeArea(child: Column(children: [
-          _header(),
-          const SizedBox(height: 6),
-          _tabBar(),
-          Expanded(child: _loading
-            ? const Center(child: CircularProgressIndicator(color: _coralHdr))
-            : TabBarView(controller: _tabCtrl, children: [
-                _QuizzesTab(
-                  quizzes: _quizzes, subjects: _subjects,
-                  subjectName: _subjectName, subjectColor: _subjectColor,
-                  onRefresh: _loadAll, api: ref.read(apiServiceProvider),
-                  onTakeQuiz: _navigateToQuiz,
-                ),
-                _MaterialsTab(
-                  materials: _materials, subjects: _subjects,
-                  subjectName: _subjectName, subjectColor: _subjectColor,
-                  onRefresh: _loadAll, api: ref.read(apiServiceProvider),
-                  onGenerateQuiz: _generateQuizFromMaterials,
-                ),
-                _ScheduleTab(
-                  schedule: _schedule, subjects: _subjects,
-                  api: ref.read(apiServiceProvider),
-                  onRefresh: _loadAll,
-                  onGenerateNow: _generateScheduledQuiz,
-                ),
-              ])),
-        ])),
+        SafeArea(child: Center(child: SizedBox(
+          width: contentW,
+          child: Column(children: [
+            _header(),
+            const SizedBox(height: 6),
+            _tabBar(),
+            Expanded(child: _loading
+              ? const Center(child: CircularProgressIndicator(color: _coralHdr))
+              : TabBarView(controller: _tabCtrl, children: [
+                  _QuizzesTab(
+                    quizzes: _quizzes, subjects: _subjects,
+                    subjectName: _subjectName, subjectColor: _subjectColor,
+                    onRefresh: _loadAll, api: ref.read(apiServiceProvider),
+                    onTakeQuiz: _navigateToQuiz,
+                  ),
+                  _MaterialsTab(
+                    materials: _materials, subjects: _subjects,
+                    subjectName: _subjectName, subjectColor: _subjectColor,
+                    onRefresh: _loadAll, api: ref.read(apiServiceProvider),
+                    onGenerateQuiz: _generateQuizFromMaterials,
+                  ),
+                  _ScheduleTab(
+                    schedule: _schedule, subjects: _subjects,
+                    api: ref.read(apiServiceProvider),
+                    onRefresh: _loadAll,
+                    onGenerateNow: _generateScheduledQuiz,
+                  ),
+                ])),
+          ]),
+        ))),
       ]),
     );
   }
 
   Widget _header() {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(colors: [_coralLt, _coralHdr]),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: _coralDk.withOpacity(0.3), width: 2),
-        boxShadow: [BoxShadow(color: _coralDk.withOpacity(0.15),
-          offset: const Offset(0, 4), blurRadius: 12)],
-      ),
-      child: Row(children: [
-        GestureDetector(
-          onTap: () => Navigator.of(context).pop(),
-          child: Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.3),
-              borderRadius: BorderRadius.circular(10)),
-            child: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 20),
+    final doneCount = _quizzes.where((q) => q['status'] == 'completed').length;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Back button — cream square with 2px outline + hard shadow (Focus Mode)
+          GestureDetector(
+            onTap: () => Navigator.of(context).maybePop(),
+            child: Container(
+              width: 40, height: 40,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.88),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: _outline.withOpacity(0.22), width: 1.5),
+                boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
+                    offset: const Offset(3, 3), blurRadius: 0)],
+              ),
+              child: const Icon(Icons.arrow_back_rounded, size: 20, color: _brown),
+            ),
           ),
-        ),
-        const SizedBox(width: 12),
-        const Icon(Icons.quiz_rounded, color: Colors.white, size: 22),
-        const SizedBox(width: 8),
-        Expanded(child: Text('Quiz Hub',
-          style: GoogleFonts.gaegu(fontSize: 24, fontWeight: FontWeight.w700, color: Colors.white))),
-        // Stats pill
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.25),
-            borderRadius: BorderRadius.circular(12)),
-          child: Text('${_quizzes.where((q) => q['status'] == 'completed').length} done',
-            style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white)),
-        ),
-      ]),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Quiz Hub',
+                  style: TextStyle(fontFamily: 'Bitroad', fontSize: 26,
+                      color: _brown, height: 1.15)),
+                const SizedBox(height: 2),
+                Text('pick a quiz, pace yourself, earn your stars~',
+                  style: GoogleFonts.gaegu(fontSize: 15, fontWeight: FontWeight.w600,
+                      color: _brownLt, height: 1.3)),
+              ],
+            ),
+          ),
+          // Trailing stats pill
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: _greenHdr.withOpacity(0.45),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: _outline.withOpacity(0.4), width: 1.5),
+              boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
+                  offset: const Offset(3, 3), blurRadius: 0)],
+            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              const Icon(Icons.check_circle_rounded, size: 14, color: _brown),
+              const SizedBox(width: 4),
+              Text('$doneCount done',
+                style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w800, color: _brown)),
+            ]),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _tabBar() {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
+      margin: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+      padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
         color: _cardFill,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _outline.withOpacity(0.08))),
+        border: Border.all(color: _outline.withOpacity(0.22), width: 1.5),
+        boxShadow: [BoxShadow(color: _outline.withOpacity(0.14),
+            offset: const Offset(3, 3), blurRadius: 0)],
+      ),
       child: TabBar(
         controller: _tabCtrl,
         labelStyle: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w800),
         unselectedLabelStyle: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w600),
-        labelColor: Colors.white,
+        labelColor: _brown,
         unselectedLabelColor: _brownLt,
         indicator: BoxDecoration(
-          gradient: const LinearGradient(colors: [_coralLt, _coralHdr]),
-          borderRadius: BorderRadius.circular(12)),
+          color: _greenHdr.withOpacity(0.55),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: _outline.withOpacity(0.3), width: 1.2),
+        ),
         indicatorSize: TabBarIndicatorSize.tab,
         dividerHeight: 0,
         tabs: const [
@@ -218,7 +254,7 @@ class _QuizScreenState extends ConsumerState<QuizScreen>
     context.push(Routes.takeQuiz, extra: quiz);
   }
 
-  Future<void> _generateQuizFromMaterials(List<String> materialIds, {String? subjectId, int count = 10}) async {
+  Future<void> _generateQuizFromMaterials(List<String> materialIds, {String? subjectId, int count = 10, List<String>? topicFilter}) async {
     try {
       final api = ref.read(apiServiceProvider);
       final body = {
@@ -226,6 +262,7 @@ class _QuizScreenState extends ConsumerState<QuizScreen>
         'question_count': count,
         'question_types': ['mcq', 'true_false', 'fill_blank'],
         if (subjectId != null) 'subject_id': subjectId,
+        if (topicFilter != null && topicFilter.isNotEmpty) 'topic_filter': topicFilter,
       };
       final resp = await api.post('/study/generate-quiz', data: body);
       if (resp.data != null) {
@@ -311,17 +348,39 @@ class _QuizzesTab extends StatelessWidget {
     return 'F';
   }
 
+  Widget _miniChip(String label, Color c) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: c.withOpacity(0.35),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: _outline.withOpacity(0.35), width: 1),
+      ),
+      child: Text(label,
+        style: GoogleFonts.gaegu(fontSize: 12, fontWeight: FontWeight.w700, color: _brown, height: 1.1)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (quizzes.isEmpty) {
       return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Icon(Icons.quiz_outlined, size: 56, color: _outline.withOpacity(0.15)),
-        const SizedBox(height: 12),
-        Text('No quizzes yet!',
-          style: GoogleFonts.gaegu(fontSize: 22, fontWeight: FontWeight.w700, color: _brownLt)),
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: _goldHdr.withOpacity(0.45),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: _outline.withOpacity(0.4), width: 2),
+            boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
+              offset: const Offset(3, 3), blurRadius: 0)]),
+          child: const Icon(Icons.quiz_outlined, size: 48, color: _brown),
+        ),
+        const SizedBox(height: 14),
+        const Text('No quizzes yet~',
+          style: TextStyle(fontFamily: 'Bitroad', fontSize: 22, color: _brown, height: 1.15)),
         const SizedBox(height: 4),
-        Text('Add materials and generate a quiz',
-          style: GoogleFonts.nunito(fontSize: 13, color: _brownLt.withOpacity(0.6))),
+        Text('add materials and generate a quiz',
+          style: GoogleFonts.gaegu(fontSize: 14, color: _brownLt, fontWeight: FontWeight.w600)),
       ]));
     }
 
@@ -342,100 +401,93 @@ class _QuizzesTab extends StatelessWidget {
           final subColor = subjectColor(q['subject_id']);
 
           return Container(
-            margin: const EdgeInsets.only(bottom: 8),
+            margin: const EdgeInsets.only(bottom: 12),
             decoration: BoxDecoration(
               color: _cardFill,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: _outline.withOpacity(0.08)),
-              boxShadow: [BoxShadow(color: _outline.withOpacity(0.04),
-                offset: const Offset(0, 2), blurRadius: 6)]),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: _outline.withOpacity(0.4), width: 2),
+              boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
+                offset: const Offset(3, 3), blurRadius: 0)]),
             child: Material(
               color: Colors.transparent,
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(16),
               child: InkWell(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(16),
                 onTap: () => onTakeQuiz(q),
                 child: Padding(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(14),
                   child: Row(children: [
-                    // Status / Grade circle
+                    // Status / Grade tile — Focus Mode
                     Container(
-                      width: 44, height: 44,
+                      width: 56, height: 56,
                       decoration: BoxDecoration(
-                        shape: BoxShape.circle,
                         color: isCompleted
-                          ? _gradeColor(pct).withOpacity(0.15)
-                          : _goldLt.withOpacity(0.4),
-                        border: Border.all(
-                          color: isCompleted ? _gradeColor(pct) : _goldHdr,
-                          width: 2),
+                          ? _gradeColor(pct).withOpacity(0.55)
+                          : _goldHdr.withOpacity(0.55),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: _outline.withOpacity(0.4), width: 1.5),
                       ),
                       child: Center(child: isCompleted
-                        ? Text(_gradeLabel(pct), style: GoogleFonts.gaegu(
-                            fontSize: 18, fontWeight: FontWeight.w700,
-                            color: _gradeColor(pct)))
+                        ? Text(_gradeLabel(pct), style: const TextStyle(
+                            fontFamily: 'Bitroad', fontSize: 20, color: _brown, height: 1.0))
                         : Icon(
-                            q['status'] == 'in_progress' ? Icons.play_arrow_rounded : Icons.hourglass_empty_rounded,
-                            size: 20, color: _goldHdr),
+                            q['status'] == 'in_progress' ? Icons.play_arrow_rounded : Icons.edit_note_rounded,
+                            size: 28, color: _brown),
                       ),
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 14),
                     // Info
                     Expanded(child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(q['title'] ?? 'Untitled',
-                          style: GoogleFonts.gaegu(fontSize: 16, fontWeight: FontWeight.w700, color: _brown),
+                          style: GoogleFonts.gaegu(fontSize: 18, fontWeight: FontWeight.w800, color: _brown, height: 1.15),
                           maxLines: 1, overflow: TextOverflow.ellipsis),
-                        const SizedBox(height: 2),
-                        Row(children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                            decoration: BoxDecoration(
-                              color: subColor.withOpacity(0.15),
-                              borderRadius: BorderRadius.circular(4)),
-                            child: Text(subjectName(q['subject_id']),
-                              style: GoogleFonts.nunito(fontSize: 9, fontWeight: FontWeight.w700, color: subColor)),
-                          ),
-                          const SizedBox(width: 6),
-                          Text('$totalQ questions', style: GoogleFonts.nunito(fontSize: 10, color: _brownLt)),
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                            decoration: BoxDecoration(
-                              color: q['source'] == 'ai' ? _purpleLt.withOpacity(0.4) : _skyLt.withOpacity(0.4),
-                              borderRadius: BorderRadius.circular(4)),
-                            child: Text(q['source'] == 'ai' ? 'AI' : 'Auto',
-                              style: GoogleFonts.nunito(fontSize: 9, fontWeight: FontWeight.w700,
-                                color: q['source'] == 'ai' ? _purpleHdr : _skyHdr)),
-                          ),
+                        const SizedBox(height: 6),
+                        Wrap(spacing: 6, runSpacing: 4, children: [
+                          _miniChip(subjectName(q['subject_id']), subColor),
+                          _miniChip('$totalQ questions', _skyHdr),
+                          _miniChip(q['source'] == 'ai' ? 'AI' : 'Auto',
+                            q['source'] == 'ai' ? _purpleHdr : _goldHdr),
                         ]),
                         if (topics.isNotEmpty) ...[
-                          const SizedBox(height: 3),
-                          Text(topics.take(3).join(', '),
-                            style: GoogleFonts.nunito(fontSize: 10, color: _brownLt.withOpacity(0.7)),
+                          const SizedBox(height: 4),
+                          Text(topics.take(3).join(' · '),
+                            style: GoogleFonts.gaegu(fontSize: 12, color: _brownLt.withOpacity(0.85), height: 1.2),
                             maxLines: 1, overflow: TextOverflow.ellipsis),
                         ],
                       ],
                     )),
-                    // Score or action
+                    const SizedBox(width: 10),
+                    // Score or action — Focus Mode pill
                     if (isCompleted)
                       Column(mainAxisSize: MainAxisSize.min, children: [
-                        Text('${pct.toStringAsFixed(0)}%',
-                          style: GoogleFonts.nunito(fontSize: 18, fontWeight: FontWeight.w800,
-                            color: _gradeColor(pct))),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: _gradeColor(pct).withOpacity(0.55),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: _outline.withOpacity(0.4), width: 1.5),
+                          ),
+                          child: Text('${pct.toStringAsFixed(0)}%',
+                            style: GoogleFonts.gaegu(fontSize: 18, fontWeight: FontWeight.w800, color: _brown)),
+                        ),
+                        const SizedBox(height: 2),
                         Text('${score.toInt()}/$totalQ',
-                          style: GoogleFonts.nunito(fontSize: 10, color: _brownLt)),
+                          style: GoogleFonts.gaegu(fontSize: 12, color: _brownLt, fontWeight: FontWeight.w600)),
                       ])
                     else
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                         decoration: BoxDecoration(
-                          gradient: const LinearGradient(colors: [_greenLt, _greenHdr]),
-                          borderRadius: BorderRadius.circular(10)),
+                          color: _greenHdr.withOpacity(0.55),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: _outline.withOpacity(0.4), width: 1.5),
+                          boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
+                            offset: const Offset(2, 2), blurRadius: 0)]),
                         child: Text(q['status'] == 'in_progress' ? 'Resume' : 'Start',
-                          style: GoogleFonts.nunito(fontSize: 11, fontWeight: FontWeight.w700,
-                            color: Colors.white)),
+                          style: GoogleFonts.gaegu(fontSize: 14, fontWeight: FontWeight.w800,
+                            color: _brown)),
                       ),
                   ]),
                 ),
@@ -450,14 +502,14 @@ class _QuizzesTab extends StatelessWidget {
 
 
 //  TAB 2: STUDY MATERIALS
-class _MaterialsTab extends StatefulWidget {
+class _MaterialsTab extends ConsumerStatefulWidget {
   final List<Map<String, dynamic>> materials;
   final List<Map<String, dynamic>> subjects;
   final String Function(String?) subjectName;
   final Color Function(String?) subjectColor;
   final VoidCallback onRefresh;
   final dynamic api;
-  final Future<void> Function(List<String>, {String? subjectId, int count}) onGenerateQuiz;
+  final Future<void> Function(List<String>, {String? subjectId, int count, List<String>? topicFilter}) onGenerateQuiz;
 
   const _MaterialsTab({
     required this.materials, required this.subjects,
@@ -466,10 +518,10 @@ class _MaterialsTab extends StatefulWidget {
     required this.onGenerateQuiz,
   });
 
-  @override State<_MaterialsTab> createState() => _MaterialsTabState();
+  @override ConsumerState<_MaterialsTab> createState() => _MaterialsTabState();
 }
 
-class _MaterialsTabState extends State<_MaterialsTab> {
+class _MaterialsTabState extends ConsumerState<_MaterialsTab> {
   Set<String> _selected = {};
   bool _uploading = false;
   bool _importing = false;
@@ -643,6 +695,18 @@ class _MaterialsTabState extends State<_MaterialsTab> {
                   child: const Icon(Icons.auto_awesome_rounded, size: 18, color: _greenHdr),
                 ),
               ),
+              const SizedBox(width: 6),
+              // Delete button — direct affordance (also available via long-press detail)
+              GestureDetector(
+                onTap: () => _confirmDeleteMaterial(context, m),
+                child: Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: _coralHdr.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(8)),
+                  child: const Icon(Icons.delete_outline_rounded, size: 18, color: _coralHdr),
+                ),
+              ),
             ]),
           ),
         ),
@@ -676,6 +740,71 @@ class _MaterialsTabState extends State<_MaterialsTab> {
   }
 
   Future<void> _pickAndUploadFile(BuildContext context) async {
+    setState(() => _uploading = true);
+    try {
+      await UploadNotesModal.show(
+        context,
+        ref: ref,
+        subjects: widget.subjects
+            .map((s) => UploadModalSubject(
+                  id: (s['id'] ?? '').toString(),
+                  name: (s['name'] ?? '').toString(),
+                  icon: Icons.book_rounded,
+                ))
+            .where((s) => s.id.isNotEmpty)
+            .toList(),
+        onUploaded: (_) => widget.onRefresh(),
+      );
+    } finally {
+      if (mounted) setState(() => _uploading = false);
+    }
+  }
+
+  Future<void> _confirmDeleteMaterial(BuildContext context, Map<String, dynamic> m) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: _cardFill,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text('Delete "${m['title'] ?? 'Untitled'}"?',
+          style: GoogleFonts.gaegu(fontSize: 20, fontWeight: FontWeight.w700, color: _brown)),
+        content: Text(
+          'This will permanently delete this study material and remove it from all quiz / flashcard generation sources. This cannot be undone.',
+          style: GoogleFonts.nunito(fontSize: 13, color: _brownLt)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel', style: GoogleFonts.gaegu(fontSize: 16, color: _brownLt))),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Delete', style: GoogleFonts.gaegu(
+              fontSize: 16, fontWeight: FontWeight.w700, color: Colors.red.shade400))),
+        ],
+      ),
+    );
+    if (ok != true || !context.mounted) return;
+    try {
+      await widget.api.delete('/study/materials/${m['id']}');
+      setState(() => _selected.remove(m['id']));
+      widget.onRefresh();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Material deleted', style: GoogleFonts.nunito()),
+          backgroundColor: _greenHdr));
+      }
+    } catch (e) {
+      debugPrint('Delete material error: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Delete failed: $e', style: GoogleFonts.nunito()),
+          backgroundColor: _coralHdr));
+      }
+    }
+  }
+
+  // Retained for reference — previous inline dialog implementation.
+  // ignore: unused_element
+  Future<void> _legacyPickAndUploadFile(BuildContext context) async {
     // Use FileType.any on macOS — custom extensions can gray out files
     final result = await FilePicker.platform.pickFiles(
       type: FileType.any,
@@ -1010,6 +1139,23 @@ class _MaterialsTabState extends State<_MaterialsTab> {
 
   void _showGenerateDialog(BuildContext context) {
     int count = 10;
+    // Build a unique, sorted list of topics across the selected materials.
+    final selectedMaterials = widget.materials.where((m) => _selected.contains(m['id'])).toList();
+    final allTopics = <String>{};
+    String? sharedSubjectId;
+    bool subjectConflict = false;
+    for (final m in selectedMaterials) {
+      final ts = (m['topics'] as List?) ?? const [];
+      for (final t in ts) { allTopics.add(t.toString()); }
+      final sid = m['subject_id']?.toString();
+      if (sid != null && sid.isNotEmpty) {
+        if (sharedSubjectId == null) { sharedSubjectId = sid; }
+        else if (sharedSubjectId != sid) { subjectConflict = true; }
+      }
+    }
+    final topicList = allTopics.toList()..sort();
+    final selectedTopics = <String>{};
+
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(builder: (ctx, setDlg) {
@@ -1018,20 +1164,80 @@ class _MaterialsTabState extends State<_MaterialsTab> {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
           title: Text('Generate Quiz', style: GoogleFonts.gaegu(
             fontSize: 22, fontWeight: FontWeight.w700, color: _brown)),
-          content: Column(mainAxisSize: MainAxisSize.min, children: [
-            Text('${_selected.length} material(s) selected',
-              style: GoogleFonts.nunito(fontSize: 14, color: _brownLt)),
-            const SizedBox(height: 16),
-            Text('Questions:', style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w700, color: _brownLt)),
-            Slider(
-              value: count.toDouble(), min: 5, max: 25, divisions: 4,
-              label: '$count',
-              activeColor: _greenHdr,
-              onChanged: (v) => setDlg(() => count = v.toInt()),
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 380, maxHeight: 460),
+            child: SingleChildScrollView(
+              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('${_selected.length} material(s) selected',
+                  style: GoogleFonts.nunito(fontSize: 14, color: _brownLt)),
+                if (subjectConflict) Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text('⚠ Materials span multiple subjects',
+                    style: GoogleFonts.nunito(fontSize: 11, color: _coralHdr)),
+                ),
+                const SizedBox(height: 14),
+                Text('Questions',
+                  style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w700, color: _brownLt)),
+                Slider(
+                  value: count.toDouble(), min: 5, max: 25, divisions: 4,
+                  label: '$count',
+                  activeColor: _greenHdr,
+                  onChanged: (v) => setDlg(() => count = v.toInt()),
+                ),
+                Text('$count questions (MCQ + T/F + Fill-blank)',
+                  style: GoogleFonts.nunito(fontSize: 12, color: _brownLt)),
+                if (topicList.isNotEmpty) ...[
+                  const SizedBox(height: 14),
+                  Row(children: [
+                    Expanded(child: Text('Focus on topics (optional)',
+                      style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w700, color: _brownLt))),
+                    GestureDetector(
+                      onTap: () => setDlg(() {
+                        if (selectedTopics.length == topicList.length) {
+                          selectedTopics.clear();
+                        } else {
+                          selectedTopics
+                            ..clear()
+                            ..addAll(topicList);
+                        }
+                      }),
+                      child: Text(
+                        selectedTopics.length == topicList.length ? 'clear' : 'all',
+                        style: GoogleFonts.nunito(
+                          fontSize: 11, fontWeight: FontWeight.w700, color: _greenHdr)),
+                    ),
+                  ]),
+                  const SizedBox(height: 6),
+                  Wrap(spacing: 6, runSpacing: 6, children: [
+                    for (final t in topicList)
+                      GestureDetector(
+                        onTap: () => setDlg(() {
+                          if (selectedTopics.contains(t)) { selectedTopics.remove(t); }
+                          else { selectedTopics.add(t); }
+                        }),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: selectedTopics.contains(t) ? _purpleHdr : _purpleLt.withOpacity(0.35),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: _outline.withOpacity(0.25), width: 1),
+                          ),
+                          child: Text(t,
+                            style: GoogleFonts.nunito(
+                              fontSize: 11, fontWeight: FontWeight.w700,
+                              color: selectedTopics.contains(t) ? Colors.white : _brown)),
+                        ),
+                      ),
+                  ]),
+                  const SizedBox(height: 4),
+                  Text(selectedTopics.isEmpty
+                      ? 'no filter — quiz draws from all topics'
+                      : '${selectedTopics.length} topic${selectedTopics.length == 1 ? '' : 's'} selected',
+                    style: GoogleFonts.nunito(fontSize: 10, color: _brownLt.withOpacity(0.75))),
+                ],
+              ]),
             ),
-            Text('$count questions (MCQ + T/F + Fill-blank)',
-              style: GoogleFonts.nunito(fontSize: 12, color: _brownLt)),
-          ]),
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
@@ -1039,7 +1245,12 @@ class _MaterialsTabState extends State<_MaterialsTab> {
             TextButton(
               onPressed: () {
                 Navigator.pop(ctx);
-                widget.onGenerateQuiz(_selected.toList(), count: count);
+                widget.onGenerateQuiz(
+                  _selected.toList(),
+                  count: count,
+                  subjectId: !subjectConflict ? sharedSubjectId : null,
+                  topicFilter: selectedTopics.isEmpty ? null : selectedTopics.toList(),
+                );
                 setState(() => _selected = {});
               },
               child: Text('Generate', style: GoogleFonts.nunito(fontWeight: FontWeight.w700, color: _greenHdr))),
@@ -1319,13 +1530,17 @@ class _PawBgPainter extends CustomPainter {
     for (double y = 30; y < size.height; y += sp) {
       final odd = ((y / sp).floor() % 2) == 1;
       for (double x = (odd ? rs : 0) + 30; x < size.width; x += sp) {
-        paint.color = _pawClr.withOpacity(0.06 + (idx % 5) * 0.018);
+        paint.color = _pawClr.withOpacity(0.05 + (idx % 5) * 0.014);
         final a = (idx % 4) * 0.3 - 0.3;
         canvas.save(); canvas.translate(x, y); canvas.rotate(a);
+        // Pad (oval) — matches subjects/resources reference paw
         canvas.drawOval(Rect.fromCenter(center: Offset.zero, width: r * 2.2, height: r * 1.8), paint);
-        for (final o in [const Offset(-8, -10), const Offset(0, -13), const Offset(8, -10)]) {
-          canvas.drawCircle(o, r * 0.55, paint);
-        }
+        // Four toes above the pad
+        final tr = r * 0.52;
+        canvas.drawCircle(Offset(-r * 1.0, -r * 1.35), tr, paint);
+        canvas.drawCircle(Offset(-r * 0.38, -r * 1.65), tr, paint);
+        canvas.drawCircle(Offset(r * 0.38, -r * 1.65), tr, paint);
+        canvas.drawCircle(Offset(r * 1.0, -r * 1.35), tr, paint);
         canvas.restore();
         idx++;
       }

@@ -13,19 +13,19 @@ const _cardFill = Color(0xFFFFF8F4);
 const _outline  = Color(0xFF6E5848);
 const _brown    = Color(0xFF4E3828);
 const _brownLt  = Color(0xFF7A5840);
-const _coralHdr = Color(0xFFF0A898);
-const _coralLt  = Color(0xFFF8C0B0);
-const _coralDk  = Color(0xFFD08878);
-const _greenHdr = Color(0xFFA8D5A3);
-const _greenLt  = Color(0xFFC2E8BC);
-const _greenDk  = Color(0xFF88B883);
-const _goldHdr  = Color(0xFFF0D878);
-const _goldLt   = Color(0xFFFFF0C0);
-const _purpleHdr = Color(0xFFCDA8D8);
-const _purpleLt = Color(0xFFD8C0E8);
-const _skyHdr   = Color(0xFF9DD4F0);
-const _skyLt    = Color(0xFFB8E0F8);
-const _pawClr   = Color(0xFFF8BCD0);
+const _coralHdr = Color(0xFFE8B8A8); // softer terracotta
+const _coralLt  = Color(0xFFF2CFC2);
+const _coralDk  = Color(0xFFC8997F);
+const _greenHdr = Color(0xFFB5C4A0); // muted sage
+const _greenLt  = Color(0xFFCCD8B8);
+const _greenDk  = Color(0xFF98A869);
+const _goldHdr  = Color(0xFFE8D4A0); // muted butter
+const _goldLt   = Color(0xFFF4E6BE);
+const _purpleHdr = Color(0xFFC9B8D9); // muted lav
+const _purpleLt = Color(0xFFDCCEE6);
+const _skyHdr   = Color(0xFFB6CBD6); // muted slate
+const _skyLt    = Color(0xFFCCDCE4);
+const _pawClr   = Color(0xFFEAD0CE); // muted blush
 
 enum _Phase { preQuiz, taking, results }
 
@@ -131,18 +131,25 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
       padding: const EdgeInsets.all(24),
       child: Column(children: [
         const Spacer(),
-        // Quiz icon
+        // Quiz icon — Focus Mode terracotta shell
         Container(
-          width: 80, height: 80,
+          width: 84, height: 84,
           decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: const LinearGradient(colors: [_coralLt, _coralHdr]),
-            border: Border.all(color: _coralDk.withOpacity(0.3), width: 3)),
-          child: const Icon(Icons.quiz_rounded, size: 36, color: Colors.white),
+            color: _coralLt.withOpacity(0.55),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: _outline.withOpacity(0.4), width: 2),
+            boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
+              offset: const Offset(3, 3), blurRadius: 0)]),
+          child: const Icon(Icons.quiz_rounded, size: 38, color: _brown),
         ),
         const SizedBox(height: 20),
-        Text(_quiz['title'] ?? 'Quiz', style: GoogleFonts.gaegu(
-          fontSize: 28, fontWeight: FontWeight.w700, color: _brown),
+        Text(_quiz['title'] ?? 'Quiz', style: const TextStyle(
+          fontFamily: 'Bitroad', fontSize: 26, color: _brown, height: 1.15),
+          textAlign: TextAlign.center),
+        const SizedBox(height: 4),
+        Text('breathe, focus, give it your best shot~',
+          style: GoogleFonts.gaegu(fontSize: 15, fontWeight: FontWeight.w600,
+            color: _brownLt, height: 1.3),
           textAlign: TextAlign.center),
         const SizedBox(height: 8),
         // Stats row
@@ -170,22 +177,22 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
             )).toList()),
         ],
         const Spacer(),
-        // Start button
+        // Start button — Focus Mode olive pill
         GestureDetector(
           onTap: _loading ? null : _startQuiz,
           child: Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 16),
             decoration: BoxDecoration(
-              gradient: const LinearGradient(colors: [_greenLt, _greenHdr]),
+              color: _greenHdr.withOpacity(0.55),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: _greenDk.withOpacity(0.4), width: 2),
-              boxShadow: [BoxShadow(color: _greenDk.withOpacity(0.3),
-                offset: const Offset(0, 4), blurRadius: 0)]),
+              border: Border.all(color: _outline.withOpacity(0.4), width: 2),
+              boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
+                offset: const Offset(3, 3), blurRadius: 0)]),
             child: Center(child: _loading
-              ? const CircularProgressIndicator(color: Colors.white, strokeWidth: 2)
+              ? const CircularProgressIndicator(color: _brown, strokeWidth: 2)
               : Text('Start Quiz', style: GoogleFonts.gaegu(
-                  fontSize: 26, fontWeight: FontWeight.w700, color: Colors.white))),
+                  fontSize: 26, fontWeight: FontWeight.w700, color: _brown))),
           ),
         ),
         const SizedBox(height: 12),
@@ -245,29 +252,47 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
     final progress = (_currentIdx + 1) / _questions.length;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
       child: Column(children: [
-        // Progress bar + counter
-        Row(children: [
-          IconButton(
-            icon: const Icon(Icons.close_rounded, color: _brownLt, size: 22),
-            onPressed: () => _confirmExit(),
-          ),
-          Expanded(child: Column(children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: LinearProgressIndicator(
-                value: progress,
-                minHeight: 8,
-                backgroundColor: _outline.withOpacity(0.08),
-                color: _greenHdr,
-              ),
+        // Top bar: close button + Focus Mode progress card
+        Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+          GestureDetector(
+            onTap: _confirmExit,
+            child: Container(
+              width: 40, height: 40,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.88),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: _outline.withOpacity(0.4), width: 1.5),
+                boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
+                  offset: const Offset(3, 3), blurRadius: 0)]),
+              child: const Icon(Icons.close_rounded, color: _brown, size: 20),
             ),
-            const SizedBox(height: 4),
-            Text('Question ${_currentIdx + 1} of ${_questions.length}',
-              style: GoogleFonts.nunito(fontSize: 11, fontWeight: FontWeight.w600, color: _brownLt)),
-          ])),
-          const SizedBox(width: 40),
+          ),
+          const SizedBox(width: 12),
+          Expanded(child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: _cardFill,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: _outline.withOpacity(0.4), width: 2),
+              boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
+                offset: const Offset(3, 3), blurRadius: 0)]),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Question ${_currentIdx + 1} of ${_questions.length}',
+                style: GoogleFonts.gaegu(fontSize: 14, fontWeight: FontWeight.w700, color: _brown)),
+              const SizedBox(height: 4),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: LinearProgressIndicator(
+                  value: progress,
+                  minHeight: 8,
+                  backgroundColor: _outline.withOpacity(0.12),
+                  color: _greenDk,
+                ),
+              ),
+            ]),
+          )),
         ]),
         const SizedBox(height: 20),
         // Question type badge
@@ -294,17 +319,19 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
           ],
         ]),
         const SizedBox(height: 16),
-        // Question text
+        // Question text — Focus Mode card
         Container(
           width: double.infinity,
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: _cardFill,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: _outline.withOpacity(0.08))),
+            border: Border.all(color: _outline.withOpacity(0.4), width: 2),
+            boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
+              offset: const Offset(3, 3), blurRadius: 0)]),
           child: Text(q['question_text'] ?? '',
-            style: GoogleFonts.nunito(fontSize: 16, fontWeight: FontWeight.w600,
-              height: 1.5, color: _brown),
+            style: GoogleFonts.gaegu(fontSize: 19, fontWeight: FontWeight.w700,
+              height: 1.4, color: _brown),
             textAlign: TextAlign.center),
         ),
         const SizedBox(height: 16),
@@ -313,24 +340,22 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
         // Feedback + Next
         if (_answered) _feedbackBar(q),
         const SizedBox(height: 8),
-        // Next / Submit button
+        // Next / Submit button — Focus Mode pill
         SizedBox(width: double.infinity, child: GestureDetector(
           onTap: _loading ? null : (_answered ? _nextQuestion : _submitAnswer),
           child: Container(
             padding: const EdgeInsets.symmetric(vertical: 14),
             decoration: BoxDecoration(
-              gradient: LinearGradient(colors: _answered
-                ? [_greenLt, _greenHdr]
-                : [_coralLt, _coralHdr]),
+              color: (_answered ? _greenHdr : _goldHdr).withOpacity(0.55),
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: (_answered ? _greenDk : _coralDk).withOpacity(0.4), width: 2),
-              boxShadow: [BoxShadow(color: (_answered ? _greenDk : _coralDk).withOpacity(0.25),
-                offset: const Offset(0, 3), blurRadius: 0)]),
+              border: Border.all(color: _outline.withOpacity(0.4), width: 2),
+              boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
+                offset: const Offset(3, 3), blurRadius: 0)]),
             child: Center(child: Text(
               _answered
                 ? (_currentIdx < _questions.length - 1 ? 'Next Question' : 'See Results')
                 : 'Check Answer',
-              style: GoogleFonts.gaegu(fontSize: 20, fontWeight: FontWeight.w700, color: Colors.white))),
+              style: GoogleFonts.gaegu(fontSize: 20, fontWeight: FontWeight.w800, color: _brown))),
           ),
         )),
       ]),
@@ -351,48 +376,67 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
 
   Widget _mcqOptions(Map<String, dynamic> q) {
     final options = (q['options'] as List?)?.cast<String>() ?? [];
+    return _optionTileList(options, q);
+  }
+
+  /// Shared Focus Mode option-tile list. Used by MCQ + fill-in-blank.
+  Widget _optionTileList(List<String> options, Map<String, dynamic> q) {
+    final correct = (q['correct_answer'] ?? '').toString().toLowerCase().trim();
     return ListView(
-      children: options.map((opt) {
+      padding: EdgeInsets.zero,
+      children: options.asMap().entries.map((entry) {
+        final i = entry.key;
+        final opt = entry.value;
         final isSelected = _selectedAnswer == opt;
-        final isCorrect = _answered && opt.toLowerCase() == (q['correct_answer'] ?? '').toString().toLowerCase();
+        final isCorrect = _answered && opt.toLowerCase().trim() == correct;
         final isWrong = _answered && isSelected && !isCorrect;
 
-        Color bg = Colors.white;
-        Color border = _outline.withOpacity(0.1);
+        Color bg = _cardFill;
+        Color border = _outline.withOpacity(0.4);
         if (_answered) {
-          if (isCorrect) { bg = _greenLt.withOpacity(0.3); border = _greenHdr; }
-          else if (isWrong) { bg = _coralLt.withOpacity(0.3); border = _coralHdr; }
+          if (isCorrect) { bg = _greenLt.withOpacity(0.55); border = _outline.withOpacity(0.55); }
+          else if (isWrong) { bg = _coralLt.withOpacity(0.55); border = _outline.withOpacity(0.55); }
         } else if (isSelected) {
-          bg = _skyLt.withOpacity(0.3); border = _skyHdr;
+          bg = _skyLt.withOpacity(0.55); border = _outline.withOpacity(0.55);
         }
+
+        final letter = String.fromCharCode(65 + i); // A, B, C, D
 
         return GestureDetector(
           onTap: _answered ? null : () => setState(() => _selectedAnswer = opt),
           child: Container(
-            margin: const EdgeInsets.only(bottom: 8),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            margin: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
             decoration: BoxDecoration(
               color: bg,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: border, width: 2)),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: border, width: 2),
+              boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
+                offset: const Offset(3, 3), blurRadius: 0)]),
             child: Row(children: [
-              // Radio circle
+              // Letter badge
               Container(
-                width: 22, height: 22,
+                width: 28, height: 28,
                 decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: isSelected ? (isWrong ? _coralHdr : isCorrect ? _greenHdr : _skyHdr) : Colors.white,
-                  border: Border.all(
-                    color: isSelected ? Colors.transparent : _outline.withOpacity(0.2), width: 2)),
-                child: isSelected ? Icon(
-                  _answered ? (isCorrect ? Icons.check_rounded : Icons.close_rounded) : Icons.circle,
-                  size: 14, color: Colors.white) : null,
+                  color: isSelected
+                    ? (isWrong ? _coralHdr.withOpacity(0.75)
+                       : isCorrect ? _greenHdr.withOpacity(0.75)
+                       : _skyHdr.withOpacity(0.75))
+                    : _goldHdr.withOpacity(0.4),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: _outline.withOpacity(0.45), width: 1.5)),
+                child: Center(child: Text(letter,
+                  style: GoogleFonts.gaegu(fontSize: 15, fontWeight: FontWeight.w800, color: _brown))),
               ),
-              const SizedBox(width: 10),
-              Expanded(child: Text(opt, style: GoogleFonts.nunito(fontSize: 14,
-                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500, color: _brown))),
+              const SizedBox(width: 12),
+              Expanded(child: Text(opt, style: GoogleFonts.gaegu(
+                fontSize: 17,
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                color: _brown, height: 1.2))),
               if (_answered && isCorrect)
-                const Icon(Icons.check_circle_rounded, size: 20, color: _greenHdr),
+                const Icon(Icons.check_circle_rounded, size: 22, color: _brown),
+              if (_answered && isWrong)
+                const Icon(Icons.cancel_rounded, size: 22, color: _brown),
             ]),
           ),
         );
@@ -401,37 +445,38 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
   }
 
   Widget _trueFalseOptions(Map<String, dynamic> q) {
+    final correct = (q['correct_answer'] ?? '').toString().toLowerCase().trim();
     return Row(children: ['True', 'False'].map((opt) {
       final isSelected = _selectedAnswer == opt;
-      final isCorrect = _answered && opt.toLowerCase() == (q['correct_answer'] ?? '').toString().toLowerCase();
+      final isCorrect = _answered && opt.toLowerCase() == correct;
       final isWrong = _answered && isSelected && !isCorrect;
 
-      Color bg = Colors.white;
+      Color bg = _cardFill;
       if (_answered) {
-        if (isCorrect) bg = _greenLt.withOpacity(0.3);
-        else if (isWrong) bg = _coralLt.withOpacity(0.3);
-      } else if (isSelected) bg = _skyLt.withOpacity(0.3);
+        if (isCorrect) bg = _greenLt.withOpacity(0.55);
+        else if (isWrong) bg = _coralLt.withOpacity(0.55);
+      } else if (isSelected) {
+        bg = _skyLt.withOpacity(0.55);
+      }
 
       return Expanded(child: Padding(
         padding: EdgeInsets.only(right: opt == 'True' ? 6 : 0, left: opt == 'False' ? 6 : 0),
         child: GestureDetector(
           onTap: _answered ? null : () => setState(() => _selectedAnswer = opt),
           child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 24),
+            padding: const EdgeInsets.symmetric(vertical: 26),
             decoration: BoxDecoration(
               color: bg,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: _answered
-                  ? (isCorrect ? _greenHdr : isWrong ? _coralHdr : _outline.withOpacity(0.1))
-                  : (isSelected ? _skyHdr : _outline.withOpacity(0.1)),
-                width: 2)),
+              border: Border.all(color: _outline.withOpacity(0.4), width: 2),
+              boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
+                offset: const Offset(3, 3), blurRadius: 0)]),
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               Icon(opt == 'True' ? Icons.check_circle_outline_rounded : Icons.cancel_outlined,
-                size: 32, color: opt == 'True' ? _greenHdr : _coralHdr),
+                size: 32, color: _brown),
               const SizedBox(height: 6),
-              Text(opt, style: GoogleFonts.gaegu(fontSize: 22, fontWeight: FontWeight.w700,
-                color: opt == 'True' ? _greenHdr : _coralHdr)),
+              Text(opt, style: GoogleFonts.gaegu(
+                fontSize: 22, fontWeight: FontWeight.w800, color: _brown)),
             ]),
           ),
         ),
@@ -439,54 +484,79 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
     }).toList());
   }
 
-  final _fillCtrl = TextEditingController();
+  // Cache of generated options per question so shuffling is stable across rebuilds.
+  final Map<String, List<String>> _fillOptionsCache = {};
+
+  /// Return MCQ-style options for a fill-blank question.
+  /// If the backend supplies `options`, use those; otherwise synthesize
+  /// distractors from the question text so the user can still tap an answer.
+  List<String> _fillBlankOptions(Map<String, dynamic> q) {
+    final qid = (q['id'] ?? q['question_text'] ?? '').toString();
+    final cached = _fillOptionsCache[qid];
+    if (cached != null) return cached;
+
+    // Use backend-provided options first.
+    final provided = (q['options'] as List?)?.cast<String>()
+        .where((s) => s.trim().isNotEmpty).toList();
+    if (provided != null && provided.length >= 2) {
+      _fillOptionsCache[qid] = provided;
+      return provided;
+    }
+
+    final correct = (q['correct_answer'] ?? '').toString().trim();
+    if (correct.isEmpty) return const [];
+
+    // Derive distractors from words in the question text similar in length
+    // to the correct answer. Deterministic shuffle keyed off the qid.
+    final qText = (q['question_text'] ?? '').toString();
+    final correctLc = correct.toLowerCase();
+    final pool = qText
+        .split(RegExp(r"[^A-Za-z0-9'\-]+"))
+        .where((w) => w.length >= 3)
+        .map((w) => w.trim())
+        .where((w) => w.isNotEmpty && w.toLowerCase() != correctLc)
+        .toSet()
+        .toList();
+    pool.sort((a, b) =>
+      ((a.length - correct.length).abs()).compareTo((b.length - correct.length).abs()));
+
+    final fallback = <String>['(none of these)', 'All of the above', 'Not mentioned'];
+    final distractors = <String>[];
+    for (final w in pool) {
+      if (distractors.length >= 3) break;
+      if (distractors.any((d) => d.toLowerCase() == w.toLowerCase())) continue;
+      distractors.add(w);
+    }
+    var f = 0;
+    while (distractors.length < 3 && f < fallback.length) {
+      distractors.add(fallback[f++]);
+    }
+
+    final result = <String>[correct, ...distractors];
+    final rng = math.Random(qid.hashCode);
+    for (int i = result.length - 1; i > 0; i--) {
+      final j = rng.nextInt(i + 1);
+      final t = result[i]; result[i] = result[j]; result[j] = t;
+    }
+    _fillOptionsCache[qid] = result;
+    return result;
+  }
 
   Widget _fillBlankField(Map<String, dynamic> q) {
+    final options = _fillBlankOptions(q);
+    if (options.isEmpty) {
+      // Safety net — empty state.
+      return Center(child: Text('No options available',
+        style: GoogleFonts.gaegu(fontSize: 18, color: _brownLt)));
+    }
     return Column(children: [
-      const Spacer(),
-      TextField(
-        controller: _fillCtrl,
-        enabled: !_answered,
-        style: GoogleFonts.nunito(fontSize: 18, fontWeight: FontWeight.w600),
-        textAlign: TextAlign.center,
-        onChanged: (v) => setState(() => _selectedAnswer = v),
-        decoration: InputDecoration(
-          hintText: 'Type your answer...',
-          hintStyle: GoogleFonts.nunito(fontSize: 16, color: _brownLt.withOpacity(0.4)),
-          filled: true, fillColor: Colors.white,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: BorderSide(color: _outline.withOpacity(0.12))),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: BorderSide(color: _outline.withOpacity(0.12))),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: _skyHdr, width: 2)),
-        ),
+      Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Text('pick the word that fills the blank~',
+          style: GoogleFonts.gaegu(fontSize: 14, fontWeight: FontWeight.w600,
+            color: _brownLt)),
       ),
-      if (_answered) ...[
-        const SizedBox(height: 12),
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: q['is_correct'] == true ? _greenLt.withOpacity(0.2) : _coralLt.withOpacity(0.2),
-            borderRadius: BorderRadius.circular(12)),
-          child: Row(children: [
-            Icon(q['is_correct'] == true ? Icons.check_circle_rounded : Icons.cancel_rounded,
-              color: q['is_correct'] == true ? _greenHdr : _coralHdr, size: 20),
-            const SizedBox(width: 8),
-            Expanded(child: Text(
-              q['is_correct'] == true
-                ? 'Correct!'
-                : 'Answer: ${q['correct_answer']}',
-              style: GoogleFonts.nunito(fontSize: 14, fontWeight: FontWeight.w700,
-                color: q['is_correct'] == true ? _greenDk : _coralDk))),
-          ]),
-        ),
-      ],
-      const Spacer(),
+      Expanded(child: _optionTileList(options, q)),
     ]);
   }
 
@@ -494,18 +564,21 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
     final isCorrect = q['is_correct'] == true;
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: isCorrect ? _greenLt.withOpacity(0.15) : _coralLt.withOpacity(0.15),
-        borderRadius: BorderRadius.circular(12)),
+        color: (isCorrect ? _greenLt : _coralLt).withOpacity(0.55),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _outline.withOpacity(0.4), width: 2),
+        boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
+          offset: const Offset(3, 3), blurRadius: 0)]),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Icon(isCorrect ? Icons.check_circle_rounded : Icons.info_outline_rounded,
-          size: 18, color: isCorrect ? _greenHdr : _coralHdr),
+          size: 18, color: _brown),
         const SizedBox(width: 8),
         Expanded(child: Text(
-          q['explanation'] ?? (isCorrect ? 'Correct!' : 'Incorrect'),
-          style: GoogleFonts.nunito(fontSize: 12, height: 1.4,
-            color: isCorrect ? _greenDk : _coralDk),
+          q['explanation'] ?? (isCorrect ? 'Correct!' : 'Incorrect — keep going'),
+          style: GoogleFonts.gaegu(fontSize: 14, fontWeight: FontWeight.w600,
+            height: 1.4, color: _brown),
           maxLines: 3, overflow: TextOverflow.ellipsis)),
       ]),
     );
@@ -540,7 +613,6 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
         _currentIdx++;
         _selectedAnswer = null;
         _answered = false;
-        _fillCtrl.clear();
       });
       _animCtrl.forward(from: 0);
     } else {
@@ -612,23 +684,30 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
       padding: const EdgeInsets.all(24),
       child: Column(children: [
         const SizedBox(height: 20),
-        // Grade circle
+        // Grade badge — Focus Mode tile
         Container(
-          width: 100, height: 100,
+          width: 110, height: 110,
           decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: _gradeColor(pct).withOpacity(0.15),
-            border: Border.all(color: _gradeColor(pct), width: 4)),
+            color: _gradeColor(pct).withOpacity(0.55),
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: _outline.withOpacity(0.4), width: 2),
+            boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
+              offset: const Offset(3, 3), blurRadius: 0)]),
           child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Text(grade, style: GoogleFonts.gaegu(fontSize: 32, fontWeight: FontWeight.w700,
-              color: _gradeColor(pct))),
-            Text('${pct.toStringAsFixed(0)}%', style: GoogleFonts.nunito(fontSize: 14,
-              fontWeight: FontWeight.w800, color: _gradeColor(pct))),
+            Text(grade, style: const TextStyle(
+              fontFamily: 'Bitroad', fontSize: 34, color: _brown, height: 1.0)),
+            const SizedBox(height: 2),
+            Text('${pct.toStringAsFixed(0)}%', style: GoogleFonts.gaegu(
+              fontSize: 16, fontWeight: FontWeight.w800, color: _brown)),
           ])),
         ),
         const SizedBox(height: 16),
-        Text(_quiz['title'] ?? 'Quiz Complete!', style: GoogleFonts.gaegu(
-          fontSize: 24, fontWeight: FontWeight.w700, color: _brown),
+        Text(_quiz['title'] ?? 'Quiz Complete!', style: const TextStyle(
+          fontFamily: 'Bitroad', fontSize: 24, color: _brown, height: 1.15),
+          textAlign: TextAlign.center),
+        const SizedBox(height: 4),
+        Text('nice work — here\'s how it went~',
+          style: GoogleFonts.gaegu(fontSize: 14, fontWeight: FontWeight.w600, color: _brownLt),
           textAlign: TextAlign.center),
         const SizedBox(height: 8),
         // Stats row
@@ -641,21 +720,23 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
         ]),
         const SizedBox(height: 20),
         // Review answers
-        Text('Review Answers', style: GoogleFonts.gaegu(
-          fontSize: 20, fontWeight: FontWeight.w700, color: _brown)),
-        const SizedBox(height: 8),
+        Align(alignment: Alignment.centerLeft, child: Text('Review Answers',
+          style: const TextStyle(
+            fontFamily: 'Bitroad', fontSize: 20, color: _brown, height: 1.15))),
+        const SizedBox(height: 10),
         ..._answeredQuestions.asMap().entries.map((e) {
           final i = e.key;
           final q = e.value;
           final isCorrect = q['is_correct'] == true;
           return Container(
-            margin: const EdgeInsets.only(bottom: 8),
-            padding: const EdgeInsets.all(12),
+            margin: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
               color: _cardFill,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: isCorrect ? _greenHdr.withOpacity(0.3) : _coralHdr.withOpacity(0.3))),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: _outline.withOpacity(0.4), width: 2),
+              boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
+                offset: const Offset(3, 3), blurRadius: 0)]),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
                 Container(
@@ -702,18 +783,20 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
           );
         }),
         const SizedBox(height: 16),
-        // Buttons
+        // Buttons — both Focus Mode pills
         Row(children: [
           Expanded(child: GestureDetector(
             onTap: () => Navigator.pop(context),
             child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 12),
+              padding: const EdgeInsets.symmetric(vertical: 14),
               decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: _outline.withOpacity(0.15))),
-              child: Center(child: Text('Back to Quizzes',
-                style: GoogleFonts.gaegu(fontSize: 18, fontWeight: FontWeight.w700, color: _brownLt))),
+                color: _cardFill,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: _outline.withOpacity(0.4), width: 2),
+                boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
+                  offset: const Offset(3, 3), blurRadius: 0)]),
+              child: Center(child: Text('Back',
+                style: GoogleFonts.gaegu(fontSize: 18, fontWeight: FontWeight.w800, color: _brown))),
             ),
           )),
           const SizedBox(width: 10),
@@ -725,17 +808,19 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
                 _selectedAnswer = null;
                 _answered = false;
                 _correct = 0;
-                _fillCtrl.clear();
+                _fillOptionsCache.clear();
               });
             },
             child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 12),
+              padding: const EdgeInsets.symmetric(vertical: 14),
               decoration: BoxDecoration(
-                gradient: const LinearGradient(colors: [_coralLt, _coralHdr]),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: _coralDk.withOpacity(0.3))),
+                color: _coralLt.withOpacity(0.55),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: _outline.withOpacity(0.4), width: 2),
+                boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
+                  offset: const Offset(3, 3), blurRadius: 0)]),
               child: Center(child: Text('Retake',
-                style: GoogleFonts.gaegu(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white))),
+                style: GoogleFonts.gaegu(fontSize: 18, fontWeight: FontWeight.w800, color: _brown))),
             ),
           )),
         ]),
@@ -785,13 +870,15 @@ class _PawBgPainter extends CustomPainter {
     for (double y = 30; y < size.height; y += sp) {
       final odd = ((y / sp).floor() % 2) == 1;
       for (double x = (odd ? rs : 0) + 30; x < size.width; x += sp) {
-        paint.color = _pawClr.withOpacity(0.06 + (idx % 5) * 0.018);
+        paint.color = _pawClr.withOpacity(0.05 + (idx % 5) * 0.014);
         final a = (idx % 4) * 0.3 - 0.3;
         canvas.save(); canvas.translate(x, y); canvas.rotate(a);
         canvas.drawOval(Rect.fromCenter(center: Offset.zero, width: r * 2.2, height: r * 1.8), paint);
-        for (final o in [const Offset(-8, -10), const Offset(0, -13), const Offset(8, -10)]) {
-          canvas.drawCircle(o, r * 0.55, paint);
-        }
+        final tr = r * 0.52;
+        canvas.drawCircle(Offset(-r * 1.0, -r * 1.35), tr, paint);
+        canvas.drawCircle(Offset(-r * 0.38, -r * 1.65), tr, paint);
+        canvas.drawCircle(Offset(r * 0.38, -r * 1.65), tr, paint);
+        canvas.drawCircle(Offset(r * 1.0, -r * 1.35), tr, paint);
         canvas.restore();
         idx++;
       }

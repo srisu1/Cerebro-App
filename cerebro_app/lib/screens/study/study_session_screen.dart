@@ -143,6 +143,12 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
   List<Map<String, dynamic>> _subjects = [];
   bool _subjectsLoading = true;
 
+  //    the Session Wrapped topic picker so users toggle chips instead of
+  //    hand-typing the same tags every session).
+  List<Map<String, dynamic>> _subjectTopics = [];
+  bool _subjectTopicsLoading = false;
+  String? _lastLoadedTopicsSubject; // cache key to avoid re-fetching
+
   _Phase _phase = _Phase.setup;
   Timer? _ticker;
   int _remainSec = 0;
@@ -270,6 +276,35 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
       }
     } catch (_) {
       setState(() => _subjectsLoading = false);
+    }
+  }
+
+  //    Used by the Session Wrapped completion card to offer
+  //    one-tap topic tagging instead of free-text entry.
+  Future<void> _fetchSubjectTopics({bool force = false}) async {
+    final sid = _selectedSubjectId;
+    if (sid == null) {
+      setState(() { _subjectTopics = []; _lastLoadedTopicsSubject = null; });
+      return;
+    }
+    if (!force && sid == _lastLoadedTopicsSubject) return; // cached
+    if (_subjectTopicsLoading) return;
+    setState(() => _subjectTopicsLoading = true);
+    try {
+      final api = ref.read(apiServiceProvider);
+      final resp = await api.get('/study/subjects/$sid/topics');
+      if (resp.statusCode == 200 && resp.data is List) {
+        if (mounted) {
+          setState(() {
+            _subjectTopics = List<Map<String, dynamic>>.from(resp.data);
+            _lastLoadedTopicsSubject = sid;
+          });
+        }
+      }
+    } catch (_) {
+      // Silently fail — UI will show a "no topics yet" hint.
+    } finally {
+      if (mounted) setState(() => _subjectTopicsLoading = false);
     }
   }
 
@@ -492,6 +527,12 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
     _enterCtrl.reset();
     _enterCtrl.forward();
     setState(() => _phase = _Phase.completed);
+    // Warm up the topic picker for the completion card — if the user
+    //   already picked a subject we fetch its curated topics so the
+    //   chip picker lands pre-populated.
+    if (_selectedSubjectId != null && _subjectTopics.isEmpty) {
+      _fetchSubjectTopics();
+    }
   }
 
   Future<void> _saveSession() async {
@@ -861,9 +902,9 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
     return Padding(
       // Bigger top breathing room — title sits noticeably below the
       //   viewport edge instead of hugging it.
-      padding: EdgeInsets.fromLTRB(hPad, 32, hPad, 16),
+      padding: EdgeInsets.fromLTRB(hPad, 56, hPad, 18),
       child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-        // Back — bumped to 40px to match the heavier title type scale
+        // Back — bumped to 46px to match the heavier title type scale
         GestureDetector(
           onTap: () {
             if (onTimer) {
@@ -874,29 +915,29 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
             }
           },
           child: Container(
-            width: 40, height: 40,
+            width: 46, height: 46,
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(13),
               border: Border.all(color: _outline.withOpacity(0.35), width: 1.5),
               boxShadow: [BoxShadow(
                 color: _outline.withOpacity(0.28),
                 offset: const Offset(2, 3), blurRadius: 0)]),
             child: const Icon(Icons.chevron_left_rounded,
-              size: 24, color: _outline),
+              size: 28, color: _outline),
           ),
         ),
-        const SizedBox(width: 14),
+        const SizedBox(width: 16),
         // Title — bigger Bitroad type for hero presence
         Flexible(child: Text(title, style: const TextStyle(
-          fontFamily: 'Bitroad', fontSize: 30,
+          fontFamily: 'Bitroad', fontSize: 36,
           color: _brown, height: 1.0),
           overflow: TextOverflow.ellipsis, maxLines: 1)),
         if (!onTimer) ...[
-          const SizedBox(width: 12),
+          const SizedBox(width: 14),
           Flexible(child: Text('· $kicker',
             style: GoogleFonts.gaegu(
-              fontSize: 15, fontWeight: FontWeight.w500,
+              fontSize: 17, fontWeight: FontWeight.w500,
               fontStyle: FontStyle.italic,
               color: _brownLt.withOpacity(0.78),
               letterSpacing: 0.2),
@@ -1616,12 +1657,18 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
     final dotColor = _parseColor(colorHex) ?? _greenHdr;
     return GestureDetector(
       onTap: () {
+        final changed = _selectedSubjectId != id;
         setState(() {
           _selectedSubjectId = id;
           _selectedSubjectName = id != null ? name : null;
           _selectedSubjectColor = colorHex;
+          if (changed) {
+            _subjectTopics = [];
+            _lastLoadedTopicsSubject = null;
+          }
         });
         Navigator.pop(ctx);
+        if (id != null) _fetchSubjectTopics();
       },
       child: Container(
         width: double.infinity,
@@ -2624,69 +2671,70 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
       final wide = c.maxWidth > 720;
 
       final hero = Column(
-        crossAxisAlignment: CrossAxisAlignment.start, children: [
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        mainAxisSize: MainAxisSize.max,
+        children: [
           Padding(
             padding: const EdgeInsets.only(left: 2),
             child: Row(children: [
-              Container(width: 7, height: 7, decoration: const BoxDecoration(
+              Container(width: 8, height: 8, decoration: const BoxDecoration(
                 color: _oliveDk, shape: BoxShape.circle)),
-              const SizedBox(width: 10),
-              Text('YOU STUDIED FOR', style: GoogleFonts.nunito(
-                fontSize: 11, fontWeight: FontWeight.w900,
-                color: _oliveDk, letterSpacing: 1.8)),
               const SizedBox(width: 11),
+              Text('YOU STUDIED FOR', style: GoogleFonts.nunito(
+                fontSize: 13, fontWeight: FontWeight.w900,
+                color: _oliveDk, letterSpacing: 1.8)),
+              const SizedBox(width: 12),
               Flexible(child: Text('what a session',
                 style: GoogleFonts.gaegu(
-                  fontSize: 14.5, fontWeight: FontWeight.w500,
+                  fontSize: 17, fontWeight: FontWeight.w500,
                   fontStyle: FontStyle.italic, color: _brownLt),
                 overflow: TextOverflow.ellipsis)),
             ]),
           ),
-          const SizedBox(height: 10),
           Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
             Text('$mins', style: const TextStyle(
-              fontFamily: 'Bitroad', fontSize: 82, color: _brown, height: 0.95)),
-            const SizedBox(width: 8),
+              fontFamily: 'Bitroad', fontSize: 112, color: _brown, height: 0.92)),
+            const SizedBox(width: 10),
             Padding(
-              padding: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.only(bottom: 16),
               child: Text('min', style: GoogleFonts.nunito(
-                fontSize: 19, fontWeight: FontWeight.w800,
+                fontSize: 26, fontWeight: FontWeight.w800,
                 color: _brownLt, letterSpacing: 0.3)),
             ),
             const Spacer(),
             if (_streakCount > 0)
               Padding(
-                padding: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.only(bottom: 14),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
                   Icon(Icons.local_fire_department_rounded,
-                    size: 16, color: _goldDk),
-                  const SizedBox(width: 6),
+                    size: 20, color: _goldDk),
+                  const SizedBox(width: 7),
                   Text('$_streakCount-day streak',
                     style: GoogleFonts.nunito(
-                      fontSize: 13.5, fontWeight: FontWeight.w800,
+                      fontSize: 16, fontWeight: FontWeight.w800,
                       color: _brownLt, letterSpacing: 0.3)),
                 ]),
               ),
           ]),
-          const SizedBox(height: 10),
           Row(children: [
-            Icon(_typeIcon(_sessionType), size: 15,
+            Icon(_typeIcon(_sessionType), size: 19,
               color: _typeColor(_sessionType)),
-            const SizedBox(width: 7),
+            const SizedBox(width: 9),
             Text(
               _sessionType[0].toUpperCase() + _sessionType.substring(1),
               style: GoogleFonts.nunito(
-                fontSize: 13.5, fontWeight: FontWeight.w800,
+                fontSize: 16, fontWeight: FontWeight.w800,
                 color: _brown, letterSpacing: 0.3)),
             if (_titleCtrl.text.trim().isNotEmpty) ...[
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 9),
+                padding: const EdgeInsets.symmetric(horizontal: 10),
                 child: Text('·', style: GoogleFonts.nunito(
-                  fontSize: 15, fontWeight: FontWeight.w900,
+                  fontSize: 18, fontWeight: FontWeight.w900,
                   color: _outline.withOpacity(0.4)))),
               Flexible(child: Text(_titleCtrl.text.trim(),
                 style: GoogleFonts.nunito(
-                  fontSize: 13.5, fontWeight: FontWeight.w600,
+                  fontSize: 16, fontWeight: FontWeight.w600,
                   fontStyle: FontStyle.italic, color: _inkSoft),
                 overflow: TextOverflow.ellipsis, maxLines: 1)),
             ],
@@ -2695,7 +2743,7 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
 
       final summary = Container(
         width: double.infinity,
-        padding: const EdgeInsets.fromLTRB(24, 22, 24, 22),
+        padding: const EdgeInsets.fromLTRB(28, 26, 28, 28),
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft, end: Alignment.bottomRight,
@@ -2708,42 +2756,48 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
           boxShadow: [BoxShadow(
             color: _pinkHdr.withOpacity(0.16),
             offset: const Offset(0, 3), blurRadius: 0)]),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Container(width: 7, height: 7, decoration: const BoxDecoration(
-              color: _pinkHdr, shape: BoxShape.circle)),
-            const SizedBox(width: 10),
-            Text('THE NUMBERS', style: GoogleFonts.nunito(
-              fontSize: 11, fontWeight: FontWeight.w900,
-              color: _pinkHdr, letterSpacing: 1.8)),
-            const SizedBox(width: 11),
-            Flexible(child: Text('tiny wins, written down',
-              style: GoogleFonts.gaegu(
-                fontSize: 14, fontWeight: FontWeight.w500,
-                fontStyle: FontStyle.italic, color: _brownLt),
-              overflow: TextOverflow.ellipsis)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          mainAxisSize: MainAxisSize.max,
+          children: [
+            Row(children: [
+              Container(width: 8, height: 8, decoration: const BoxDecoration(
+                color: _pinkHdr, shape: BoxShape.circle)),
+              const SizedBox(width: 11),
+              Text('THE NUMBERS', style: GoogleFonts.nunito(
+                fontSize: 13, fontWeight: FontWeight.w900,
+                color: _pinkHdr, letterSpacing: 1.8)),
+              const SizedBox(width: 12),
+              Flexible(child: Text('tiny wins, written down',
+                style: GoogleFonts.gaegu(
+                  fontSize: 17, fontWeight: FontWeight.w500,
+                  fontStyle: FontStyle.italic, color: _brownLt),
+                overflow: TextOverflow.ellipsis)),
+            ]),
+            Column(crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _summaryRow(Icons.timer_rounded, 'Time',
+                  '$mins min', _pinkHdr),
+                _summaryRow(Icons.repeat_rounded, 'Pomodoros',
+                  '$_pomodoroCount', _greenHdr),
+                if (_selectedSubjectName != null)
+                  _summaryRow(Icons.menu_book_rounded, 'Subject',
+                    _selectedSubjectName!, _purpleHdr),
+                if (_topics.isNotEmpty)
+                  _summaryRow(Icons.tag_rounded, 'Topics',
+                    _topics.length == 1 ? _topics.first : '${_topics.length} tags',
+                    _skyHdr),
+                if (_distractionCount > 0)
+                  _summaryRow(Icons.notifications_active_rounded, 'Distractions',
+                    '$_distractionCount', _coralHdr),
+              ]),
           ]),
-          const SizedBox(height: 16),
-          _summaryRow(Icons.timer_rounded, 'Time',
-            '$mins min', _pinkHdr),
-          _summaryRow(Icons.repeat_rounded, 'Pomodoros',
-            '$_pomodoroCount', _greenHdr),
-          if (_selectedSubjectName != null)
-            _summaryRow(Icons.menu_book_rounded, 'Subject',
-              _selectedSubjectName!, _purpleHdr),
-          if (_topics.isNotEmpty)
-            _summaryRow(Icons.tag_rounded, 'Topics',
-              _topics.length == 1 ? _topics.first : '${_topics.length} tags',
-              _skyHdr),
-          if (_distractionCount > 0)
-            _summaryRow(Icons.notifications_active_rounded, 'Distractions',
-              '$_distractionCount', _coralHdr),
-        ]),
       );
 
       final focusCard = Container(
         width: double.infinity,
-        padding: const EdgeInsets.fromLTRB(24, 22, 24, 22),
+        padding: const EdgeInsets.fromLTRB(28, 26, 28, 28),
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft, end: Alignment.bottomRight,
@@ -2756,98 +2810,102 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
           boxShadow: [BoxShadow(
             color: _skyHdr.withOpacity(0.16),
             offset: const Offset(0, 3), blurRadius: 0)]),
-        child: Column(children: [
-          Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            Expanded(child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min, children: [
-                Row(children: [
-                  Container(width: 7, height: 7, decoration: const BoxDecoration(
-                    color: _skyHdr, shape: BoxShape.circle)),
-                  const SizedBox(width: 10),
-                  Text('HOW FOCUSED', style: GoogleFonts.nunito(
-                    fontSize: 11, fontWeight: FontWeight.w900,
-                    color: _skyHdr, letterSpacing: 1.8)),
-                ]),
-                const SizedBox(height: 4),
-                Text('be honest — no judgement',
-                  style: GoogleFonts.gaegu(
-                    fontSize: 13.5, fontWeight: FontWeight.w500,
-                    fontStyle: FontStyle.italic, color: _brownLt)),
-              ])),
-            Text('$_focusScore', style: TextStyle(
-              fontFamily: 'Bitroad', fontSize: 30,
-              color: _focusColor(_focusScore), height: 1.0)),
-            const SizedBox(width: 3),
-            Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: Text('%', style: GoogleFonts.nunito(
-                fontSize: 13.5, fontWeight: FontWeight.w800,
-                color: _focusColor(_focusScore))),
-            ),
-          ]),
-          const SizedBox(height: 12),
-          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [20, 40, 60, 80, 100].map((v) {
-              final sel = (_focusScore - v).abs() < 10;
-              return GestureDetector(
-                onTap: () => setState(() => _focusScore = v),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  width: sel ? 42 : 34, height: sel ? 42 : 34,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: sel ? _focusColor(v).withOpacity(0.18)
-                        : Colors.transparent,
-                    border: sel ? Border.all(
-                      color: _focusColor(v), width: 1.8) : null),
-                  child: CustomPaint(painter: _FacePainter(
-                    score: v,
-                    color: sel ? _focusColor(v) : _brownLt.withOpacity(0.4),
-                    size: sel ? 42 : 34)),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          mainAxisSize: MainAxisSize.max,
+          children: [
+            Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              Expanded(child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min, children: [
+                  Row(children: [
+                    Container(width: 8, height: 8, decoration: const BoxDecoration(
+                      color: _skyHdr, shape: BoxShape.circle)),
+                    const SizedBox(width: 11),
+                    Text('HOW FOCUSED', style: GoogleFonts.nunito(
+                      fontSize: 13, fontWeight: FontWeight.w900,
+                      color: _skyHdr, letterSpacing: 1.8)),
+                  ]),
+                  const SizedBox(height: 6),
+                  Text('be honest — no judgement',
+                    style: GoogleFonts.gaegu(
+                      fontSize: 16, fontWeight: FontWeight.w500,
+                      fontStyle: FontStyle.italic, color: _brownLt)),
+                ])),
+              Text('$_focusScore', style: TextStyle(
+                fontFamily: 'Bitroad', fontSize: 44,
+                color: _focusColor(_focusScore), height: 1.0)),
+              const SizedBox(width: 4),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Text('%', style: GoogleFonts.nunito(
+                  fontSize: 18, fontWeight: FontWeight.w800,
+                  color: _focusColor(_focusScore))),
+              ),
+            ]),
+            Column(mainAxisSize: MainAxisSize.min, children: [
+              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [20, 40, 60, 80, 100].map((v) {
+                  final sel = (_focusScore - v).abs() < 10;
+                  return GestureDetector(
+                    onTap: () => setState(() => _focusScore = v),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      width: sel ? 54 : 44, height: sel ? 54 : 44,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: sel ? _focusColor(v).withOpacity(0.18)
+                            : Colors.transparent,
+                        border: sel ? Border.all(
+                          color: _focusColor(v), width: 1.8) : null),
+                      child: CustomPaint(painter: _FacePainter(
+                        score: v,
+                        color: sel ? _focusColor(v) : _brownLt.withOpacity(0.4),
+                        size: sel ? 54 : 44)),
+                    ),
+                  );
+                }).toList()),
+              const SizedBox(height: 6),
+              SliderTheme(
+                data: SliderThemeData(
+                  activeTrackColor: _focusColor(_focusScore),
+                  inactiveTrackColor: _outline.withOpacity(0.1),
+                  thumbColor: _focusColor(_focusScore),
+                  overlayColor: _focusColor(_focusScore).withOpacity(0.15),
+                  trackHeight: 7,
+                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 13)),
+                child: Slider(
+                  value: _focusScore.toDouble(),
+                  min: 1, max: 100,
+                  onChanged: (v) => setState(() => _focusScore = v.round()),
                 ),
-              );
-            }).toList()),
-          const SizedBox(height: 4),
-          SliderTheme(
-            data: SliderThemeData(
-              activeTrackColor: _focusColor(_focusScore),
-              inactiveTrackColor: _outline.withOpacity(0.1),
-              thumbColor: _focusColor(_focusScore),
-              overlayColor: _focusColor(_focusScore).withOpacity(0.15),
-              trackHeight: 5,
-              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 10)),
-            child: Slider(
-              value: _focusScore.toDouble(),
-              min: 1, max: 100,
-              onChanged: (v) => setState(() => _focusScore = v.round()),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Distracted', style: GoogleFonts.nunito(
-                  fontSize: 11.5, fontWeight: FontWeight.w600, color: _brownLt)),
-                if (_focusScore >= 80)
-                  Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(Icons.bolt_rounded, size: 13, color: _greenDk),
-                    const SizedBox(width: 4),
-                    Text('+25% XP bonus', style: GoogleFonts.nunito(
-                      fontSize: 11.5, fontWeight: FontWeight.w800, color: _greenDk)),
-                  ])
-                else
-                  Text('Laser focus', style: GoogleFonts.nunito(
-                    fontSize: 11.5, fontWeight: FontWeight.w600, color: _brownLt)),
-              ]),
-          ),
-        ]),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Distracted', style: GoogleFonts.nunito(
+                      fontSize: 14, fontWeight: FontWeight.w600, color: _brownLt)),
+                    if (_focusScore >= 80)
+                      Row(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(Icons.bolt_rounded, size: 16, color: _greenDk),
+                        const SizedBox(width: 5),
+                        Text('+25% XP bonus', style: GoogleFonts.nunito(
+                          fontSize: 14, fontWeight: FontWeight.w800, color: _greenDk)),
+                      ])
+                    else
+                      Text('Laser focus', style: GoogleFonts.nunito(
+                        fontSize: 14, fontWeight: FontWeight.w600, color: _brownLt)),
+                  ]),
+              ),
+            ]),
+          ]),
       );
 
       final notesBtn = GestureDetector(
         onTap: _openNotesModal,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
           decoration: BoxDecoration(
             color: const Color(0xFFFFF8F0),
             borderRadius: BorderRadius.circular(14),
@@ -2856,12 +2914,12 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
               color: _outline.withOpacity(0.16),
               offset: const Offset(0, 2.5), blurRadius: 0)]),
           child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Icon(Icons.edit_note_rounded, size: 19, color: _oliveDk),
-            const SizedBox(width: 10),
+            Icon(Icons.edit_note_rounded, size: 22, color: _oliveDk),
+            const SizedBox(width: 11),
             Text(_notesCtrl.text.trim().isEmpty
                 ? 'Add notes' : 'View notes',
               style: const TextStyle(
-                fontFamily: 'Bitroad', fontSize: 16,
+                fontFamily: 'Bitroad', fontSize: 18,
                 color: _brown, letterSpacing: 0.2)),
           ]),
         ),
@@ -2952,7 +3010,7 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
       final discardBtn = !_saved ? GestureDetector(
         onTap: () => Navigator.pop(context),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 22),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 26),
           decoration: BoxDecoration(
             color: const Color(0xFFFFF8F0),
             borderRadius: BorderRadius.circular(18),
@@ -2962,7 +3020,7 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
               offset: const Offset(0, 2.5), blurRadius: 0)]),
           child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
             Text('Discard', style: const TextStyle(
-              fontFamily: 'Bitroad', fontSize: 16,
+              fontFamily: 'Bitroad', fontSize: 18,
               color: _brownLt, letterSpacing: 0.3)),
           ]),
         ),
@@ -2998,25 +3056,31 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
         //   Row 4: notes + discard + save            — inline actions
         // Weighted Spacer top/bottom centers the stack a little low.
 
-        final topRow = Row(
+        //   IntrinsicHeight gives the Row a definite cross-axis size
+        //   (max of child intrinsic heights), so CrossAxisAlignment
+        //   .stretch can actually stretch children. Without it the
+        //   Row inherits the Column's unbounded vertical constraint
+        //   (since the Column uses Spacer-based layout), and stretch
+        //   fails with a `RenderBox was not laid out` assertion.
+        final topRow = IntrinsicHeight(child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Expanded(flex: 5, child: _sectionCard(
               tint: _oliveDk,
               tintSoft: _oliveBg,
-              padding: const EdgeInsets.fromLTRB(28, 26, 28, 28),
+              padding: const EdgeInsets.fromLTRB(32, 28, 32, 30),
               child: hero)),
             const SizedBox(width: 18),
             Expanded(flex: 5, child: summary),
-          ]);
+          ]));
 
-        final midRow = Row(
+        final midRow = IntrinsicHeight(child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Expanded(child: _buildMoodCard()),
             const SizedBox(width: 18),
             Expanded(child: focusCard),
-          ]);
+          ]));
 
         final bottomStrip = !_saved
           ? Row(children: [
@@ -3032,20 +3096,45 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
               Expanded(flex: 6, child: primaryBtn),
             ]);
 
+        // Desktop layout strategy:
+        //   Expanded SingleChildScrollView holds the cards — so if the
+        //   viewport is short (laptop, zoomed UI) the content scrolls
+        //   gracefully instead of producing a RenderFlex overflow. The
+        //   action strip stays pinned at the bottom via a sibling slot,
+        //   so "Save Session" is always reachable without scrolling past
+        //   the stats cards.
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Spacer(flex: 2),
-            _stag(0.02, topRow),
-            const SizedBox(height: 18),
-            _stag(0.10, midRow),
-            if (_saved) ...[
-              const SizedBox(height: 18),
-              _stag(0.14, xpBanner),
-            ],
-            const SizedBox(height: 20),
+            Expanded(
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(
+                  parent: AlwaysScrollableScrollPhysics()),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Tightened spacings (was 28 / 18) so the four cards +
+                    //   topic picker fit a typical 13"–14" laptop viewport
+                    //   without invoking the scroll bar at all.
+                    const SizedBox(height: 18),
+                    _stag(0.02, topRow),
+                    const SizedBox(height: 14),
+                    _stag(0.10, midRow),
+                    // Topic picker card — only shown pre-save so users commit to
+                    //   their tags before the session is persisted.
+                    if (!_saved) ...[
+                      const SizedBox(height: 14),
+                      _stag(0.12, _buildCompletionTopicsCard()),
+                    ],
+                    if (_saved) ...[
+                      const SizedBox(height: 14),
+                      _stag(0.14, xpBanner),
+                    ],
+                    const SizedBox(height: 12),
+                  ]),
+              ),
+            ),
             _stag(0.18, bottomStrip),
-            const Spacer(flex: 1),
           ]);
       }
 
@@ -3062,6 +3151,12 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
         _stag(0.09, focusCard),
         const SizedBox(height: 14),
         _stag(0.13, _buildMoodCard()),
+        // Topic picker — only while the session is still saveable; once
+        //   saved, the tags are baked in and this card would be clutter.
+        if (!_saved) ...[
+          const SizedBox(height: 14),
+          _stag(0.15, _buildCompletionTopicsCard()),
+        ],
         const SizedBox(height: 14),
         _stag(0.16, notesBtn),
         if (_saved) ...[
@@ -3084,17 +3179,251 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
 
   Widget _summaryRow(IconData icon, String label, String value, Color color) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 9),
+      padding: const EdgeInsets.only(bottom: 12),
       child: Row(children: [
-        Icon(icon, size: 15, color: color),
-        const SizedBox(width: 10),
+        Icon(icon, size: 18, color: color),
+        const SizedBox(width: 12),
         Text(label, style: GoogleFonts.nunito(
-          fontSize: 13, fontWeight: FontWeight.w800, color: _inkSoft,
+          fontSize: 15, fontWeight: FontWeight.w800, color: _inkSoft,
           letterSpacing: 0.4)),
         const Spacer(),
         Flexible(child: Text(value, style: const TextStyle(
-          fontFamily: 'Bitroad', fontSize: 16, color: _brown),
+          fontFamily: 'Bitroad', fontSize: 20, color: _brown),
           textAlign: TextAlign.right, overflow: TextOverflow.ellipsis)),
+      ]),
+    );
+  }
+
+  // Session Wrapped: offer one-tap topic tagging drawn from the
+  // subject's curated topic list. If no subject is selected yet,
+  // prompt the user to pick one. Free-form "+ add topic" entry
+  // remains so users can coin new topics on the fly — these
+  // auto-persist on the next session save (the backend's topic
+  // auto-create handles the rest).
+  Widget _buildCompletionTopicsCard() {
+    final hasSubject = _selectedSubjectId != null;
+    return Container(
+      width: double.infinity,
+      // Tighter padding than original (was 24/22) so the card doesn't
+      //   dominate the Wrapped layout — every saved pixel here means
+      //   the action strip stays comfortably visible without scroll.
+      padding: const EdgeInsets.fromLTRB(18, 13, 18, 13),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft, end: Alignment.bottomRight,
+          colors: [
+            _purpleLt.withOpacity(0.3),
+            _cardFill.withOpacity(0.72),
+          ]),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _purpleHdr.withOpacity(0.35), width: 1.5),
+        boxShadow: [BoxShadow(
+          color: _purpleHdr.withOpacity(0.16),
+          offset: const Offset(0, 3), blurRadius: 0)]),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(width: 7, height: 7, decoration: const BoxDecoration(
+            color: _purpleDk, shape: BoxShape.circle)),
+          const SizedBox(width: 10),
+          Text('WHAT YOU COVERED', style: GoogleFonts.nunito(
+            fontSize: 12, fontWeight: FontWeight.w900,
+            color: _purpleDk, letterSpacing: 1.6)),
+          const SizedBox(width: 10),
+          Flexible(child: Text('tag it — smarter quizzes later',
+            style: GoogleFonts.gaegu(
+              fontSize: 14, fontWeight: FontWeight.w500,
+              fontStyle: FontStyle.italic, color: _brownLt),
+            overflow: TextOverflow.ellipsis)),
+        ]),
+        const SizedBox(height: 10),
+
+        GestureDetector(
+          onTap: _showSubjectSheet,
+          behavior: HitTestBehavior.opaque,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.9),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: _outline.withOpacity(hasSubject ? 0.24 : 0.34),
+                width: 1.3)),
+            child: Row(children: [
+              if (hasSubject) ...[
+                Container(width: 11, height: 11, decoration: BoxDecoration(
+                  color: _parseColor(_selectedSubjectColor) ?? _greenHdr,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: _outline.withOpacity(0.3), width: 1))),
+                const SizedBox(width: 10),
+                Expanded(child: Text(_selectedSubjectName!,
+                  style: GoogleFonts.nunito(
+                    fontSize: 14, fontWeight: FontWeight.w700,
+                    color: _brown))),
+                Text('change', style: GoogleFonts.gaegu(
+                  fontSize: 13, fontWeight: FontWeight.w600,
+                  fontStyle: FontStyle.italic,
+                  color: _purpleDk,
+                  decoration: TextDecoration.underline,
+                  decorationColor: _purpleDk.withOpacity(0.5))),
+              ] else ...[
+                Icon(Icons.folder_outlined, size: 16,
+                  color: _brownLt.withOpacity(0.6)),
+                const SizedBox(width: 10),
+                Expanded(child: Text(
+                  'Tag a subject — helps sort this session',
+                  style: GoogleFonts.nunito(fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: _brownLt.withOpacity(0.75)))),
+                Icon(Icons.add_circle_outline_rounded, size: 18,
+                  color: _purpleDk),
+              ],
+            ]),
+          ),
+        ),
+        const SizedBox(height: 10),
+
+        if (hasSubject) ...[
+          if (_subjectTopicsLoading)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Row(children: [
+                SizedBox(width: 13, height: 13, child: CircularProgressIndicator(
+                  strokeWidth: 2, color: _purpleDk)),
+                const SizedBox(width: 9),
+                Text('Loading topics...', style: GoogleFonts.nunito(
+                  fontSize: 12, color: _brownLt,
+                  fontWeight: FontWeight.w600)),
+              ]))
+          else if (_subjectTopics.isNotEmpty) ...[
+            Text('PICK FROM', style: GoogleFonts.nunito(
+              fontSize: 9.5, fontWeight: FontWeight.w900,
+              color: _purpleDk.withOpacity(0.85), letterSpacing: 0.8)),
+            const SizedBox(height: 6),
+            Wrap(spacing: 7, runSpacing: 7,
+              children: _subjectTopics.map((t) {
+                final name = t['name']?.toString() ?? '';
+                if (name.isEmpty) return const SizedBox.shrink();
+                final sel = _topics.contains(name);
+                return GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      if (sel) {
+                        _topics.remove(name);
+                      } else {
+                        _topics.add(name);
+                      }
+                    });
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 140),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 7),
+                    decoration: BoxDecoration(
+                      gradient: sel
+                        ? LinearGradient(colors: [
+                            _purpleLt.withOpacity(0.85),
+                            _purpleHdr.withOpacity(0.65),
+                          ])
+                        : null,
+                      color: sel ? null : Colors.white.withOpacity(0.9),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: sel
+                          ? _purpleDk.withOpacity(0.55)
+                          : _outline.withOpacity(0.22),
+                        width: sel ? 1.6 : 1.2),
+                      boxShadow: sel ? [BoxShadow(
+                        color: _purpleDk.withOpacity(0.22),
+                        offset: const Offset(1.5, 1.5),
+                        blurRadius: 0)] : null),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      if (sel) ...[
+                        Icon(Icons.check_rounded, size: 14, color: _brown),
+                        const SizedBox(width: 5),
+                      ],
+                      Text(name, style: GoogleFonts.nunito(
+                        fontSize: 12.5,
+                        fontWeight: sel ? FontWeight.w800 : FontWeight.w600,
+                        color: _brown)),
+                    ]),
+                  ),
+                );
+              }).toList()),
+            const SizedBox(height: 10),
+          ] else ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Text(
+                'No topics yet for this subject — add some below and they\'ll save for next time.',
+                style: GoogleFonts.gaegu(
+                  fontSize: 13, fontWeight: FontWeight.w500,
+                  fontStyle: FontStyle.italic, color: _brownLt)),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ],
+
+        Text(_topics.isEmpty ? 'ADD YOUR OWN' : 'TAGGED',
+          style: GoogleFonts.nunito(
+            fontSize: 9.5, fontWeight: FontWeight.w900,
+            color: _oliveDk, letterSpacing: 0.8)),
+        const SizedBox(height: 6),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.92),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: _outline.withOpacity(0.18), width: 1.2)),
+          child: Wrap(spacing: 6, runSpacing: 6, children: [
+            ..._topics.map((t) => Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(colors: [
+                  _oliveBg.withOpacity(0.9),
+                  _oliveLt.withOpacity(0.55),
+                ]),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: _oliveDk.withOpacity(0.35), width: 1)),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Text(t, style: GoogleFonts.nunito(
+                  fontSize: 11, fontWeight: FontWeight.w700, color: _brown)),
+                const SizedBox(width: 4),
+                GestureDetector(
+                  onTap: () => setState(() => _topics.remove(t)),
+                  child: Icon(Icons.close_rounded, size: 12,
+                    color: _oliveDk.withOpacity(0.6))),
+              ]),
+            )),
+            SizedBox(width: 140, height: 26, child: TextField(
+              controller: _topicCtrl,
+              style: GoogleFonts.nunito(fontSize: 11,
+                color: _brown, fontWeight: FontWeight.w600),
+              decoration: InputDecoration(
+                hintText: '+ add topic',
+                hintStyle: GoogleFonts.nunito(fontSize: 11,
+                  color: _brownLt.withOpacity(0.5)),
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                disabledBorder: InputBorder.none,
+                errorBorder: InputBorder.none,
+                focusedErrorBorder: InputBorder.none,
+                isDense: true,
+                contentPadding: EdgeInsets.zero),
+              onSubmitted: (v) {
+                final value = v.trim();
+                if (value.isNotEmpty && !_topics.contains(value)) {
+                  setState(() { _topics.add(value); _topicCtrl.clear(); });
+                } else {
+                  _topicCtrl.clear();
+                }
+              },
+            )),
+          ]),
+        ),
       ]),
     );
   }
@@ -3117,15 +3446,31 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
     );
   }
 
+  // Stagger animation.
+  // Passes `child` through AnimatedBuilder so the subtree isn't rebuilt every
+  // frame, wraps in RepaintBoundary to isolate paints, and wraps in
+  // IgnorePointer while animating so mouse hit-testing doesn't race with the
+  // render update. This is the same pattern applied to subjects_screen,
+  // take_quiz_screen, resource_screen, and study_calendar_screen — it fixes
+  // the `_debugDuringDeviceUpdate` mouse-tracker assertion cascade on desktop.
   Widget _stag(double delay, Widget child) {
-    return AnimatedBuilder(
-      animation: _enterCtrl,
-      builder: (_, __) {
-        final t = Curves.easeOutCubic.transform(
-          ((_enterCtrl.value - delay) / (1.0 - delay)).clamp(0.0, 1.0));
-        return Opacity(opacity: t, child: Transform.translate(
-            offset: Offset(0, 20 * (1 - t)), child: child));
-      },
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: _enterCtrl,
+        child: child,
+        builder: (_, c) {
+          final t = Curves.easeOutCubic.transform(
+              ((_enterCtrl.value - delay) / (1.0 - delay)).clamp(0.0, 1.0));
+          return IgnorePointer(
+            ignoring: t < 1.0,
+            child: Opacity(
+              opacity: t,
+              child: Transform.translate(
+                  offset: Offset(0, 20 * (1 - t)), child: c),
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -3194,7 +3539,7 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 22),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft, end: Alignment.bottomRight,
@@ -3204,55 +3549,57 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
           ]),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: _coralHdr.withOpacity(0.26), width: 1)),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Container(width: 7, height: 7, decoration: const BoxDecoration(
-            color: _coralHdr, shape: BoxShape.circle)),
-          const SizedBox(width: 10),
-          Text('HOW DID IT FEEL', style: GoogleFonts.nunito(
-            fontSize: 11, fontWeight: FontWeight.w900,
-            color: _coralHdr, letterSpacing: 1.6)),
-          const SizedBox(width: 11),
-          Flexible(child: Text('name the weather',
-            style: GoogleFonts.gaegu(
-              fontSize: 14, fontWeight: FontWeight.w500,
-              fontStyle: FontStyle.italic, color: _brownLt),
-            overflow: TextOverflow.ellipsis)),
-        ]),
-        const SizedBox(height: 16),
-        Row(children: List.generate(moods.length, (i) {
-          final m = moods[i];
-          final sel = _moodTag == m['k'];
-          final c = m['c'] as Color;
-          return Expanded(child: Padding(
-            padding: EdgeInsets.only(right: i < moods.length - 1 ? 8 : 0),
-            child: GestureDetector(
-              onTap: () => setState(() =>
-                _moodTag = sel ? null : m['k'] as String),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 160),
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                decoration: BoxDecoration(
-                  color: sel ? c.withOpacity(0.14) : Colors.transparent,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: sel ? c.withOpacity(0.7) : _outline.withOpacity(0.12),
-                    width: sel ? 1.4 : 1)),
-                child: Column(children: [
-                  Icon(m['i'] as IconData, size: 26,
-                    color: sel ? c : _brownLt.withOpacity(0.5)),
-                  const SizedBox(height: 7),
-                  Text(m['l'] as String, style: GoogleFonts.nunito(
-                    fontSize: 12.5,
-                    fontWeight: sel ? FontWeight.w800 : FontWeight.w600,
-                    color: sel ? _brown : _brownLt,
-                    letterSpacing: 0.2)),
-                ]),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        mainAxisSize: MainAxisSize.max,
+        children: [
+          Row(children: [
+            Container(width: 8, height: 8, decoration: const BoxDecoration(
+              color: _coralHdr, shape: BoxShape.circle)),
+            const SizedBox(width: 11),
+            Text('HOW DID IT FEEL', style: GoogleFonts.nunito(
+              fontSize: 13, fontWeight: FontWeight.w900,
+              color: _coralHdr, letterSpacing: 1.6)),
+            const SizedBox(width: 12),
+            Flexible(child: Text('name the weather',
+              style: GoogleFonts.gaegu(
+                fontSize: 17, fontWeight: FontWeight.w500,
+                fontStyle: FontStyle.italic, color: _brownLt),
+              overflow: TextOverflow.ellipsis)),
+          ]),
+          Row(children: List.generate(moods.length, (i) {
+            final m = moods[i];
+            final sel = _moodTag == m['k'];
+            final c = m['c'] as Color;
+            return Expanded(child: Padding(
+              padding: EdgeInsets.only(right: i < moods.length - 1 ? 10 : 0),
+              child: GestureDetector(
+                onTap: () => setState(() =>
+                  _moodTag = sel ? null : m['k'] as String),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 160),
+                  padding: const EdgeInsets.symmetric(vertical: 22),
+                  decoration: BoxDecoration(
+                    color: sel ? c.withOpacity(0.14) : Colors.transparent,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: sel ? c.withOpacity(0.7) : _outline.withOpacity(0.12),
+                      width: sel ? 1.4 : 1)),
+                  child: Column(children: [
+                    Icon(m['i'] as IconData, size: 34,
+                      color: sel ? c : _brownLt.withOpacity(0.5)),
+                    const SizedBox(height: 10),
+                    Text(m['l'] as String, style: GoogleFonts.nunito(
+                      fontSize: 15,
+                      fontWeight: sel ? FontWeight.w800 : FontWeight.w600,
+                      color: sel ? _brown : _brownLt,
+                      letterSpacing: 0.2)),
+                  ]),
+                ),
               ),
-            ),
-          ));
-        })),
-      ]),
+            ));
+          })),
+        ]),
     );
   }
 }

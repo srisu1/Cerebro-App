@@ -1,650 +1,950 @@
-//  CEREBRO — AI Resource Recommendations Screen
-//  Personalised learning resources from AI analysis
-//  Filter chips: All · Videos · Articles · Practice · Techniques
-//  Cozy Pocket Love aesthetic
+/// Study Tab look: cream/terra-cotta ombre + paw-prints,
+/// Bitroad for headings/values, Gaegu for body, hard-offset shadows,
+/// pill chips, and a Health-Tab-style detail modal.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:url_launcher/url_launcher.dart';
-import 'package:cerebro_app/providers/auth_provider.dart';
 
-const _ombre1   = Color(0xFFFFFBF7);
-const _ombre2   = Color(0xFFFFF8F3);
-const _ombre3   = Color(0xFFFFF3EF);
-const _ombre4   = Color(0xFFFEEDE9);
-const _cardFill = Color(0xFFFFF8F4);
-const _outline  = Color(0xFF6E5848);
-const _brown    = Color(0xFF4E3828);
-const _brownLt  = Color(0xFF7A5840);
-const _coralHdr = Color(0xFFF0A898);
-const _greenHdr = Color(0xFFA8D5A3);
-const _greenDk  = Color(0xFF88B883);
-const _goldHdr  = Color(0xFFF0D878);
-const _purpleHdr = Color(0xFFCDA8D8);
-const _purpleLt = Color(0xFFD8C0E8);
+const _ombre1 = Color(0xFFFFFBF7);
+const _ombre2 = Color(0xFFFFF8F3);
+const _ombre3 = Color(0xFFFFF3EF);
+const _ombre4 = Color(0xFFFEEDE9);
+const _pawClr = Color(0xFFF8BCD0);
+
+const _outline   = Color(0xFF6E5848);
+const _brown     = Color(0xFF4E3828);
+const _brownLt   = Color(0xFF7A5840);
+const _brownSoft = Color(0xFF9A8070);
+
+const _cream    = Color(0xFFFDEFDB);
+const _olive    = Color(0xFF98A869);
+const _oliveDk  = Color(0xFF58772F);
+const _pinkLt   = Color(0xFFFFD5F5);
+const _pink     = Color(0xFFFEA9D3);
+const _pinkDk   = Color(0xFFE890B8);
+const _coral    = Color(0xFFF7AEAE);
+const _gold     = Color(0xFFE4BC83);
+const _orange   = Color(0xFFFFBC5C);
+const _red      = Color(0xFFEF6262);
+const _blueLt   = Color(0xFFDDF6FF);
+const _greenLt  = Color(0xFFC2E8BC);
 const _skyHdr   = Color(0xFF9DD4F0);
-const _sageHdr  = Color(0xFF90C8A0);
+const _purpleHdr = Color(0xFFCDA8D8);
 
-enum _FilterType { all, video, article, practice, technique }
+const _mTerra   = Color(0xFFD9B5A6);
+const _mSlate   = Color(0xFFB6CBD6);
+const _mSage    = Color(0xFFB5C4A0);
+const _mMint    = Color(0xFFC8DCC2);
+const _mLav     = Color(0xFFC9B8D9);
+const _mButter  = Color(0xFFE8D4A0);
+const _mBlush   = Color(0xFFEAD0CE);
+const _mSand    = Color(0xFFE8D9C2);
 
-class ResourceScreen extends ConsumerStatefulWidget {
-  const ResourceScreen({super.key});
-  @override ConsumerState<ResourceScreen> createState() => _ResourceScreenState();
+TextStyle _gaegu({double size = 14, FontWeight weight = FontWeight.w600, Color color = _brown, double? h}) =>
+    GoogleFonts.gaegu(fontSize: size, fontWeight: weight, color: color, height: h);
+const _bitroad = 'Bitroad';
+
+enum _ResKind { video, article, pdf, flashcards, podcast, practice }
+
+class _Resource {
+  final String id;
+  final String title;
+  final String source;
+  final String subject;
+  final _ResKind kind;
+  final int minutes;
+  final double rating; // 0..5
+  final bool bookmarked;
+  final String summary;
+  _Resource({
+    required this.id,
+    required this.title,
+    required this.source,
+    required this.subject,
+    required this.kind,
+    required this.minutes,
+    required this.rating,
+    required this.summary,
+    this.bookmarked = false,
+  });
 }
 
-class _ResourceScreenState extends ConsumerState<ResourceScreen> {
-  Map<String, dynamic> _data = {};
-  List<Map<String, dynamic>> _allRecs = [];
-  List<Map<String, dynamic>> _weakAreas = [];
-  bool _loading = true;
-  bool _refreshing = false;
-  _FilterType _activeFilter = _FilterType.all;
-  String? _error;
+Color _kindColor(_ResKind k) => switch (k) {
+      _ResKind.video      => _mTerra,
+      _ResKind.article    => _mSlate,
+      _ResKind.pdf        => _mButter,
+      _ResKind.flashcards => _mLav,
+      _ResKind.podcast    => _mMint,
+      _ResKind.practice   => _mSand,
+    };
+IconData _kindIcon(_ResKind k) => switch (k) {
+      _ResKind.video      => Icons.play_circle_rounded,
+      _ResKind.article    => Icons.article_rounded,
+      _ResKind.pdf        => Icons.picture_as_pdf_rounded,
+      _ResKind.flashcards => Icons.style_rounded,
+      _ResKind.podcast    => Icons.headphones_rounded,
+      _ResKind.practice   => Icons.edit_note_rounded,
+    };
+String _kindLabel(_ResKind k) => switch (k) {
+      _ResKind.video      => 'Video',
+      _ResKind.article    => 'Article',
+      _ResKind.pdf        => 'PDF',
+      _ResKind.flashcards => 'Flashcards',
+      _ResKind.podcast    => 'Podcast',
+      _ResKind.practice   => 'Practice',
+    };
+
+final _demoResources = <_Resource>[
+  _Resource(id: '1', title: 'Photosynthesis — Crash Course', source: 'CrashCourse',
+      subject: 'Biology', kind: _ResKind.video, minutes: 14, rating: 4.8,
+      summary: 'Whiteboard-style explainer covering light & dark reactions with nice visuals.',
+      bookmarked: true),
+  _Resource(id: '2', title: 'A Short Guide to Derivatives', source: 'BetterExplained',
+      subject: 'Math', kind: _ResKind.article, minutes: 9, rating: 4.6,
+      summary: 'Intuitive write-up using slopes and small changes. Good for clearing fog.'),
+  _Resource(id: '3', title: 'Periodic Table Reference', source: 'KhanAcademy',
+      subject: 'Chemistry', kind: _ResKind.pdf, minutes: 5, rating: 4.4,
+      summary: 'Printable cheat sheet — keep one by your desk for quick lookups.'),
+  _Resource(id: '4', title: 'Newton\'s Laws Deck', source: 'Anki Community',
+      subject: 'Physics', kind: _ResKind.flashcards, minutes: 20, rating: 4.9,
+      summary: '120 spaced-repetition cards covering all three laws with example problems.',
+      bookmarked: true),
+  _Resource(id: '5', title: 'Shakespeare in 30 Minutes', source: 'BBC Sounds',
+      subject: 'English Lit', kind: _ResKind.podcast, minutes: 32, rating: 4.5,
+      summary: 'Overview of themes, structure, and exam-relevant quotes.'),
+  _Resource(id: '6', title: 'Big-O Practice — 25 Questions', source: 'LeetBasics',
+      subject: 'Computer Sci', kind: _ResKind.practice, minutes: 45, rating: 4.7,
+      summary: 'Ramp-up problem set with hints and worked solutions.'),
+  _Resource(id: '7', title: 'Cell Biology — Deep Dive', source: 'MIT OCW',
+      subject: 'Biology', kind: _ResKind.video, minutes: 52, rating: 4.9,
+      summary: 'Full lecture on organelle function — dense but superb.'),
+  _Resource(id: '8', title: 'Essay Structure Toolkit', source: 'OxfordRoyale',
+      subject: 'English Lit', kind: _ResKind.article, minutes: 12, rating: 4.3,
+      summary: 'PEEL / TEAL paragraphs, signposts, intros and conclusions.'),
+];
+
+//  RESOURCE SCREEN
+class ResourceScreen extends ConsumerStatefulWidget {
+  const ResourceScreen({super.key});
+  @override
+  ConsumerState<ResourceScreen> createState() => _ResourceScreenState();
+}
+
+class _ResourceScreenState extends ConsumerState<ResourceScreen>
+    with TickerProviderStateMixin {
+  _ResKind? _kindFilter;
+  String? _subjectFilter;
+  String _query = '';
+  bool _onlyBookmarks = false;
+  late final AnimationController _enter;
+  late final Set<String> _bookmarks;
 
   @override
   void initState() {
     super.initState();
-    _loadRecommendations();
+    _bookmarks = {for (final r in _demoResources) if (r.bookmarked) r.id};
+    _enter = AnimationController(vsync: this, duration: const Duration(milliseconds: 800))..forward();
   }
 
-  Future<void> _loadRecommendations() async {
-    setState(() { _loading = true; _error = null; });
-    final api = ref.read(apiServiceProvider);
-    try {
-      final res = await api.get('/study/recommendations');
-      _parseData(res.data);
-    } catch (e) {
-      setState(() {
-        _error = e.toString().contains('422')
-            ? 'Set up GROQ_API_KEY in .env (free at console.groq.com)'
-            : 'Failed to load recommendations';
-        _loading = false;
-      });
+  @override
+  void dispose() {
+    _enter.dispose();
+    super.dispose();
+  }
+
+  List<String> get _subjects => {for (final r in _demoResources) r.subject}.toList()..sort();
+
+  List<_Resource> get _filtered {
+    Iterable<_Resource> it = _demoResources;
+    if (_kindFilter != null) it = it.where((r) => r.kind == _kindFilter);
+    if (_subjectFilter != null) it = it.where((r) => r.subject == _subjectFilter);
+    if (_onlyBookmarks) it = it.where((r) => _bookmarks.contains(r.id));
+    if (_query.isNotEmpty) {
+      final q = _query.toLowerCase();
+      it = it.where((r) =>
+          r.title.toLowerCase().contains(q) ||
+          r.source.toLowerCase().contains(q) ||
+          r.subject.toLowerCase().contains(q));
     }
+    return it.toList();
   }
 
-  Future<void> _refreshRecommendations() async {
-    setState(() => _refreshing = true);
-    final api = ref.read(apiServiceProvider);
-    try {
-      final res = await api.post('/study/recommendations/refresh', data: {});
-      _parseData(res.data);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Refresh failed: $e'),
-          backgroundColor: _coralHdr,
-        ));
-      }
-    }
-    if (mounted) setState(() => _refreshing = false);
-  }
-
-  void _parseData(dynamic raw) {
-    final d = raw as Map<String, dynamic>? ?? {};
-    final recs = (d['recommendations'] as List?)?.cast<Map<String, dynamic>>() ?? [];
-    final weak = (d['weak_areas'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+  void _toggleBookmark(_Resource r) {
     setState(() {
-      _data = d;
-      _allRecs = recs;
-      _weakAreas = weak;
-      _loading = false;
+      if (_bookmarks.contains(r.id)) _bookmarks.remove(r.id);
+      else _bookmarks.add(r.id);
     });
   }
 
-  List<Map<String, dynamic>> get _filteredRecs {
-    if (_activeFilter == _FilterType.all) return _allRecs;
-    final type = _activeFilter.name; // "video", "article", "practice", "technique"
-    return _allRecs.where((r) {
-      final rt = r['resource_type']?.toString() ?? '';
-      if (_activeFilter == _FilterType.article) return rt == 'article' || rt == 'textbook';
-      return rt == type;
-    }).toList();
+  void _openDetail(_Resource r) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black45,
+      builder: (_) => _ResourceDetailModal(
+        resource: r,
+        bookmarked: _bookmarks.contains(r.id),
+        onToggleBookmark: () => _toggleBookmark(r),
+      ),
+    );
   }
-
-  //  BUILD
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter, end: Alignment.bottomCenter,
-            colors: [_ombre1, _ombre2, _ombre3, _ombre4],
+    final screenW = MediaQuery.of(context).size.width;
+    final contentW = (screenW * 0.92).clamp(360.0, 1200.0);
+    final crossAxis = contentW >= 1050 ? 3 : (contentW >= 720 ? 2 : 1);
+
+    return Material(
+      type: MaterialType.transparency,
+      child: Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft, end: Alignment.bottomRight,
+          colors: [_ombre1, _ombre2, _ombre3, _ombre4],
+        ),
+      ),
+      child: CustomPaint(
+        painter: _PawPrintBg(),
+        child: SafeArea(
+          bottom: false,
+          child: Center(
+            child: SizedBox(
+              width: contentW,
+              child: Column(children: [
+                const SizedBox(height: 16),
+                _stagger(0.00, _header()),
+                const SizedBox(height: 14),
+                _stagger(0.06, _searchBar()),
+                const SizedBox(height: 10),
+                _stagger(0.08, _kindPills()),
+                const SizedBox(height: 10),
+                _stagger(0.10, _subjectChips()),
+                const SizedBox(height: 18),
+                _stagger(0.14, _featuredCard()),
+                const SizedBox(height: 18),
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.only(bottom: 110),
+                    child: _stagger(0.18, _grid(crossAxis)),
+                  ),
+                ),
+              ]),
+            ),
           ),
         ),
-        child: SafeArea(
-          child: Column(children: [
-            _header(),
-            if (!_loading && _weakAreas.isNotEmpty) _weakAreasStrip(),
-            _filterChips(),
-            Expanded(child: _body()),
-          ]),
-        ),
+      ),
       ),
     );
   }
 
-  Widget _header() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+  Widget _header() => Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    GestureDetector(
+      onTap: () => Navigator.of(context).maybePop(),
+      child: Container(
+        width: 40, height: 40,
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.88),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: _outline.withOpacity(0.22), width: 1.5),
+          boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
+              offset: const Offset(3, 3), blurRadius: 0)],
+        ),
+        child: Icon(Icons.arrow_back_rounded, size: 20, color: _brown),
+      ),
+    ),
+    const SizedBox(width: 12),
+    Expanded(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Resources',
+          style: TextStyle(fontFamily: _bitroad, fontSize: 26, color: _brown, height: 1.15)),
+        const SizedBox(height: 2),
+        Text('Hand-picked study picks — tap a card to dig in~',
+          style: _gaegu(size: 15, color: _brownSoft, h: 1.3)),
+      ]),
+    ),
+    Wrap(spacing: 7, runSpacing: 7, children: [
+      _Pill(icon: Icons.library_books_rounded,
+          label: '${_demoResources.length} resources', color: _mSlate.withOpacity(0.55)),
+      GestureDetector(
+        onTap: () => setState(() => _onlyBookmarks = !_onlyBookmarks),
+        child: _Pill(
+          icon: _onlyBookmarks ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
+          label: '${_bookmarks.length} saved',
+          color: _onlyBookmarks ? _mSage.withOpacity(0.85) : _mButter.withOpacity(0.6),
+          highlight: _onlyBookmarks,
+        ),
+      ),
+    ]),
+  ]);
+
+  Widget _searchBar() => Container(
+    height: 46,
+    padding: const EdgeInsets.symmetric(horizontal: 14),
+    decoration: BoxDecoration(
+      color: Colors.white.withOpacity(0.88),
+      borderRadius: BorderRadius.circular(14),
+      border: Border.all(color: _outline.withOpacity(0.22), width: 1.5),
+      boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
+          offset: const Offset(3, 3), blurRadius: 0)],
+    ),
+    child: Row(children: [
+      Icon(Icons.search_rounded, size: 18, color: _brownLt),
+      const SizedBox(width: 10),
+      Expanded(
+        child: TextField(
+          onChanged: (v) => setState(() => _query = v),
+          style: _gaegu(size: 15, color: _brown, weight: FontWeight.w600),
+          decoration: InputDecoration(
+            hintText: 'Search videos, articles, decks...',
+            hintStyle: _gaegu(size: 15, color: _brownSoft),
+            border: InputBorder.none,
+            enabledBorder: InputBorder.none,
+            focusedBorder: InputBorder.none,
+            disabledBorder: InputBorder.none,
+            errorBorder: InputBorder.none,
+            focusedErrorBorder: InputBorder.none,
+            isDense: true,
+            contentPadding: EdgeInsets.zero,
+          ),
+        ),
+      ),
+    ]),
+  );
+
+  Widget _kindPills() {
+    final kinds = [null, ..._ResKind.values];
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
       child: Row(children: [
-        _backBtn(),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text('Resources', style: GoogleFonts.gaegu(
-            fontSize: 28, fontWeight: FontWeight.w700, color: _brown)),
-        ),
-        if (_data['cache_hit'] == true)
-          Padding(
-            padding: const EdgeInsets.only(right: 6),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: _sageHdr.withOpacity(0.3),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text('cached', style: GoogleFonts.nunito(
-                fontSize: 9, fontWeight: FontWeight.w700, color: _greenDk)),
-            ),
+        for (final k in kinds) ...[
+          _FilterPill(
+            label: k == null ? 'All types' : _kindLabel(k),
+            icon: k == null ? Icons.all_inclusive_rounded : _kindIcon(k),
+            selected: _kindFilter == k,
+            color: k == null ? _cream : _kindColor(k).withOpacity(0.55),
+            onTap: () => setState(() => _kindFilter = k),
           ),
-        GestureDetector(
-          onTap: _refreshing ? null : _refreshRecommendations,
-          child: Container(
-            width: 36, height: 36,
-            decoration: BoxDecoration(
-              color: _goldHdr.withOpacity(0.4),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: _outline, width: 2),
-              boxShadow: const [BoxShadow(color: _outline, offset: Offset(0, 2), blurRadius: 0)],
-            ),
-            child: _refreshing
-              ? const Padding(
-                  padding: EdgeInsets.all(8),
-                  child: CircularProgressIndicator(strokeWidth: 2, color: _brown))
-              : const Icon(Icons.refresh_rounded, color: _brown, size: 20),
-          ),
-        ),
+          const SizedBox(width: 8),
+        ],
       ]),
     );
   }
 
-  Widget _backBtn() => GestureDetector(
-    onTap: () => Navigator.of(context).pop(),
-    child: Container(
-      width: 36, height: 36,
-      decoration: BoxDecoration(
-        color: _cardFill,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: _outline, width: 2.5),
-        boxShadow: const [BoxShadow(color: _outline, offset: Offset(0, 3), blurRadius: 0)],
+  Widget _subjectChips() {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(children: [
+        _FilterPill(
+          label: 'All subjects', icon: Icons.school_rounded,
+          selected: _subjectFilter == null,
+          color: _cream,
+          onTap: () => setState(() => _subjectFilter = null),
+        ),
+        for (final s in _subjects) ...[
+          const SizedBox(width: 8),
+          _FilterPill(
+            label: s, icon: Icons.bookmark_rounded,
+            selected: _subjectFilter == s,
+            color: _mBlush.withOpacity(0.55),
+            onTap: () => setState(() => _subjectFilter = s),
+          ),
+        ],
+      ]),
+    );
+  }
+
+  Widget _featuredCard() {
+    if (_filtered.isEmpty) return const SizedBox.shrink();
+    final f = _filtered.first;
+    final c = _kindColor(f.kind);
+    return GestureDetector(
+      onTap: () => _openDetail(f),
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft, end: Alignment.bottomRight,
+            colors: [c.withOpacity(0.65), c.withOpacity(0.4)]),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: _outline.withOpacity(0.3), width: 2),
+          boxShadow: [BoxShadow(color: _outline.withOpacity(0.25),
+              offset: const Offset(4, 4), blurRadius: 0)],
+        ),
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+        child: Row(children: [
+          Container(
+            width: 64, height: 64,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.75),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: _outline.withOpacity(0.3), width: 1.5),
+            ),
+            child: Icon(_kindIcon(f.kind), size: 30, color: _brown),
+          ),
+          const SizedBox(width: 16),
+          Expanded(child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: _outline.withOpacity(0.3), width: 1),
+                  ),
+                  child: Text('FEATURED',
+                    style: _gaegu(size: 9, weight: FontWeight.w700, color: _brown)
+                        .copyWith(letterSpacing: 0.6)),
+                ),
+                const SizedBox(width: 6),
+                Text(f.subject,
+                  style: _gaegu(size: 11, weight: FontWeight.w700, color: _brown.withOpacity(0.75))),
+              ]),
+              const SizedBox(height: 4),
+              Text(f.title,
+                style: const TextStyle(fontFamily: _bitroad, fontSize: 20, color: _brown, height: 1.2),
+                overflow: TextOverflow.ellipsis, maxLines: 2),
+              const SizedBox(height: 2),
+              Text(f.summary,
+                style: _gaegu(size: 13, weight: FontWeight.w600, color: _brown.withOpacity(0.75), h: 1.3),
+                maxLines: 2, overflow: TextOverflow.ellipsis),
+            ],
+          )),
+          const SizedBox(width: 14),
+          Container(
+            width: 40, height: 40,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: _outline.withOpacity(0.35), width: 1.5),
+              boxShadow: [BoxShadow(color: _outline.withOpacity(0.22),
+                  offset: const Offset(2, 2), blurRadius: 0)],
+            ),
+            child: Icon(Icons.arrow_forward_rounded, size: 18, color: _brown),
+          ),
+        ]),
       ),
-      child: const Icon(Icons.arrow_back_rounded, color: _outline, size: 20),
-    ),
+    );
+  }
+
+  Widget _grid(int crossAxis) {
+    final items = _filtered.length > 1 ? _filtered.sublist(1) : <_Resource>[];
+    if (items.isEmpty) return _emptyState();
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: items.length,
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: crossAxis,
+        mainAxisSpacing: 14,
+        crossAxisSpacing: 14,
+        childAspectRatio: 1.45,
+      ),
+      itemBuilder: (_, i) => _ResourceCard(
+        resource: items[i],
+        bookmarked: _bookmarks.contains(items[i].id),
+        onTap: () => _openDetail(items[i]),
+        onBookmark: () => _toggleBookmark(items[i]),
+      ),
+    );
+  }
+
+  Widget _emptyState() => Padding(
+    padding: const EdgeInsets.only(top: 48),
+    child: Column(children: [
+      Container(
+        width: 74, height: 74,
+        decoration: BoxDecoration(
+          color: _cream, shape: BoxShape.circle,
+          border: Border.all(color: _outline.withOpacity(0.3), width: 2),
+          boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
+              offset: const Offset(3, 3), blurRadius: 0)],
+        ),
+        child: Icon(Icons.travel_explore_rounded, size: 32, color: _brownLt),
+      ),
+      const SizedBox(height: 12),
+      const Text('No resources match',
+        style: TextStyle(fontFamily: _bitroad, fontSize: 19, color: _brown)),
+      const SizedBox(height: 4),
+      Text('Try clearing a filter or another search term',
+        style: _gaegu(size: 13, color: _brownSoft, weight: FontWeight.w700)),
+    ]),
   );
 
-  Widget _weakAreasStrip() {
-    return Container(
-      height: 38,
-      margin: const EdgeInsets.only(top: 8),
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(right: 6),
-            child: Center(
-              child: Text('Weak areas:', style: GoogleFonts.gaegu(
-                fontSize: 14, fontWeight: FontWeight.w700, color: _brownLt)),
-            ),
+  // Stagger animation. Passes `child` through AnimatedBuilder (so the subtree
+  // isn't rebuilt every frame) and ignores pointer events while animating —
+  // prevents the desktop `_debugDuringDeviceUpdate` mouse-tracker assertion
+  // that fires when hit-test regions change mid-update.
+  Widget _stagger(double delay, Widget child) => RepaintBoundary(
+    child: AnimatedBuilder(
+      animation: _enter,
+      child: child,
+      builder: (_, c) {
+        final t = Curves.easeOutCubic.transform(((_enter.value - delay) / (1.0 - delay)).clamp(0.0, 1.0));
+        return IgnorePointer(
+          ignoring: t < 1.0,
+          child: Opacity(
+            opacity: t,
+            child: Transform.translate(offset: Offset(0, 18 * (1 - t)), child: c),
           ),
-          ..._weakAreas.map((w) {
-            final prof = (w['proficiency'] as num?)?.toInt() ?? 0;
-            final severity = w['severity']?.toString() ?? 'medium';
-            final color = severity == 'critical' ? _coralHdr
-                : severity == 'high' ? _goldHdr
-                : _sageHdr;
-            return Padding(
-              padding: const EdgeInsets.only(right: 6),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.3),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: _outline.withOpacity(0.4), width: 1.5),
-                ),
-                child: Center(
-                  child: Text(
-                    '${w['topic']} · $prof%',
-                    style: GoogleFonts.nunito(
-                      fontSize: 11, fontWeight: FontWeight.w700, color: _brown),
-                  ),
-                ),
-              ),
-            );
-          }),
-        ],
-      ),
-    );
-  }
-
-  Widget _filterChips() {
-    final filters = [
-      (_FilterType.all, 'All', Icons.auto_awesome_rounded, _purpleHdr),
-      (_FilterType.video, 'Videos', Icons.play_circle_rounded, _skyHdr),
-      (_FilterType.article, 'Articles', Icons.article_rounded, _coralHdr),
-      (_FilterType.practice, 'Practice', Icons.quiz_rounded, _greenHdr),
-      (_FilterType.technique, 'Techniques', Icons.lightbulb_rounded, _goldHdr),
-    ];
-
-    return Container(
-      height: 42,
-      margin: const EdgeInsets.only(top: 8),
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        children: filters.map((f) {
-          final isActive = _activeFilter == f.$1;
-          return Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: GestureDetector(
-              onTap: () => setState(() => _activeFilter = f.$1),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: isActive ? f.$4.withOpacity(0.5) : _cardFill,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: isActive ? _outline : _outline.withOpacity(0.4),
-                    width: isActive ? 2.5 : 1.5,
-                  ),
-                  boxShadow: [BoxShadow(
-                    color: _outline,
-                    offset: Offset(0, isActive ? 2 : 1),
-                    blurRadius: 0,
-                  )],
-                ),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(f.$3, size: 16, color: isActive ? _brown : _brownLt),
-                  const SizedBox(width: 4),
-                  Text(f.$2, style: GoogleFonts.gaegu(
-                    fontSize: 16,
-                    fontWeight: isActive ? FontWeight.w700 : FontWeight.w400,
-                    color: _brown,
-                  )),
-                ]),
-              ),
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-
-  Widget _body() {
-    if (_loading) return _loadingState();
-    if (_error != null) return _errorState();
-    if (_allRecs.isEmpty) return _emptyState();
-
-    final recs = _filteredRecs;
-    if (recs.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Icon(Icons.filter_list_rounded, size: 48, color: _outline.withOpacity(0.3)),
-            const SizedBox(height: 8),
-            Text('No ${_activeFilter.name} resources', style: GoogleFonts.gaegu(
-              fontSize: 20, fontWeight: FontWeight.w700, color: _brownLt)),
-            const SizedBox(height: 4),
-            Text('Try a different filter', style: GoogleFonts.nunito(
-              fontSize: 13, color: _brownLt)),
-          ]),
-        ),
-      );
-    }
-
-    return RefreshIndicator(
-      onRefresh: _refreshRecommendations,
-      color: _purpleHdr,
-      child: ListView.builder(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-        itemCount: recs.length,
-        itemBuilder: (ctx, i) => _resourceCard(recs[i]),
-      ),
-    );
-  }
-
-  Widget _resourceCard(Map<String, dynamic> rec) {
-    final type = rec['resource_type']?.toString() ?? 'article';
-    final typeInfo = _typeVisuals(type);
-    final hasUrl = rec['url'] != null && rec['url'].toString().isNotEmpty;
-    final mins = rec['estimated_minutes'] ?? 0;
-    final difficulty = rec['difficulty']?.toString() ?? 'intermediate';
-
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () {
-        if (hasUrl) {
-          _openUrl(rec['url']);
-        } else {
-          _showDetail(rec);
-        }
+        );
       },
+    ),
+  );
+}
+
+//  RESOURCE CARD
+class _ResourceCard extends StatelessWidget {
+  final _Resource resource;
+  final bool bookmarked;
+  final VoidCallback onTap;
+  final VoidCallback onBookmark;
+  const _ResourceCard({required this.resource, required this.bookmarked,
+    required this.onTap, required this.onBookmark});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = _kindColor(resource.kind);
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
         decoration: BoxDecoration(
-          color: _cardFill,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: _outline, width: 2.5),
-          boxShadow: const [BoxShadow(color: _outline, offset: Offset(0, 3), blurRadius: 0)],
+          color: Colors.white.withOpacity(0.88),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: _outline.withOpacity(0.22), width: 1.5),
+          boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
+              offset: const Offset(3, 3), blurRadius: 0)],
         ),
-        child: Column(children: [
-          // Colour header strip
-          Container(
-            height: 6,
-            decoration: BoxDecoration(
-              color: typeInfo.$2,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(13)),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              // Title row
-              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(18.5),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            // Header strip
+            Container(
+              padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+              decoration: BoxDecoration(
+                color: c.withOpacity(0.42),
+                border: Border(bottom: BorderSide(color: _outline.withOpacity(0.18), width: 1.4)),
+              ),
+              child: Row(children: [
                 Container(
-                  width: 34, height: 34,
+                  width: 38, height: 38,
                   decoration: BoxDecoration(
-                    color: typeInfo.$2.withOpacity(0.3),
-                    borderRadius: BorderRadius.circular(10),
+                    color: Colors.white.withOpacity(0.75),
+                    borderRadius: BorderRadius.circular(11),
+                    border: Border.all(color: _outline.withOpacity(0.3), width: 1.3),
                   ),
-                  child: Icon(typeInfo.$1, size: 18, color: _brown),
+                  child: Icon(_kindIcon(resource.kind), size: 19, color: _brown),
                 ),
                 const SizedBox(width: 10),
                 Expanded(child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      rec['title'] ?? 'Resource',
-                      style: GoogleFonts.gaegu(fontSize: 17, fontWeight: FontWeight.w700, color: _brown),
-                      maxLines: 2, overflow: TextOverflow.ellipsis,
-                    ),
-                    if (rec['source'] != null)
-                      Text(
-                        rec['source'],
-                        style: GoogleFonts.nunito(fontSize: 11, fontWeight: FontWeight.w600, color: _brownLt),
-                      ),
+                  crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(_kindLabel(resource.kind).toUpperCase(),
+                      style: _gaegu(size: 10, weight: FontWeight.w700,
+                        color: _brown.withOpacity(0.75)).copyWith(letterSpacing: 0.7)),
+                    Text(resource.subject,
+                      style: const TextStyle(fontFamily: _bitroad, fontSize: 13, color: _brown)),
                   ],
                 )),
-                // Type badge
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: typeInfo.$2.withOpacity(0.4),
-                    borderRadius: BorderRadius.circular(8),
+                GestureDetector(
+                  onTap: onBookmark,
+                  behavior: HitTestBehavior.opaque,
+                  child: Container(
+                    width: 32, height: 32,
+                    decoration: BoxDecoration(
+                      color: bookmarked ? _olive : Colors.white.withOpacity(0.75),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: bookmarked ? _oliveDk : _outline.withOpacity(0.3), width: 1.3),
+                    ),
+                    child: Icon(
+                      bookmarked ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
+                      size: 16, color: bookmarked ? Colors.white : _brown,
+                    ),
                   ),
-                  child: Text(typeInfo.$3, style: GoogleFonts.nunito(
-                    fontSize: 10, fontWeight: FontWeight.w700, color: _brown)),
                 ),
               ]),
+            ),
 
-              const SizedBox(height: 8),
+            // Body
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(resource.title,
+                    style: const TextStyle(fontFamily: _bitroad, fontSize: 16, color: _brown, height: 1.25),
+                    maxLines: 2, overflow: TextOverflow.ellipsis),
+                  const SizedBox(height: 4),
+                  Text(resource.source,
+                    style: _gaegu(size: 12, weight: FontWeight.w700, color: _brownSoft)),
+                  const Spacer(),
+                  Row(children: [
+                    _MiniPill(icon: Icons.schedule_rounded,
+                        label: '${resource.minutes} min', color: _mSlate.withOpacity(0.45)),
+                    const SizedBox(width: 6),
+                    _MiniPill(icon: Icons.star_rounded,
+                        label: resource.rating.toStringAsFixed(1), color: _mButter.withOpacity(0.55)),
+                  ]),
+                ]),
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+}
 
-              // Why recommended
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: _purpleHdr.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Icon(Icons.auto_awesome, size: 14, color: _purpleHdr),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      rec['why_recommended'] ?? rec['description'] ?? '',
-                      style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w600, color: _brown, height: 1.3),
-                      maxLines: 3, overflow: TextOverflow.ellipsis,
+//  DETAIL MODAL (Health-tab style)
+class _ResourceDetailModal extends StatelessWidget {
+  final _Resource resource;
+  final bool bookmarked;
+  final VoidCallback onToggleBookmark;
+  const _ResourceDetailModal({
+    required this.resource, required this.bookmarked, required this.onToggleBookmark});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Material(
+        color: Colors.transparent,
+        child: Container(
+          width: 600,
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFF8F4),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: _outline, width: 2),
+            boxShadow: const [
+              BoxShadow(color: Colors.black, offset: Offset(6, 6), blurRadius: 0),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(22),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(26, 24, 26, 26),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                // Top row: kind tag + circular close
+                Row(children: [
+                  Expanded(child: Text(_kindLabel(resource.kind).toUpperCase(),
+                    style: TextStyle(
+                      fontFamily: _bitroad, fontSize: 13,
+                      color: _oliveDk, letterSpacing: 1.8))),
+                  GestureDetector(
+                    onTap: () => Navigator.of(context).pop(),
+                    child: Container(
+                      width: 34, height: 34,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: _outline, width: 1.5),
+                      ),
+                      child: const Icon(Icons.close_rounded, size: 17, color: _brown),
                     ),
                   ),
                 ]),
-              ),
-
-              const SizedBox(height: 8),
-
-              // Bottom info row
-              Row(children: [
-                if (mins > 0) ...[
-                  Icon(Icons.schedule_rounded, size: 13, color: _brownLt),
-                  const SizedBox(width: 3),
-                  Text('${mins}min', style: GoogleFonts.nunito(
-                    fontSize: 11, fontWeight: FontWeight.w600, color: _brownLt)),
-                  const SizedBox(width: 12),
-                ],
-                _difficultyBadge(difficulty),
-                const Spacer(),
-                if (rec['related_topic'] != null)
+                const SizedBox(height: 12),
+                // Icon chip + title + source subtitle
+                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    width: 64, height: 64,
                     decoration: BoxDecoration(
-                      color: _sageHdr.withOpacity(0.25),
-                      borderRadius: BorderRadius.circular(8),
+                      color: _olive,
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: _outline, width: 2),
+                      boxShadow: const [
+                        BoxShadow(color: Colors.black, offset: Offset(3, 3), blurRadius: 0),
+                      ],
                     ),
-                    child: Text(rec['related_topic'], style: GoogleFonts.nunito(
-                      fontSize: 10, fontWeight: FontWeight.w600, color: _brownLt)),
+                    child: Icon(_kindIcon(resource.kind), size: 32, color: Colors.white),
                   ),
-                if (hasUrl) ...[
-                  const SizedBox(width: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: type == 'video' ? _skyHdr.withOpacity(0.3)
-                          : type == 'practice' ? _greenHdr.withOpacity(0.3)
-                          : _coralHdr.withOpacity(0.25),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      Icon(
-                        type == 'video' ? Icons.play_arrow_rounded
-                            : type == 'article' ? Icons.open_in_new_rounded
-                            : type == 'practice' ? Icons.launch_rounded
-                            : Icons.open_in_new_rounded,
-                        size: 12, color: _brown,
-                      ),
-                      const SizedBox(width: 3),
-                      Text(rec['url_label'] ?? 'Open', style: GoogleFonts.nunito(
-                        fontSize: 10, fontWeight: FontWeight.w700, color: _brown)),
+                  const SizedBox(width: 14),
+                  Expanded(child: Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(resource.title,
+                        style: const TextStyle(fontFamily: _bitroad, fontSize: 22, color: _brown, height: 1.15),
+                        maxLines: 2, overflow: TextOverflow.ellipsis),
+                      const SizedBox(height: 6),
+                      Text(resource.source,
+                        style: _gaegu(size: 14, weight: FontWeight.w700, color: _brownLt)),
                     ]),
+                  )),
+                ]),
+                const SizedBox(height: 20),
+
+                // Stats strip
+                Row(children: [
+                  Expanded(child: _StatTile(icon: Icons.school_rounded, label: 'Subject',
+                      value: resource.subject, bgColor: _mSlate.withOpacity(0.5))),
+                  const SizedBox(width: 8),
+                  Expanded(child: _StatTile(icon: Icons.schedule_rounded, label: 'Duration',
+                      value: '${resource.minutes} min', bgColor: _mButter.withOpacity(0.55))),
+                  const SizedBox(width: 8),
+                  Expanded(child: _StatTile(icon: Icons.star_rounded, label: 'Rating',
+                      value: resource.rating.toStringAsFixed(1),
+                      bgColor: _mSage.withOpacity(0.85), isHighlight: true)),
+                ]),
+                const SizedBox(height: 16),
+
+                // Summary as a white pill card with olive leading chip (medication-modal vibe)
+                Container(
+                  padding: const EdgeInsets.fromLTRB(10, 12, 16, 14),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: _outline, width: 2),
+                    boxShadow: const [
+                      BoxShadow(color: Colors.black, offset: Offset(3, 3), blurRadius: 0),
+                    ],
                   ),
-                ] else ...[
-                  const SizedBox(width: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: _goldHdr.withOpacity(0.25),
-                      borderRadius: BorderRadius.circular(8),
+                  child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Container(
+                      width: 40, height: 40,
+                      decoration: BoxDecoration(
+                        color: _olive,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: _outline, width: 1.5),
+                      ),
+                      child: const Icon(Icons.description_rounded, size: 20, color: Colors.white),
                     ),
-                    child: Text('View tip', style: GoogleFonts.nunito(
-                      fontSize: 10, fontWeight: FontWeight.w700, color: _brown)),
+                    const SizedBox(width: 12),
+                    Expanded(child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text('SUMMARY',
+                          style: _gaegu(size: 11, weight: FontWeight.w700, color: _oliveDk)
+                              .copyWith(letterSpacing: 0.7)),
+                        const SizedBox(height: 2),
+                        Text(resource.summary,
+                          style: const TextStyle(fontFamily: _bitroad, fontSize: 14, color: _brown, height: 1.4)),
+                      ],
+                    )),
+                  ]),
+                ),
+                const SizedBox(height: 22),
+
+                Row(children: [
+                  Expanded(
+                    child: _SoftButton(
+                      label: bookmarked ? 'saved' : 'save',
+                      icon: bookmarked ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
+                      fill: bookmarked ? _olive : _cream,
+                      textColor: bookmarked ? Colors.white : _brown,
+                      onTap: onToggleBookmark,
+                    ),
                   ),
-                ],
+                  const SizedBox(width: 10),
+                  Expanded(flex: 2, child: _SoftButton(
+                    label: 'open resource', icon: Icons.open_in_new_rounded,
+                    fill: _olive, textColor: Colors.white,
+                    onTap: () => Navigator.of(context).pop(),
+                  )),
+                ]),
               ]),
-            ]),
-          ),
-        ]),
-      ),
-    );
-  }
-
-  (IconData, Color, String) _typeVisuals(String type) {
-    switch (type) {
-      case 'video': return (Icons.play_circle_rounded, _skyHdr, 'Video');
-      case 'article': return (Icons.article_rounded, _coralHdr, 'Article');
-      case 'textbook': return (Icons.menu_book_rounded, _coralHdr, 'Textbook');
-      case 'practice': return (Icons.quiz_rounded, _greenHdr, 'Practice');
-      case 'technique': return (Icons.lightbulb_rounded, _goldHdr, 'Technique');
-      default: return (Icons.link_rounded, _purpleHdr, 'Resource');
-    }
-  }
-
-  Widget _difficultyBadge(String difficulty) {
-    final color = difficulty == 'beginner' ? _greenHdr
-        : difficulty == 'advanced' ? _coralHdr
-        : _goldHdr;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.3),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(difficulty, style: GoogleFonts.nunito(
-        fontSize: 10, fontWeight: FontWeight.w700, color: _brown)),
-    );
-  }
-
-  Future<void> _openUrl(String url) async {
-    final uri = Uri.tryParse(url);
-    if (uri != null && await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } else if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Could not open link'),
-        backgroundColor: _coralHdr,
-      ));
-    }
-  }
-
-  void _showDetail(Map<String, dynamic> rec) {
-    showDialog(context: context, builder: (ctx) => AlertDialog(
-      backgroundColor: _cardFill,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
-        side: const BorderSide(color: _outline, width: 3),
-      ),
-      title: Text(rec['title'] ?? 'Resource', style: GoogleFonts.gaegu(
-        fontSize: 22, fontWeight: FontWeight.w700, color: _brown)),
-      content: SingleChildScrollView(child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (rec['source'] != null)
-            Text(rec['source'], style: GoogleFonts.nunito(
-              fontSize: 13, fontWeight: FontWeight.w700, color: _brownLt)),
-          const SizedBox(height: 12),
-          Text(rec['description'] ?? '', style: GoogleFonts.nunito(
-            fontSize: 14, fontWeight: FontWeight.w600, color: _brown, height: 1.4)),
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: _purpleHdr.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(10),
             ),
-            child: Text(rec['why_recommended'] ?? '', style: GoogleFonts.nunito(
-              fontSize: 12, fontWeight: FontWeight.w600, color: _brown)),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+//  SHARED WIDGETS
+class _Pill extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final bool highlight;
+  const _Pill({required this.icon, required this.label, required this.color, this.highlight = false});
+  @override
+  Widget build(BuildContext context) {
+    final txt = highlight ? Colors.white : _brown;
+    final ic = highlight ? Colors.white : _outline;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: _outline.withOpacity(0.35), width: 1.5),
+        boxShadow: [BoxShadow(color: _outline.withOpacity(0.28),
+            offset: const Offset(2, 2), blurRadius: 0)],
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, size: 13, color: ic),
+        const SizedBox(width: 4),
+        Text(label, style: TextStyle(fontFamily: _bitroad, fontSize: 13, color: txt)),
+      ]),
+    );
+  }
+}
+
+class _MiniPill extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  const _MiniPill({required this.icon, required this.label, required this.color});
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+    decoration: BoxDecoration(
+      color: color,
+      borderRadius: BorderRadius.circular(999),
+      border: Border.all(color: _outline.withOpacity(0.25), width: 1),
+    ),
+    child: Row(mainAxisSize: MainAxisSize.min, children: [
+      Icon(icon, size: 11, color: _outline),
+      const SizedBox(width: 4),
+      Text(label, style: _gaegu(size: 11, weight: FontWeight.w700, color: _brown)),
+    ]),
+  );
+}
+
+class _FilterPill extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final Color color;
+  final VoidCallback onTap;
+  const _FilterPill({required this.label, required this.icon, required this.selected,
+      required this.color, required this.onTap});
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: onTap,
+    child: AnimatedContainer(
+      duration: const Duration(milliseconds: 150),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: selected ? _olive : color,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: selected ? _oliveDk : _outline.withOpacity(0.25),
+          width: 1.5),
+        boxShadow: selected
+            ? [BoxShadow(color: _oliveDk.withOpacity(0.4),
+                offset: const Offset(2, 2), blurRadius: 0)]
+            : [BoxShadow(color: _outline.withOpacity(0.15),
+                offset: const Offset(1, 1), blurRadius: 0)],
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, size: 13, color: selected ? Colors.white : _outline),
+        const SizedBox(width: 5),
+        Text(label,
+          style: TextStyle(fontFamily: _bitroad, fontSize: 12,
+            color: selected ? Colors.white : _brown)),
+      ]),
+    ),
+  );
+}
+
+class _StatTile extends StatelessWidget {
+  final IconData icon;
+  final String label, value;
+  final Color bgColor;
+  final bool isHighlight;
+  const _StatTile({required this.icon, required this.label, required this.value,
+    required this.bgColor, this.isHighlight = false});
+  @override
+  Widget build(BuildContext context) {
+    final textColor  = isHighlight ? Colors.white : _brown;
+    final labelColor = isHighlight ? Colors.white.withOpacity(0.85) : _brownSoft;
+    final iconBg     = isHighlight ? Colors.white.withOpacity(0.2) : Colors.white;
+    final iconBorder = isHighlight ? Colors.white.withOpacity(0.25) : _outline.withOpacity(0.1);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(13),
+        border: Border.all(color: _outline.withOpacity(0.15), width: 1),
+        boxShadow: [BoxShadow(color: _outline.withOpacity(0.1),
+            offset: const Offset(2, 2), blurRadius: 0)],
+      ),
+      child: Row(children: [
+        Container(
+          width: 26, height: 26,
+          decoration: BoxDecoration(
+            color: iconBg,
+            borderRadius: BorderRadius.circular(7),
+            border: Border.all(color: iconBorder, width: 1),
+          ),
+          child: Icon(icon, size: 13, color: isHighlight ? Colors.white : _brownLt),
+        ),
+        const SizedBox(width: 8),
+        Expanded(child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(value,
+              style: TextStyle(fontFamily: _bitroad, fontSize: 14, color: textColor),
+              overflow: TextOverflow.ellipsis, maxLines: 1),
+            Text(label.toUpperCase(),
+              style: _gaegu(size: 9, weight: FontWeight.w700, color: labelColor).copyWith(letterSpacing: 0.5)),
+          ],
+        )),
+      ]),
+    );
+  }
+}
+
+class _SoftButton extends StatelessWidget {
+  final String label;
+  final IconData? icon;
+  final Color fill;
+  final Color textColor;
+  final VoidCallback onTap;
+  const _SoftButton({required this.label, required this.fill, required this.onTap,
+    this.icon, this.textColor = _brown});
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: onTap,
+    child: Container(
+      padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 14),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: fill,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: _outline, width: 2),
+        boxShadow: const [
+          BoxShadow(color: Colors.black, offset: Offset(3, 3), blurRadius: 0),
         ],
-      )),
-      actions: [TextButton(
-        onPressed: () => Navigator.pop(ctx),
-        child: Text('Close', style: GoogleFonts.gaegu(
-          fontSize: 18, fontWeight: FontWeight.w700, color: _brown)),
-      )],
-    ));
-  }
-
-  Widget _loadingState() {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(children: [
-        const SizedBox(height: 24),
-        const CircularProgressIndicator(color: _purpleHdr),
-        const SizedBox(height: 16),
-        Text('Analysing your study data...', style: GoogleFonts.gaegu(
-          fontSize: 20, fontWeight: FontWeight.w700, color: _brownLt)),
-        const SizedBox(height: 4),
-        Text('AI is finding the best resources for you', style: GoogleFonts.nunito(
-          fontSize: 13, fontWeight: FontWeight.w600, color: _brownLt)),
-        const SizedBox(height: 24),
-        // Skeleton cards
-        ...List.generate(3, (_) => _skeletonCard()),
-      ]),
-    );
-  }
-
-  Widget _skeletonCard() {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      height: 100,
-      decoration: BoxDecoration(
-        color: _cardFill.withOpacity(0.5),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _outline.withOpacity(0.2), width: 2),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Container(width: 200, height: 14, decoration: BoxDecoration(
-            color: _outline.withOpacity(0.08), borderRadius: BorderRadius.circular(6))),
-          const SizedBox(height: 8),
-          Container(width: double.infinity, height: 10, decoration: BoxDecoration(
-            color: _outline.withOpacity(0.06), borderRadius: BorderRadius.circular(6))),
-          const SizedBox(height: 6),
-          Container(width: 150, height: 10, decoration: BoxDecoration(
-            color: _outline.withOpacity(0.06), borderRadius: BorderRadius.circular(6))),
-        ]),
-      ),
-    );
-  }
-
-  Widget _errorState() {
-    return Center(child: Padding(
-      padding: const EdgeInsets.all(32),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Icon(Icons.error_outline_rounded, size: 64, color: _coralHdr.withOpacity(0.5)),
-        const SizedBox(height: 12),
-        Text('Oops!', style: GoogleFonts.gaegu(fontSize: 24, fontWeight: FontWeight.w700, color: _brownLt)),
-        const SizedBox(height: 4),
-        Text(_error!, style: GoogleFonts.nunito(fontSize: 13, fontWeight: FontWeight.w600, color: _brownLt),
-          textAlign: TextAlign.center),
-        const SizedBox(height: 16),
-        GestureDetector(
-          onTap: _loadRecommendations,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-            decoration: BoxDecoration(
-              color: _purpleHdr.withOpacity(0.4),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: _outline, width: 2),
-              boxShadow: const [BoxShadow(color: _outline, offset: Offset(0, 2), blurRadius: 0)],
-            ),
-            child: Text('Try Again', style: GoogleFonts.gaegu(
-              fontSize: 18, fontWeight: FontWeight.w700, color: _brown)),
-          ),
-        ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        if (icon != null) ...[
+          Icon(icon, size: 18, color: textColor),
+          const SizedBox(width: 8),
+        ],
+        Text(label,
+          style: _gaegu(size: 18, weight: FontWeight.w700, color: textColor)),
       ]),
-    ));
-  }
+    ),
+  );
+}
 
-  Widget _emptyState() {
-    return Center(child: Padding(
-      padding: const EdgeInsets.all(32),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Icon(Icons.auto_stories_rounded, size: 64, color: _outline.withOpacity(0.3)),
-        const SizedBox(height: 12),
-        Text('No recommendations yet', style: GoogleFonts.gaegu(
-          fontSize: 24, fontWeight: FontWeight.w700, color: _brownLt)),
-        const SizedBox(height: 4),
-        Text(
-          'Take some quizzes or review flashcards first!\nThe AI needs data about your strengths and weak areas.',
-          style: GoogleFonts.nunito(fontSize: 13, fontWeight: FontWeight.w600, color: _brownLt),
-          textAlign: TextAlign.center,
-        ),
-      ]),
-    ));
+class _PawPrintBg extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..style = PaintingStyle.fill;
+    const spacing = 90.0;
+    const rowShift = 45.0;
+    const pawR = 10.0;
+    int idx = 0;
+    for (double y = 30; y < size.height; y += spacing) {
+      final isOddRow = ((y / spacing).floor() % 2) == 1;
+      final xOffset = isOddRow ? rowShift : 0.0;
+      for (double x = xOffset + 30; x < size.width; x += spacing) {
+        final opFactor = 0.06 + (idx % 5) * 0.018;
+        paint.color = _pawClr.withOpacity(opFactor);
+        final angle = (idx % 4) * 0.3 - 0.3;
+        _drawCatPaw(canvas, paint, x, y, pawR, angle);
+        idx++;
+      }
+    }
   }
+  void _drawCatPaw(Canvas c, Paint p, double cx, double cy, double r, double a) {
+    c.save(); c.translate(cx, cy); c.rotate(a);
+    c.drawOval(Rect.fromCenter(center: Offset.zero, width: r * 2.2, height: r * 1.8), p);
+    final tr = r * 0.52;
+    c.drawCircle(Offset(-r * 1.0, -r * 1.35), tr, p);
+    c.drawCircle(Offset(-r * 0.38, -r * 1.65), tr, p);
+    c.drawCircle(Offset(r * 0.38, -r * 1.65), tr, p);
+    c.drawCircle(Offset(r * 1.0, -r * 1.35), tr, p);
+    c.restore();
+  }
+  @override
+  bool shouldRepaint(covariant CustomPainter o) => false;
 }
