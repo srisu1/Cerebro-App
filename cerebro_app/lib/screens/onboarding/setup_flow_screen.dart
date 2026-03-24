@@ -337,6 +337,16 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
     try {
       final api = ref.read(apiServiceProvider);
 
+      // Persist the full wizard payload to users row — single source of truth
+      // for the smart study system, quiz generator, insights, and gamification.
+      String _fmtTime(TimeOfDay t) =>
+          '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}:00';
+      final double _sleepHoursTarget = double.tryParse(_calcSleepHours()) ?? 8.0;
+      final String? _moodName =
+          (_selectedMood >= 0 && _selectedMood < _moodItems.length)
+              ? _moodItems[_selectedMood].label
+              : null;
+
       try {
         await api.put('/auth/me', data: {
           'institution_type': _institutionType,
@@ -344,6 +354,15 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
           'course': _courseController.text.trim(),
           'year_of_study': _yearOfStudy,
           'degree_level': _degreeLevel,
+          if (_selectedAffiliation != null && _selectedAffiliation!.isNotEmpty)
+            'affiliation': _selectedAffiliation,
+          'daily_study_hours': _dailyStudyHours,
+          'study_goals': _selectedGoals.toList(),
+          'bedtime': _fmtTime(_bedtime),
+          'wake_time': _fmtTime(_wakeTime),
+          'sleep_hours_target': _sleepHoursTarget,
+          if (_moodName != null) 'initial_mood': _moodName,
+          'initial_habits': _selectedHabits.toList(),
         });
       } catch (_) {}
 

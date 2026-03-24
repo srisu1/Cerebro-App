@@ -19,17 +19,21 @@ const _panelBg  = Color(0xFFFFFAF6);
 const _outline  = Color(0xFF6E5848);
 const _brown    = Color(0xFF4E3828);
 const _brownLt  = Color(0xFF7A5840);
-const _skyHdr   = Color(0xFF9DD4F0);
-const _skyDk    = Color(0xFF78B8D8);
-const _pinkHdr  = Color(0xFFE8B0A8);
-const _greenHdr = Color(0xFFA8D5A3);
-const _greenDk  = Color(0xFF88B883);
-const _purpleHdr = Color(0xFFCDA8D8);
-const _purpleDk = Color(0xFFAA88C0);
-const _coralHdr = Color(0xFFF0A898);
-const _goldHdr  = Color(0xFFF0D878);
-const _sageHdr  = Color(0xFF90C8A0);
-const _sageDk   = Color(0xFF70A880);
+const _skyHdr   = Color(0xFFB6CBD6); // muted slate
+const _skyDk    = Color(0xFF8FA7B2);
+const _pinkHdr  = Color(0xFFEAD0CE); // muted blush
+const _greenHdr = Color(0xFFB5C4A0); // muted sage
+const _greenDk  = Color(0xFF98A869);
+const _purpleHdr = Color(0xFFC9B8D9); // muted lav
+const _purpleDk = Color(0xFFA796B8);
+const _coralHdr = Color(0xFFE8B8A8); // softer terracotta
+const _goldHdr  = Color(0xFFE8D4A0); // muted butter
+const _sageHdr  = Color(0xFFB5C4A0);
+const _sageDk   = Color(0xFF98A869);
+const _pawClr   = Color(0xFFEAD0CE);
+// Olive for primary actions (matches rest of app)
+const _olive    = Color(0xFFB5C4A0);
+const _oliveDk  = Color(0xFF98A869);
 
 Color _hexColor(String hex) {
   final h = hex.replaceFirst('#', '');
@@ -47,8 +51,9 @@ BoxDecoration _pocketCard({Color? fill, Color? borderColor, double radius = 16})
   return BoxDecoration(
     color: fill ?? _cardFill,
     borderRadius: BorderRadius.circular(radius),
-    border: Border.all(color: borderColor ?? _outline, width: 2.5),
-    boxShadow: [BoxShadow(color: borderColor ?? _outline, offset: const Offset(0, 3), blurRadius: 0)],
+    border: Border.all(color: borderColor ?? _outline, width: 2),
+    boxShadow: [BoxShadow(color: (borderColor ?? _outline).withOpacity(0.18),
+      offset: const Offset(3, 3), blurRadius: 0)],
   );
 }
 
@@ -103,70 +108,99 @@ class _StudyAnalyticsScreenState extends ConsumerState<StudyAnalyticsScreen>
 
   @override
   Widget build(BuildContext context) {
+    final screenW = MediaQuery.of(context).size.width;
+    final contentW = (screenW * 0.92).clamp(360.0, 1200.0);
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter, end: Alignment.bottomCenter,
-            colors: [_ombre1, _ombre2, _ombre3, _ombre4],
+      body: Stack(children: [
+        // Base gradient
+        Positioned.fill(child: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter, end: Alignment.bottomCenter,
+              colors: [_ombre1, _ombre2, _ombre3, _ombre4],
+            ),
+          ),
+        )),
+        // Paw print overlay — matches subjects/resources/calendar
+        Positioned.fill(child: IgnorePointer(
+          child: CustomPaint(painter: _PawPrintBg()),
+        )),
+        SafeArea(
+          child: Center(
+            child: SizedBox(
+              width: contentW,
+              child: Column(children: [
+                const SizedBox(height: 16),
+                _header(),
+                const SizedBox(height: 6),
+                if (!_loading && _error == null && _data != null)
+                  _quickStats(),
+                const SizedBox(height: 4),
+                _tabBar(),
+                const SizedBox(height: 8),
+                Expanded(child: _body()),
+              ]),
+            ),
           ),
         ),
-        child: SafeArea(
-          child: Column(children: [
-            _header(),
-            const SizedBox(height: 6),
-            // Quick stats bar (only when data loaded)
-            if (!_loading && _error == null && _data != null)
-              _quickStats(),
-            const SizedBox(height: 4),
-            _tabBar(),
-            const SizedBox(height: 8),
-            Expanded(child: _body()),
-          ]),
-        ),
-      ),
+      ]),
     );
   }
 
   Widget _header() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-      child: Row(children: [
-        GestureDetector(
-          onTap: () => Navigator.of(context).pop(),
-          child: Container(
-            width: 36, height: 36,
-            decoration: BoxDecoration(
-              color: _cardFill,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: _outline, width: 2.5),
-              boxShadow: const [BoxShadow(color: _outline, offset: Offset(0, 3), blurRadius: 0)],
+      padding: const EdgeInsets.fromLTRB(4, 0, 4, 0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          GestureDetector(
+            onTap: () => Navigator.of(context).pop(),
+            child: Container(
+              width: 40, height: 40,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.88),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: _outline.withOpacity(0.22), width: 1.5),
+                boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
+                    offset: const Offset(3, 3), blurRadius: 0)],
+              ),
+              child: const Icon(Icons.arrow_back_rounded, color: _brown, size: 20),
             ),
-            child: const Icon(Icons.arrow_back_rounded, color: _outline, size: 20),
           ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text('Study Analytics', style: GoogleFonts.gaegu(
-            fontSize: 28, fontWeight: FontWeight.w700, color: _brown)),
-        ),
-        GestureDetector(
-          onTap: _loading ? null : _fetchAnalytics,
-          child: Container(
-            width: 36, height: 36,
-            decoration: BoxDecoration(
-              color: _sageHdr.withOpacity(0.4),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: _outline, width: 2),
-              boxShadow: const [BoxShadow(color: _outline, offset: Offset(0, 2), blurRadius: 0)],
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Study Analytics',
+                  style: TextStyle(fontFamily: 'Bitroad', fontSize: 26,
+                      color: _brown, height: 1.15)),
+                const SizedBox(height: 2),
+                Text('track your momentum, spot the gaps, plan ahead~',
+                  style: GoogleFonts.gaegu(fontSize: 15, fontWeight: FontWeight.w600,
+                      color: _brownLt, height: 1.3)),
+              ],
             ),
-            child: _loading
-              ? const Padding(padding: EdgeInsets.all(8),
-                  child: CircularProgressIndicator(strokeWidth: 2, color: _brown))
-              : const Icon(Icons.refresh_rounded, color: _brown, size: 20),
           ),
-        ),
-      ]),
+          GestureDetector(
+            onTap: _loading ? null : _fetchAnalytics,
+            child: Container(
+              width: 40, height: 40,
+              decoration: BoxDecoration(
+                color: _sageHdr.withOpacity(0.45),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: _outline.withOpacity(0.4), width: 1.5),
+                boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
+                    offset: const Offset(3, 3), blurRadius: 0)],
+              ),
+              child: _loading
+                ? const Padding(padding: EdgeInsets.all(10),
+                    child: CircularProgressIndicator(strokeWidth: 2, color: _brown))
+                : const Icon(Icons.refresh_rounded, color: _brown, size: 20),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -182,7 +216,7 @@ class _StudyAnalyticsScreenState extends ConsumerState<StudyAnalyticsScreen>
 
     return Container(
       height: 52,
-      margin: const EdgeInsets.symmetric(horizontal: 12),
+      margin: const EdgeInsets.symmetric(horizontal: 0),
       child: ListView(
         scrollDirection: Axis.horizontal,
         children: [
@@ -230,7 +264,7 @@ class _StudyAnalyticsScreenState extends ConsumerState<StudyAnalyticsScreen>
 
     return Container(
       height: 42,
-      margin: const EdgeInsets.symmetric(horizontal: 12),
+      margin: const EdgeInsets.symmetric(horizontal: 0),
       child: Row(
         children: List.generate(4, (i) {
           return Expanded(child: Padding(
@@ -247,11 +281,11 @@ class _StudyAnalyticsScreenState extends ConsumerState<StudyAnalyticsScreen>
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
                         color: isActive ? _outline : _outline.withOpacity(0.35),
-                        width: isActive ? 2.5 : 1.5,
+                        width: isActive ? 2 : 1.5,
                       ),
                       boxShadow: [BoxShadow(
-                        color: _outline,
-                        offset: Offset(0, isActive ? 2 : 1),
+                        color: _outline.withOpacity(0.18),
+                        offset: const Offset(3, 3),
                         blurRadius: 0,
                       )],
                     ),
@@ -380,7 +414,7 @@ class _KnowledgeMapTab extends StatelessWidget {
     }
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
+      padding: const EdgeInsets.fromLTRB(0, 4, 0, 20),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         // Legend
         Row(children: [
@@ -552,7 +586,7 @@ class _GapsTab extends StatelessWidget {
     }
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
+      padding: const EdgeInsets.fromLTRB(0, 4, 0, 20),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         if (gaps.isNotEmpty) ...[
           Row(children: [
@@ -742,7 +776,7 @@ class _PredictionsTab extends StatelessWidget {
         ?.map((e) => (e as num).toDouble()).toList() ?? List.filled(7, 0.0);
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
+      padding: const EdgeInsets.fromLTRB(0, 4, 0, 20),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         // Exam readiness gauge + forecasts
         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -955,7 +989,7 @@ class _ScheduleTab extends StatelessWidget {
     }
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
+      padding: const EdgeInsets.fromLTRB(0, 4, 0, 20),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         // Flashcard summary
         if (cardsDue > 0 || cardsOverdue > 0)
@@ -1126,4 +1160,35 @@ Widget _emptyState(IconData icon, Color color, String message) {
     Text(message, textAlign: TextAlign.center, style: GoogleFonts.gaegu(
       fontSize: 18, fontWeight: FontWeight.w700, color: _brownLt)),
   ]));
+}
+
+//  PAW-PRINT BACKGROUND — matches subjects/resources reference
+class _PawPrintBg extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..style = PaintingStyle.fill;
+    const spacing = 90.0;
+    const rowShift = 45.0;
+    const pawR = 10.0;
+    int idx = 0;
+    for (double y = 30; y < size.height; y += spacing) {
+      final isOddRow = ((y / spacing).floor() % 2) == 1;
+      final xOffset = isOddRow ? rowShift : 0.0;
+      for (double x = xOffset + 30; x < size.width; x += spacing) {
+        paint.color = _pawClr.withOpacity(0.06 + (idx % 5) * 0.018);
+        final angle = (idx % 4) * 0.3 - 0.3;
+        canvas.save(); canvas.translate(x, y); canvas.rotate(angle);
+        canvas.drawOval(
+          Rect.fromCenter(center: Offset.zero, width: pawR * 2.2, height: pawR * 1.8), paint);
+        final tr = pawR * 0.52;
+        canvas.drawCircle(Offset(-pawR * 1.0, -pawR * 1.35), tr, paint);
+        canvas.drawCircle(Offset(-pawR * 0.38, -pawR * 1.65), tr, paint);
+        canvas.drawCircle(Offset(pawR * 0.38, -pawR * 1.65), tr, paint);
+        canvas.drawCircle(Offset(pawR * 1.0, -pawR * 1.35), tr, paint);
+        canvas.restore();
+        idx++;
+      }
+    }
+  }
+  @override bool shouldRepaint(covariant CustomPainter o) => false;
 }

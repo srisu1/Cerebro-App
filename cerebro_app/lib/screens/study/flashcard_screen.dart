@@ -7,7 +7,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:dio/dio.dart';
 import 'package:cerebro_app/providers/auth_provider.dart';
+import 'package:cerebro_app/widgets/upload_notes_modal.dart';
 
 const _ombre1   = Color(0xFFFFFBF7);
 const _ombre2   = Color(0xFFFFF8F3);
@@ -17,28 +20,31 @@ const _cardFill = Color(0xFFFFF8F4);
 const _outline  = Color(0xFF6E5848);
 const _brown    = Color(0xFF4E3828);
 const _brownLt  = Color(0xFF7A5840);
-const _coralHdr = Color(0xFFF0A898);
-const _coralLt  = Color(0xFFF8C0B0);
-const _greenHdr = Color(0xFFA8D5A3);
-const _greenLt  = Color(0xFFC2E8BC);
-const _greenDk  = Color(0xFF88B883);
-const _goldHdr  = Color(0xFFF0D878);
-const _goldLt   = Color(0xFFFFF0C0);
-const _purpleHdr = Color(0xFFCDA8D8);
-const _purpleLt = Color(0xFFD8C0E8);
-const _skyHdr   = Color(0xFF9DD4F0);
-const _skyLt    = Color(0xFFB8E0F8);
-const _sageHdr  = Color(0xFF90C8A0);
-const _pawClr   = Color(0xFFF8BCD0);
-const _pinkHdr  = Color(0xFFE8B0A8);
+const _coralHdr = Color(0xFFE8B8A8); // softer terracotta
+const _coralLt  = Color(0xFFF2CFC2);
+const _greenHdr = Color(0xFFB5C4A0); // muted sage
+const _greenLt  = Color(0xFFCCD8B8);
+const _greenDk  = Color(0xFF98A869);
+const _goldHdr  = Color(0xFFE8D4A0); // muted butter
+const _goldLt   = Color(0xFFF4E6BE);
+const _purpleHdr = Color(0xFFC9B8D9); // muted lav
+const _purpleLt = Color(0xFFDCCEE6);
+const _skyHdr   = Color(0xFFB6CBD6); // muted slate
+const _skyLt    = Color(0xFFCCDCE4);
+const _sageHdr  = Color(0xFFB5C4A0);
+const _pawClr   = Color(0xFFEAD0CE); // muted blush
+const _pinkHdr  = Color(0xFFEAD0CE);
 
 const _presetColors = [
-  '#A8D5A3', '#F0A898', '#9DD4F0', '#CDA8D8',
-  '#F0D878', '#E8B0A8', '#90C8A0', '#C2E8BC',
+  '#B5C4A0', '#E8B8A8', '#B6CBD6', '#C9B8D9',
+  '#E8D4A0', '#EAD0CE', '#B5C4A0', '#CCD8B8',
 ];
 
 class FlashcardScreen extends ConsumerStatefulWidget {
-  const FlashcardScreen({super.key});
+  /// When set, the screen will auto-select this deck on first load
+  /// (used by deep-links from the Subjects page).
+  final String? initialDeckId;
+  const FlashcardScreen({super.key, this.initialDeckId});
   @override ConsumerState<FlashcardScreen> createState() => _FlashcardScreenState();
 }
 
@@ -69,12 +75,17 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
 
   bool _generating = false;
   List<String> _selectedMaterialIds = [];
+  final Set<String> _selectedGenTopics = {};
   int _genCount = 10;
 
   @override
   void initState() {
     super.initState();
     _tabCtrl = TabController(length: 3, vsync: this);
+    // Pre-seed so the first /study/decks response still respects the deep-link.
+    if (widget.initialDeckId != null) {
+      _selectedDeckId = widget.initialDeckId;
+    }
     _loadDecks();
   }
 
@@ -93,10 +104,23 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
       final list = (res.data as List?)?.cast<Map<String, dynamic>>() ?? [];
       setState(() {
         _decks = list;
-        // Auto-select first deck if none selected
-        if (_selectedDeckId == null && list.isNotEmpty) {
+        // If a deck was pre-seeded (deep-link), resolve its name from the fetched list.
+        if (_selectedDeckId != null) {
+          final match = list.firstWhere(
+            (d) => d['id']?.toString() == _selectedDeckId,
+            orElse: () => const <String, dynamic>{},
+          );
+          if (match.isNotEmpty) {
+            _selectedDeckName = (match['name'] as String?) ?? 'Deck';
+          } else if (list.isNotEmpty) {
+            // Seeded id not found — fall back to first deck.
+            _selectedDeckId = list[0]['id']?.toString();
+            _selectedDeckName = (list[0]['name'] as String?) ?? 'Deck';
+          }
+        } else if (list.isNotEmpty) {
+          // Auto-select first deck if none selected.
           _selectedDeckId = list[0]['id']?.toString();
-          _selectedDeckName = list[0]['name'] ?? 'Deck';
+          _selectedDeckName = (list[0]['name'] as String?) ?? 'Deck';
         }
       });
     } catch (e) {
@@ -160,42 +184,66 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
 
   @override
   Widget build(BuildContext context) {
+    final screenW = MediaQuery.of(context).size.width;
+    final contentW = (screenW * 0.92).clamp(360.0, 1200.0);
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter, end: Alignment.bottomCenter,
-            colors: [_ombre1, _ombre2, _ombre3, _ombre4],
+      body: Stack(children: [
+        // Base gradient
+        Positioned.fill(child: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter, end: Alignment.bottomCenter,
+              colors: [_ombre1, _ombre2, _ombre3, _ombre4],
+            ),
+          ),
+        )),
+        // Paw print overlay — matches subjects/resources/calendar
+        Positioned.fill(child: IgnorePointer(
+          child: CustomPaint(painter: _PawPrintBg()),
+        )),
+        SafeArea(
+          child: Center(
+            child: SizedBox(
+              width: contentW,
+              child: Column(children: [
+                const SizedBox(height: 16),
+                _header(),
+                _deckSelector(),
+                _tabBar(),
+                Expanded(
+                  child: _loading
+                    ? const Center(child: CircularProgressIndicator(color: _outline))
+                    : TabBarView(
+                        controller: _tabCtrl,
+                        children: [_reviewTab(), _allCardsTab(), _generateTab()],
+                      ),
+                ),
+              ]),
+            ),
           ),
         ),
-        child: SafeArea(
-          child: Column(children: [
-            _header(),
-            _deckSelector(),
-            _tabBar(),
-            Expanded(
-              child: _loading
-                ? const Center(child: CircularProgressIndicator(color: _outline))
-                : TabBarView(
-                    controller: _tabCtrl,
-                    children: [_reviewTab(), _allCardsTab(), _generateTab()],
-                  ),
-            ),
-          ]),
-        ),
-      ),
+      ]),
     );
   }
 
   Widget _header() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-      child: Row(children: [
+      padding: const EdgeInsets.fromLTRB(4, 0, 4, 0),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         _backBtn(),
-        const SizedBox(width: 8),
-        Text('Flashcards', style: GoogleFonts.gaegu(
-          fontSize: 28, fontWeight: FontWeight.w700, color: _brown)),
-        const Spacer(),
+        const SizedBox(width: 12),
+        Expanded(child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Flashcards',
+              style: TextStyle(fontFamily: 'Bitroad', fontSize: 26,
+                  color: _brown, height: 1.15)),
+            const SizedBox(height: 2),
+            Text('flip, recall, mark how you went~',
+              style: GoogleFonts.gaegu(fontSize: 15, fontWeight: FontWeight.w600,
+                  color: _brownLt, height: 1.3)),
+          ],
+        )),
         _statChip(Icons.layers_rounded, '${_allCards.length}', _sageHdr),
         const SizedBox(width: 6),
         _statChip(Icons.schedule_rounded, '${_dueCards.length} due', _coralHdr),
@@ -206,14 +254,15 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
   Widget _backBtn() => GestureDetector(
     onTap: () => Navigator.of(context).pop(),
     child: Container(
-      width: 36, height: 36,
+      width: 40, height: 40,
       decoration: BoxDecoration(
-        color: _cardFill,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: _outline, width: 2.5),
-        boxShadow: const [BoxShadow(color: _outline, offset: Offset(0, 3), blurRadius: 0)],
+        color: Colors.white.withOpacity(0.88),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _outline.withOpacity(0.4), width: 1.5),
+        boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
+          offset: const Offset(3, 3), blurRadius: 0)],
       ),
-      child: const Icon(Icons.arrow_back_rounded, color: _outline, size: 20),
+      child: const Icon(Icons.arrow_back_rounded, color: _brown, size: 20),
     ),
   );
 
@@ -239,7 +288,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
       margin: const EdgeInsets.fromLTRB(0, 8, 0, 0),
       child: ListView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 2),
         children: [
           // "Manage Decks" button
           Padding(
@@ -251,13 +300,37 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
                 decoration: BoxDecoration(
                   color: _goldHdr.withOpacity(0.4),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: _outline, width: 2),
-                  boxShadow: const [BoxShadow(color: _outline, offset: Offset(0, 2), blurRadius: 0)],
+                  border: Border.all(color: _outline.withOpacity(0.45), width: 1.5),
+                  boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
+                    offset: const Offset(3, 3), blurRadius: 0)],
                 ),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
                   const Icon(Icons.settings_rounded, size: 16, color: _brown),
                   const SizedBox(width: 4),
                   Text('Decks', style: GoogleFonts.gaegu(
+                    fontSize: 16, fontWeight: FontWeight.w700, color: _brown)),
+                ]),
+              ),
+            ),
+          ),
+          // Upload material button
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: GestureDetector(
+              onTap: () => _pickAndUploadFile(context),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: _coralHdr.withOpacity(0.35),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: _outline.withOpacity(0.45), width: 1.5),
+                  boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
+                    offset: const Offset(3, 3), blurRadius: 0)],
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  const Icon(Icons.upload_file_rounded, size: 16, color: _brown),
+                  const SizedBox(width: 4),
+                  Text('Upload', style: GoogleFonts.gaegu(
                     fontSize: 16, fontWeight: FontWeight.w700, color: _brown)),
                 ]),
               ),
@@ -284,12 +357,12 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
                     color: isSelected ? color.withOpacity(0.5) : _cardFill,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                      color: isSelected ? _outline : _outline.withOpacity(0.5),
-                      width: isSelected ? 2.5 : 1.5,
+                      color: isSelected ? _outline.withOpacity(0.6) : _outline.withOpacity(0.35),
+                      width: isSelected ? 2 : 1.5,
                     ),
                     boxShadow: [BoxShadow(
-                      color: _outline,
-                      offset: Offset(0, isSelected ? 2 : 1),
+                      color: _outline.withOpacity(0.18),
+                      offset: const Offset(3, 3),
                       blurRadius: 0,
                     )],
                   ),
@@ -411,8 +484,9 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
       decoration: BoxDecoration(
         color: _cardFill,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _outline, width: 2.5),
-        boxShadow: const [BoxShadow(color: _outline, offset: Offset(0, 3), blurRadius: 0)],
+        border: Border.all(color: _outline, width: 2),
+        boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
+          offset: const Offset(3, 3), blurRadius: 0)],
       ),
       child: ListTile(
         contentPadding: const EdgeInsets.fromLTRB(12, 4, 8, 4),
@@ -477,6 +551,11 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
     final nameCtrl = TextEditingController();
     final descCtrl = TextEditingController();
     String selectedColor = '#A8D5A3';
+    // Default subject: whatever subject filter the user has active on the
+    // Flashcards page, so "New Deck" while filtered to Data Structures
+    // pre-selects Data Structures. Falls back to null ("Unsorted") if the
+    // user hasn't picked a subject filter yet.
+    String? selectedSubjectId = _selectedSubjectId;
 
     showDialog(context: context, builder: (ctx) => StatefulBuilder(builder: (ctx, setD) => AlertDialog(
       backgroundColor: _cardFill,
@@ -491,6 +570,46 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
         const SizedBox(height: 12),
         _inputField(descCtrl, 'Description (optional)'),
         const SizedBox(height: 12),
+        // Subject picker — wires the deck to a subject so Subject Detail
+        // can filter decks by subject_id. Previously omitted, which is
+        // why decks showed up as "0" on every subject detail view.
+        if (_subjects.isNotEmpty) DropdownButtonFormField<String?>(
+          value: selectedSubjectId,
+          isExpanded: true,
+          decoration: InputDecoration(
+            labelText: 'Subject (optional)',
+            labelStyle: GoogleFonts.nunito(fontSize: 13, color: _brownLt),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: _outline, width: 1.5),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: _outline, width: 1.5),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: _outline, width: 2.2),
+            ),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          ),
+          items: [
+            DropdownMenuItem<String?>(
+              value: null,
+              child: Text('No subject',
+                style: GoogleFonts.nunito(
+                  fontSize: 14, fontStyle: FontStyle.italic, color: _brownLt)),
+            ),
+            ..._subjects.map((s) => DropdownMenuItem<String?>(
+              value: s['id']?.toString(),
+              child: Text(s['name'] ?? '',
+                style: GoogleFonts.nunito(fontSize: 14, color: _brown),
+                overflow: TextOverflow.ellipsis),
+            )),
+          ],
+          onChanged: (v) => setD(() => selectedSubjectId = v),
+        ),
+        if (_subjects.isNotEmpty) const SizedBox(height: 12),
         // Color picker
         Align(
           alignment: Alignment.centerLeft,
@@ -530,6 +649,10 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
               'name': nameCtrl.text.trim(),
               'description': descCtrl.text.trim(),
               'color': selectedColor,
+              // Only send subject_id if one was picked — null is a valid
+              // "no subject" value server-side but sending the key at all
+              // is cleaner when there's a value.
+              if (selectedSubjectId != null) 'subject_id': selectedSubjectId,
             });
             if (mounted) Navigator.pop(ctx);
             _loadDecks();
@@ -547,6 +670,12 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
     final nameCtrl = TextEditingController(text: deck['name'] ?? '');
     final descCtrl = TextEditingController(text: deck['description'] ?? '');
     String selectedColor = deck['color'] ?? '#A8D5A3';
+    // Pre-seed with the deck's current subject_id so existing orphan decks
+    // (created before subject_id was surfaced in the UI) can be assigned
+    // to a subject from the edit dialog. Works with the matching Pydantic
+    // FlashcardDeckUpdate.subject_id field added server-side.
+    String? selectedSubjectId = deck['subject_id']?.toString();
+    final initialSubjectId = selectedSubjectId;
 
     showDialog(context: context, builder: (ctx) => StatefulBuilder(builder: (ctx, setD) => AlertDialog(
       backgroundColor: _cardFill,
@@ -561,6 +690,43 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
         const SizedBox(height: 12),
         _inputField(descCtrl, 'Description'),
         const SizedBox(height: 12),
+        if (_subjects.isNotEmpty) DropdownButtonFormField<String?>(
+          value: selectedSubjectId,
+          isExpanded: true,
+          decoration: InputDecoration(
+            labelText: 'Subject',
+            labelStyle: GoogleFonts.nunito(fontSize: 13, color: _brownLt),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: _outline, width: 1.5),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: _outline, width: 1.5),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: _outline, width: 2.2),
+            ),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          ),
+          items: [
+            DropdownMenuItem<String?>(
+              value: null,
+              child: Text('No subject',
+                style: GoogleFonts.nunito(
+                  fontSize: 14, fontStyle: FontStyle.italic, color: _brownLt)),
+            ),
+            ..._subjects.map((s) => DropdownMenuItem<String?>(
+              value: s['id']?.toString(),
+              child: Text(s['name'] ?? '',
+                style: GoogleFonts.nunito(fontSize: 14, color: _brown),
+                overflow: TextOverflow.ellipsis),
+            )),
+          ],
+          onChanged: (v) => setD(() => selectedSubjectId = v),
+        ),
+        if (_subjects.isNotEmpty) const SizedBox(height: 12),
         Align(
           alignment: Alignment.centerLeft,
           child: Text('Color:', style: GoogleFonts.gaegu(
@@ -595,11 +761,19 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
           if (nameCtrl.text.trim().isEmpty) return;
           final api = ref.read(apiServiceProvider);
           try {
-            await api.put('/study/decks/${deck['id']}', data: {
+            // Build the patch body: only include subject_id if it changed
+            // so we don't accidentally clobber it on no-op edits. When it
+            // did change — including to null — send it explicitly so the
+            // server's exclude_unset respects the intent.
+            final body = <String, dynamic>{
               'name': nameCtrl.text.trim(),
               'description': descCtrl.text.trim(),
               'color': selectedColor,
-            });
+            };
+            if (selectedSubjectId != initialSubjectId) {
+              body['subject_id'] = selectedSubjectId;
+            }
+            await api.put('/study/decks/${deck['id']}', data: body);
             if (mounted) Navigator.pop(ctx);
             _loadDecks();
           } catch (e) {
@@ -650,12 +824,13 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
 
   Widget _tabBar() {
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+      margin: const EdgeInsets.fromLTRB(4, 10, 4, 4),
       decoration: BoxDecoration(
         color: _cardFill,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _outline, width: 2.5),
-        boxShadow: const [BoxShadow(color: _outline, offset: Offset(0, 3), blurRadius: 0)],
+        border: Border.all(color: _outline, width: 2),
+        boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
+          offset: const Offset(3, 3), blurRadius: 0)],
       ),
       child: TabBar(
         controller: _tabCtrl,
@@ -704,7 +879,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
 
     final card = cards[_reviewIdx];
     return Padding(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(4, 12, 4, 12),
       child: Column(children: [
         // Progress
         Text(
@@ -728,7 +903,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
 
         // Bottom controls
         if (!_isFlipped)
-          _bigButton('Tap card to flip', _skyHdr, () => setState(() => _isFlipped = true))
+          _bigButton('Tap card to flip', _greenDk, () => setState(() => _isFlipped = true))
         else
           _gradeButtons(card),
       ]),
@@ -753,8 +928,9 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
           decoration: BoxDecoration(
             color: _isFlipped ? _purpleLt.withOpacity(0.3) : _cardFill,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: _outline, width: 3),
-            boxShadow: const [BoxShadow(color: _outline, offset: Offset(0, 5), blurRadius: 0)],
+            border: Border.all(color: _outline, width: 2),
+            boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
+              offset: const Offset(3, 3), blurRadius: 0)],
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -831,8 +1007,9 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
         decoration: BoxDecoration(
           color: color.withOpacity(0.4),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: _outline, width: 2.5),
-          boxShadow: const [BoxShadow(color: _outline, offset: Offset(0, 3), blurRadius: 0)],
+          border: Border.all(color: _outline, width: 2),
+          boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
+            offset: const Offset(3, 3), blurRadius: 0)],
         ),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Icon(icon, color: _brown, size: 22),
@@ -874,8 +1051,9 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
         decoration: BoxDecoration(
           color: _cardFill,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: _outline, width: 3),
-          boxShadow: const [BoxShadow(color: _outline, offset: Offset(0, 5), blurRadius: 0)],
+          border: Border.all(color: _outline, width: 2),
+          boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
+            offset: const Offset(3, 3), blurRadius: 0)],
         ),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Icon(
@@ -932,7 +1110,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
     return Column(children: [
       // Create card button
       Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+        padding: const EdgeInsets.fromLTRB(4, 12, 4, 8),
         child: _bigButton('+ Create Card', _purpleHdr, _showCreateDialog),
       ),
       // Card list
@@ -940,7 +1118,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
         child: _allCards.isEmpty
           ? _emptyState(icon: Icons.style_rounded, title: 'No cards yet', subtitle: 'Create or generate some!')
           : ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 4),
               itemCount: _allCards.length,
               itemBuilder: (ctx, i) => _cardTile(_allCards[i], i),
             ),
@@ -958,8 +1136,9 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
       decoration: BoxDecoration(
         color: _cardFill,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _outline, width: 2.5),
-        boxShadow: const [BoxShadow(color: _outline, offset: Offset(0, 3), blurRadius: 0)],
+        border: Border.all(color: _outline, width: 2),
+        boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
+          offset: const Offset(3, 3), blurRadius: 0)],
       ),
       child: ListTile(
         contentPadding: const EdgeInsets.fromLTRB(14, 4, 8, 4),
@@ -1121,7 +1300,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
 
   Widget _generateTab() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(4, 12, 4, 16),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         // Header
         Container(
@@ -1130,8 +1309,9 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
           decoration: BoxDecoration(
             gradient: const LinearGradient(colors: [_purpleHdr, _purpleLt]),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: _outline, width: 2.5),
-            boxShadow: const [BoxShadow(color: _outline, offset: Offset(0, 4), blurRadius: 0)],
+            border: Border.all(color: _outline, width: 2),
+            boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
+              offset: const Offset(3, 3), blurRadius: 0)],
           ),
           child: Column(children: [
             const Icon(Icons.auto_awesome_rounded, size: 32, color: _brown),
@@ -1186,8 +1366,11 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
               decoration: BoxDecoration(
                 color: _genCount == n ? _purpleHdr.withOpacity(0.5) : _cardFill,
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: _outline, width: _genCount == n ? 3 : 2),
-                boxShadow: [BoxShadow(color: _outline, offset: Offset(0, _genCount == n ? 2 : 1), blurRadius: 0)],
+                border: Border.all(
+                    color: _genCount == n ? _outline : _outline.withOpacity(0.4),
+                    width: _genCount == n ? 2 : 1.5),
+                boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
+                  offset: const Offset(3, 3), blurRadius: 0)],
               ),
               child: Center(child: Text('$n', style: GoogleFonts.gaegu(
                 fontSize: 20, fontWeight: FontWeight.w700, color: _brown))),
@@ -1195,7 +1378,63 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
           ),
         )).toList()),
 
-        const SizedBox(height: 20),
+        const SizedBox(height: 16),
+
+        // Topic picker (only when materials are selected and have topics)
+        Builder(builder: (ctx) {
+          final selectedMats = _materials.where((m) =>
+            _selectedMaterialIds.contains(m['id']?.toString() ?? '')).toList();
+          final topics = <String>{};
+          for (final m in selectedMats) {
+            final ts = (m['topics'] as List?) ?? const [];
+            for (final t in ts) { topics.add(t.toString()); }
+          }
+          if (topics.isEmpty) return const SizedBox.shrink();
+          final list = topics.toList()..sort();
+          return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Expanded(child: Text('Focus on topics (optional):',
+                style: GoogleFonts.gaegu(fontSize: 18, fontWeight: FontWeight.w700, color: _brown))),
+              GestureDetector(
+                onTap: () => setState(() {
+                  if (_selectedGenTopics.length == list.length) {
+                    _selectedGenTopics.clear();
+                  } else {
+                    _selectedGenTopics
+                      ..clear()
+                      ..addAll(list);
+                  }
+                }),
+                child: Text(
+                  _selectedGenTopics.length == list.length ? 'clear' : 'all',
+                  style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w700, color: _purpleHdr)),
+              ),
+            ]),
+            const SizedBox(height: 6),
+            Wrap(spacing: 6, runSpacing: 6, children: [
+              for (final t in list)
+                GestureDetector(
+                  onTap: () => setState(() {
+                    if (_selectedGenTopics.contains(t)) { _selectedGenTopics.remove(t); }
+                    else { _selectedGenTopics.add(t); }
+                  }),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: _selectedGenTopics.contains(t) ? _purpleHdr : _purpleLt.withOpacity(0.35),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: _outline.withOpacity(0.3), width: 1),
+                    ),
+                    child: Text(t,
+                      style: GoogleFonts.nunito(
+                        fontSize: 12, fontWeight: FontWeight.w700,
+                        color: _selectedGenTopics.contains(t) ? Colors.white : _brown)),
+                  ),
+                ),
+            ]),
+            const SizedBox(height: 16),
+          ]);
+        }),
 
         // Generate button
         _bigButton(
@@ -1224,12 +1463,14 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
       }),
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.fromLTRB(12, 12, 6, 12),
         decoration: BoxDecoration(
           color: selected ? _purpleHdr.withOpacity(0.15) : _cardFill,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: selected ? _purpleHdr : _outline, width: selected ? 3 : 2),
-          boxShadow: [BoxShadow(color: _outline, offset: Offset(0, selected ? 2 : 1), blurRadius: 0)],
+          border: Border.all(color: selected ? _purpleHdr : _outline.withOpacity(0.4),
+              width: selected ? 2.5 : 1.5),
+          boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
+            offset: const Offset(3, 3), blurRadius: 0)],
         ),
         child: Row(children: [
           Icon(
@@ -1247,9 +1488,73 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
                 style: GoogleFonts.nunito(fontSize: 11, fontWeight: FontWeight.w500, color: _brownLt)),
             ],
           )),
+          // Trailing delete affordance — isolated from the tile's tap zone
+          // via its own GestureDetector so tapping the trash icon never
+          // accidentally toggles the "include in AI generation" checkbox.
+          GestureDetector(
+            onTap: () => _confirmDeleteMaterial(m),
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: const EdgeInsets.all(6),
+              child: Icon(Icons.delete_outline_rounded,
+                size: 20, color: Colors.red.shade400),
+            ),
+          ),
         ]),
       ),
     );
+  }
+
+  Future<void> _confirmDeleteMaterial(Map<String, dynamic> m) async {
+    final title = (m['title'] as String?)?.trim();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: _cardFill,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: const BorderSide(color: _outline, width: 3),
+        ),
+        title: Text('Delete material?', style: GoogleFonts.gaegu(
+          fontSize: 22, fontWeight: FontWeight.w700, color: _brown)),
+        content: Text(
+          title != null && title.isNotEmpty
+            ? '"$title" will be removed. Cards already generated from it will stay.'
+            : 'This material will be removed. Cards already generated from it will stay.',
+          style: GoogleFonts.nunito(fontSize: 14, color: _brown, height: 1.35),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel', style: GoogleFonts.gaegu(fontSize: 18, color: _brownLt))),
+          TextButton(onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Delete', style: GoogleFonts.gaegu(
+              fontSize: 18, fontWeight: FontWeight.w700, color: Colors.red.shade500))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final id = m['id']?.toString();
+    if (id == null || id.isEmpty) return;
+    final api = ref.read(apiServiceProvider);
+    try {
+      await api.delete('/study/materials/$id');
+      if (!mounted) return;
+      setState(() => _selectedMaterialIds.remove(id));
+      await _loadData();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(title != null && title.isNotEmpty
+          ? 'Deleted "$title"'
+          : 'Material deleted'),
+        backgroundColor: _greenDk,
+      ));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Delete failed: $e'),
+        backgroundColor: Colors.red.shade400,
+      ));
+    }
   }
 
   Future<void> _generateCards() async {
@@ -1260,6 +1565,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
         'material_ids': _selectedMaterialIds,
         'count': _genCount,
         if (_selectedDeckId != null) 'deck_id': _selectedDeckId,
+        if (_selectedGenTopics.isNotEmpty) 'topic_filter': _selectedGenTopics.toList(),
       });
       final generated = resp.data['generated'] ?? 0;
       if (mounted) {
@@ -1271,6 +1577,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
         );
       }
       _selectedMaterialIds.clear();
+      _selectedGenTopics.clear();
       await _loadData();
       _tabCtrl.animateTo(1); // Switch to All Cards tab
     } catch (e) {
@@ -1296,8 +1603,9 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
         decoration: BoxDecoration(
           color: onTap == null ? color.withOpacity(0.3) : color.withOpacity(0.5),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: _outline, width: 2.5),
-          boxShadow: const [BoxShadow(color: _outline, offset: Offset(0, 3), blurRadius: 0)],
+          border: Border.all(color: _outline, width: 2),
+          boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
+            offset: const Offset(3, 3), blurRadius: 0)],
         ),
         child: Center(
           child: Text(label, style: GoogleFonts.gaegu(
@@ -1306,6 +1614,192 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
         ),
       ),
     );
+  }
+
+  //  FILE UPLOAD — shared modal (matches Subjects & Quiz Hub)
+  Future<void> _pickAndUploadFile(BuildContext context) async {
+    await UploadNotesModal.show(
+      context,
+      ref: ref,
+      subjects: _subjects
+          .map((s) => UploadModalSubject(
+                id: (s['id'] ?? '').toString(),
+                name: (s['name'] ?? '').toString(),
+                icon: Icons.book_rounded,
+              ))
+          .where((s) => s.id.isNotEmpty)
+          .toList(),
+      onUploaded: (_) => _loadData(),
+    );
+  }
+
+  // ignore: unused_element
+  Future<void> _legacyPickAndUploadFile(BuildContext context) async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.any,
+      allowMultiple: false,
+    );
+    if (result == null || result.files.isEmpty) return;
+    final file = result.files.first;
+    if (file.path == null) return;
+
+    final ext = file.extension?.toLowerCase() ?? '';
+    final allowed = ['pdf', 'png', 'jpg', 'jpeg', 'txt', 'md'];
+    if (!allowed.contains(ext)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Unsupported file type: .$ext\nAllowed: PDF, PNG, JPG, TXT, MD'),
+        backgroundColor: Colors.red.shade400,
+      ));
+      return;
+    }
+
+    final titleCtrl = TextEditingController(text: file.name.split('.').first);
+    String? selectedSubjectId;
+    final topicsCtrl = TextEditingController();
+
+    final shouldUpload = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setDlg) {
+        return Dialog(
+          backgroundColor: _cardFill,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(colors: [_purpleLt, _purpleHdr]),
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(20), topRight: Radius.circular(20))),
+                child: Row(children: [
+                  const Icon(Icons.upload_file_rounded, color: Colors.white, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text('Upload: ${file.name}',
+                    style: GoogleFonts.gaegu(fontSize: 20, fontWeight: FontWeight.w700, color: Colors.white),
+                    overflow: TextOverflow.ellipsis, maxLines: 1)),
+                ]),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Text('Title', style: GoogleFonts.nunito(
+                      fontSize: 12, fontWeight: FontWeight.w700, color: _brownLt)),
+                  ),
+                  TextField(
+                    controller: titleCtrl,
+                    style: GoogleFonts.nunito(fontSize: 14),
+                    decoration: InputDecoration(
+                      hintText: 'Material title',
+                      hintStyle: GoogleFonts.nunito(fontSize: 12, color: _brownLt.withOpacity(0.4)),
+                      filled: true, fillColor: Colors.white,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(color: _outline.withOpacity(0.12))),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(color: _outline.withOpacity(0.12))),
+                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
+                        borderSide: const BorderSide(color: _purpleHdr, width: 1.5)),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Text('Subject', style: GoogleFonts.nunito(
+                      fontSize: 12, fontWeight: FontWeight.w700, color: _brownLt)),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.white, borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: _outline.withOpacity(0.12))),
+                    child: DropdownButtonHideUnderline(child: DropdownButton<String?>(
+                      isExpanded: true, value: selectedSubjectId,
+                      hint: Text('Select subject', style: GoogleFonts.nunito(fontSize: 13, color: _brownLt)),
+                      items: [
+                        DropdownMenuItem<String?>(value: null,
+                          child: Text('None', style: GoogleFonts.nunito(fontSize: 13))),
+                        ..._subjects.map((s) => DropdownMenuItem<String?>(
+                          value: s['id']?.toString(),
+                          child: Text(s['name'] ?? '', style: GoogleFonts.nunito(fontSize: 13)))),
+                      ],
+                      onChanged: (v) => setDlg(() => selectedSubjectId = v),
+                    )),
+                  ),
+                  const SizedBox(height: 10),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Text('Topics (comma-separated, optional)',
+                      style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w700, color: _brownLt)),
+                  ),
+                  TextField(
+                    controller: topicsCtrl,
+                    style: GoogleFonts.nunito(fontSize: 14),
+                    decoration: InputDecoration(
+                      hintText: 'e.g. Photosynthesis, Cell division',
+                      hintStyle: GoogleFonts.nunito(fontSize: 12, color: _brownLt.withOpacity(0.4)),
+                      filled: true, fillColor: Colors.white,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(color: _outline.withOpacity(0.12))),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(color: _outline.withOpacity(0.12))),
+                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
+                        borderSide: const BorderSide(color: _purpleHdr, width: 1.5)),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(width: double.infinity, child: GestureDetector(
+                    onTap: () => Navigator.pop(ctx, true),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(colors: [_purpleLt, _purpleHdr]),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: _outline.withOpacity(0.35), width: 1.5),
+                        boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
+                          offset: const Offset(3, 3), blurRadius: 0)]),
+                      child: Center(child: Text('Upload & Extract Text',
+                        style: GoogleFonts.gaegu(fontSize: 20, fontWeight: FontWeight.w700, color: Colors.white))),
+                    ),
+                  )),
+                ]),
+              ),
+            ]),
+          ),
+        );
+      }),
+    );
+
+    if (shouldUpload != true || !context.mounted) return;
+
+    final api = ref.read(apiServiceProvider);
+    try {
+      final formData = FormData.fromMap({
+        'file': await MultipartFile.fromFile(file.path!, filename: file.name),
+        'title': titleCtrl.text.trim().isEmpty ? file.name : titleCtrl.text.trim(),
+        'subject_id': selectedSubjectId ?? '',
+        'topics': topicsCtrl.text.trim(),
+      });
+      await api.post('/study/materials/upload', data: formData);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('File uploaded & text extracted!', style: GoogleFonts.nunito()),
+          backgroundColor: _greenHdr));
+      }
+      _loadData();
+    } catch (e) {
+      debugPrint('Upload error: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Upload failed: $e', style: GoogleFonts.nunito()),
+          backgroundColor: _coralHdr));
+      }
+    }
   }
 
   Widget _emptyState({required IconData icon, required String title, required String subtitle}) {
@@ -1338,4 +1832,35 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
       ),
     );
   }
+}
+
+//  PAW-PRINT BACKGROUND — matches subjects/resources reference
+class _PawPrintBg extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..style = PaintingStyle.fill;
+    const spacing = 90.0;
+    const rowShift = 45.0;
+    const pawR = 10.0;
+    int idx = 0;
+    for (double y = 30; y < size.height; y += spacing) {
+      final isOddRow = ((y / spacing).floor() % 2) == 1;
+      final xOffset = isOddRow ? rowShift : 0.0;
+      for (double x = xOffset + 30; x < size.width; x += spacing) {
+        paint.color = _pawClr.withOpacity(0.06 + (idx % 5) * 0.018);
+        final angle = (idx % 4) * 0.3 - 0.3;
+        canvas.save(); canvas.translate(x, y); canvas.rotate(angle);
+        canvas.drawOval(
+          Rect.fromCenter(center: Offset.zero, width: pawR * 2.2, height: pawR * 1.8), paint);
+        final tr = pawR * 0.52;
+        canvas.drawCircle(Offset(-pawR * 1.0, -pawR * 1.35), tr, paint);
+        canvas.drawCircle(Offset(-pawR * 0.38, -pawR * 1.65), tr, paint);
+        canvas.drawCircle(Offset(pawR * 0.38, -pawR * 1.65), tr, paint);
+        canvas.drawCircle(Offset(pawR * 1.0, -pawR * 1.35), tr, paint);
+        canvas.restore();
+        idx++;
+      }
+    }
+  }
+  @override bool shouldRepaint(covariant CustomPainter o) => false;
 }

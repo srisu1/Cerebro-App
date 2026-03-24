@@ -33,6 +33,11 @@ class ApiService {
           if (options.data is FormData) {
             options.headers.remove('Content-Type');
           }
+          // Diagnostic: confirms whether token is being attached on every call.
+          // Remove once 401 cascade is resolved.
+          // ignore: avoid_print
+          print('[HTTP →] ${options.method} ${options.path}  '
+              'auth=${options.headers['Authorization'] == null ? "NONE" : "present"}');
           return handler.next(options);
         },
         onError: (error, handler) async {
@@ -41,13 +46,29 @@ class ApiService {
           final isAuthEndpoint = path.contains('/auth/login') ||
               path.contains('/auth/register') ||
               path.contains('/auth/refresh');
+          final alreadyRetried = error.requestOptions.extra['__retried'] == true;
 
-          if (error.response?.statusCode == 401 && !isAuthEndpoint) {
+          if (error.response?.statusCode == 401 && !isAuthEndpoint && !alreadyRetried) {
             final refreshed = await _refreshToken();
             if (refreshed) {
-              // Retry the failed request
-              final retryResponse = await _dio.fetch(error.requestOptions);
-              return handler.resolve(retryResponse);
+              // Retry the failed request — mark it so we don't loop.
+              error.requestOptions.extra['__retried'] = true;
+              final prefs = await SharedPreferences.getInstance();
+              final fresh = prefs.getString(AppConstants.accessTokenKey);
+              if (fresh != null && fresh.isNotEmpty) {
+                error.requestOptions.headers['Authorization'] = 'Bearer $fresh';
+              }
+              try {
+                final retryResponse = await _dio.fetch(error.requestOptions);
+                return handler.resolve(retryResponse);
+              } catch (_) {
+                // fall through to propagate the original error
+              }
+            } else {
+              // Refresh failed — tokens are already cleared. Surface this so
+              // the app can redirect to login instead of silently looping 401s.
+              // ignore: avoid_print
+              print('[AUTH] refresh failed; tokens cleared. Re-login required.');
             }
           }
           return handler.next(error);
