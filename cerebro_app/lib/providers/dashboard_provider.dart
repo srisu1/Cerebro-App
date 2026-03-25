@@ -13,8 +13,11 @@ import 'package:cerebro_app/services/api_service.dart';
 import 'package:cerebro_app/providers/auth_provider.dart';
 
 const int xpPerCash = 20; // 20 XP = 1 Cash
-const int startingXp = 20; // new users start with 20 XP
-const int startingCash = 50; // new users start with 50 cash for testing
+// Historical testing gifts — intentionally zero in production so the
+// dashboard reflects actions the user has actually taken. Any display
+// of non-zero XP / cash on a brand-new account would be misleading.
+const int startingXp = 0;
+const int startingCash = 0;
 
 /// Icon string mapping for habit presets (used by onboarding + quest mgmt)
 const Map<String, String> habitIconMap = {
@@ -67,8 +70,22 @@ class DashboardState {
   });
 
   int get habitsDone => habits.where((h) => h['done'] == true).length;
-  int get xpForNext => level * AppConstants.xpPerLevel;
-  double get xpProgress => (totalXp / xpForNext).clamp(0.0, 1.0);
+
+  // XP semantics — totalXp is CUMULATIVE (matches backend's User.total_xp).
+  // Each level is a constant AppConstants.xpPerLevel (500) wide, so:
+  //   level           = totalXp ~/ 500 + 1
+  //   xpInCurrentLevel = totalXp % 500           (progress inside the bar)
+  //   xpForNext       = 500                      (bar capacity)
+  //   xpToNextLevel   = 500 - (totalXp % 500)    (XP still needed this level)
+  //
+  // We deliberately don't compute `level` from totalXp here — backend sends
+  // it explicitly on /gamification/stats so we trust it and fall back to the
+  // computed value only inside _addXp for optimistic updates.
+  int get xpInCurrentLevel => totalXp % AppConstants.xpPerLevel;
+  int get xpForNext => AppConstants.xpPerLevel;
+  int get xpToNextLevel => AppConstants.xpPerLevel - xpInCurrentLevel;
+  double get xpProgress =>
+      (xpInCurrentLevel / AppConstants.xpPerLevel).clamp(0.0, 1.0);
 
   /// How many cash the user can exchange right now
   int get exchangeableCash => totalXp ~/ xpPerCash;
@@ -121,12 +138,65 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
     loadAll();
   }
 
+  //
+  // Why the ordering matters:
+  //   On logout we wipe per-user SharedPreferences keys (total_xp, cash,
+  //   streak_days, level, …). The very next login therefore has a cache
+  //   that says "0". If we paint cache first and then hit the server,
+  //   every widget that watches DashboardState.totalXp paints 0, then
+  //   the real value arrives a few hundred ms later and we "snap" — that
+  //   is the exact "XP shows zero until I tick a quest" bug the user
+  //   keeps reporting.
+  //
+  // Fix:
+  //   When a token exists, run the server sync FIRST (and await it) so
+  //   totalXp / level / cash / streak_days are authoritative before the
+  //   widget tree ever reads them. We still load cache afterwards so
+  //   screens that depend on non-gamification cached bits (avatar JSON,
+  //   today_mood, today_study_minutes) keep their fast path. If the
+  //   server call fails, we fall back to whatever the cache had.
+  //
+  //   When there's no token (pre-login), the server call would 401, so
+  //   we skip it entirely and just paint the (empty) cache.
   Future<void> loadAll() async {
     state = state.copyWith(isLoading: true);
-    await _loadFromCache();
+
+    final prefs = await SharedPreferences.getInstance();
+    final hasToken =
+        (prefs.getString(AppConstants.accessTokenKey) ?? '').isNotEmpty;
+
+    if (hasToken) {
+      // Server-first: populate the critical gamification fields from the
+      // backend BEFORE any widget sees a cached zero.
+      await _syncFromApi();
+      // Cache load is still needed for fields the server doesn't own
+      // (avatar config, locally-tracked water intake, etc.) — but it
+      // must not stomp on the server values we just wrote.
+      await _loadFromCache(preserveGamification: true);
+    } else {
+      // Not logged in — cache is all we have. If it's wiped, state stays
+      // at the defaults (0 / level 1), which is the correct rendering
+      // for a signed-out user.
+      await _loadFromCache(preserveGamification: false);
+    }
+
     state = state.copyWith(isLoading: false);
-    // Then try API in background (non-blocking)
-    _syncFromApi();
+  }
+
+  //
+  // Called by the `ref.listen` on `authProvider` in two situations:
+  //   1. A new account just authenticated — we need to wipe account A's
+  //      XP/cash/streak/habits from memory so the UI doesn't flash them
+  //      before /gamification/stats returns account B's values.
+  //   2. The user just logged out — same reason, the next login screen
+  //      (or re-entry into the app as a different user) should never
+  //      see the previous session's numbers.
+  //
+  // This is intentionally synchronous and only touches in-memory state.
+  // SharedPreferences are wiped separately by [clearUserScope] /
+  // [refreshUserScope] in `utils/user_session.dart`.
+  void resetForNewUser() {
+    state = DashboardState(lastRefreshed: DateTime.now());
   }
 
   Future<void> refresh() async {
@@ -148,7 +218,15 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
     return '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
   }
 
-  Future<void> _loadFromCache() async {
+  //
+  // When [preserveGamification] is true, we do NOT overwrite totalXp /
+  // level / cash / streak on the state — they were already set by a
+  // fresh /gamification/stats sync and the on-disk cache may be stale
+  // (e.g. wiped by logout before the new account logged in). Everything
+  // else (avatar, habits list, today's mood / study minutes / sleep) is
+  // still loaded from cache because the server may not own those fields
+  // or the sync may not have pulled them yet.
+  Future<void> _loadFromCache({bool preserveGamification = false}) async {
     final prefs = await SharedPreferences.getInstance();
 
     AvatarConfig? avatarConfig;
@@ -201,10 +279,12 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
       }
     }
 
-    // If STILL empty, use defaults
-    if (questDefs.isEmpty) {
-      questDefs = _defaultQuestDefs();
-    }
+    // If STILL empty, leave empty instead of forcing a generic set.
+    // The wizard writes the user's real picks to both cerebro_initial_habits
+    // and /daily/habits, and the subsequent _syncFromApi() call will hydrate
+    // them. Showing four random "Drink Water / Read / Exercise / Stretch"
+    // placeholders here would be precisely the "nothing can be static"
+    // failure mode — better to render the empty state until real picks land.
 
     // Save quest definitions
     await prefs.setString('quest_definitions', jsonEncode(questDefs));
@@ -249,18 +329,32 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
       await prefs.setInt('cash', startingCash);
     }
 
-    state = state.copyWith(
-      displayName: prefs.getString('display_name') ?? 'Scholar',
-      totalXp: prefs.getInt('total_xp') ?? defaultXp,
-      level: prefs.getInt('level') ?? 1,
-      streak: prefs.getInt('streak_days') ?? 0,
-      cash: prefs.getInt('cash') ?? defaultCash,
-      todayMood: prefs.getString('today_mood'),
-      studyMinutes: prefs.getInt('today_study_minutes') ?? 0,
-      sleepHours: prefs.getString('today_sleep'),
-      habits: habits,
-      avatarConfig: avatarConfig,
-    );
+    if (preserveGamification) {
+      // Gamification fields were just set by the server — leave them
+      // alone. Only hydrate caches that the server didn't touch.
+      state = state.copyWith(
+        displayName: prefs.getString('display_name') ?? state.displayName,
+        todayMood: prefs.getString('today_mood'),
+        studyMinutes:
+            prefs.getInt('today_study_minutes') ?? state.studyMinutes,
+        sleepHours: prefs.getString('today_sleep'),
+        habits: habits,
+        avatarConfig: avatarConfig,
+      );
+    } else {
+      state = state.copyWith(
+        displayName: prefs.getString('display_name') ?? 'Scholar',
+        totalXp: prefs.getInt('total_xp') ?? defaultXp,
+        level: prefs.getInt('level') ?? 1,
+        streak: prefs.getInt('streak_days') ?? 0,
+        cash: prefs.getInt('cash') ?? defaultCash,
+        todayMood: prefs.getString('today_mood'),
+        studyMinutes: prefs.getInt('today_study_minutes') ?? 0,
+        sleepHours: prefs.getString('today_sleep'),
+        habits: habits,
+        avatarConfig: avatarConfig,
+      );
+    }
 
     // Persist starting XP for new users
     if (!hasPlayed) {
@@ -285,26 +379,30 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
       // API down — use cached data silently
     }
 
-    // LOCAL is the authority for XP and cash — backend may be stale.
-    // We only pull streak from the backend (which we can't track locally).
-    // We push our local XP/cash TO the backend to keep it in sync.
+    // BACKEND is the source of truth — local cache is just for fast first
+    // paint. Without this, logging out wipes local prefs and login shows
+    // zeros until a habit completion triggers a fresh server response.
+    // Habit completions, study sessions etc. already increment server-side
+    // values directly, so we always trust the server here.
     try {
       final gamRes = await _api.get('/gamification/stats');
       if (gamRes.statusCode == 200) {
         final g = gamRes.data;
         final prefs = await SharedPreferences.getInstance();
-        // Streak comes from backend (server tracks daily login)
+        final totalXp = (g['total_xp'] as num?)?.toInt() ?? state.totalXp;
+        final level = (g['level'] as num?)?.toInt() ?? state.level;
+        final coins = (g['coins'] as num?)?.toInt() ?? state.cash;
         final streak = (g['streak_days'] as num?)?.toInt() ?? state.streak;
+        await prefs.setInt('total_xp', totalXp);
+        await prefs.setInt('level', level);
+        await prefs.setInt('cash', coins);
         await prefs.setInt('streak_days', streak);
-        state = state.copyWith(streak: streak);
-        // Push local XP/cash/level to backend so it stays in sync
-        try {
-          await _api.post('/gamification/stats/sync', data: {
-            'total_xp': state.totalXp,
-            'level': state.level,
-            'coins': state.cash,
-          });
-        } catch (_) {} // backend endpoint may not exist yet — that's fine
+        state = state.copyWith(
+          totalXp: totalXp,
+          level: level,
+          cash: coins,
+          streak: streak,
+        );
       }
     } catch (_) {}
 
@@ -632,29 +730,44 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
 
   /// Exchange XP for cash. [amount] = number of cash to buy.
   /// Each cash costs 20 XP. Returns true if successful.
+  ///
+  /// Server is authoritative — we POST /gamification/exchange and reconcile
+  /// our local state from the response so totals never drift between the
+  /// in-memory state, SharedPreferences, and the DB.
   Future<bool> exchangeXpToCash(int amount) async {
     final xpCost = amount * xpPerCash;
-    if (state.totalXp < xpCost || amount <= 0) return false;
+    if (amount <= 0 || state.totalXp < xpCost) return false;
 
-    final newXp = state.totalXp - xpCost;
-    final newCash = state.cash + amount;
-
-    state = state.copyWith(totalXp: newXp, cash: newCash);
-
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('total_xp', newXp);
-    await prefs.setInt('cash', newCash);
-
-    // Sync to backend
     try {
-      await _api.post('/gamification/stats/sync', data: {
-        'total_xp': newXp,
-        'level': state.level,
-        'coins': newCash,
-      });
-    } catch (_) {}
+      final res = await _api.post(
+        '/gamification/exchange',
+        data: {'coins': amount},
+      );
 
-    return true;
+      if (res.statusCode != 200 || res.data == null) {
+        return false;
+      }
+
+      final data = res.data as Map;
+      final totalXp =
+          (data['total_xp'] as num?)?.toInt() ?? (state.totalXp - xpCost);
+      final level = (data['level'] as num?)?.toInt() ?? state.level;
+      final coins =
+          (data['coins'] as num?)?.toInt() ?? (state.cash + amount);
+
+      state = state.copyWith(totalXp: totalXp, level: level, cash: coins);
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('total_xp', totalXp);
+      await prefs.setInt('level', level);
+      await prefs.setInt('cash', coins);
+
+      return true;
+    } catch (_) {
+      // Backend unreachable or rejected — don't fake success locally,
+      // it would desync from the server on next fetch.
+      return false;
+    }
   }
 
   /// Spend cash in the store. Returns true if successful.
@@ -689,16 +802,14 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
   Future<void> awardXp(int amount) => _addXp(amount);
 
   Future<void> _addXp(int amount) async {
-    int newXp = state.totalXp + amount;
-    int newLevel = state.level;
-    bool didLevelUp = false;
-
-    // Level up check — awards bonus XP (not cash directly)
-    while (newXp >= newLevel * AppConstants.xpPerLevel) {
-      newXp -= newLevel * AppConstants.xpPerLevel;
-      newLevel++;
-      didLevelUp = true;
-    }
+    // Cumulative XP model — mirrors backend's User.total_xp + level formula
+    // (level = total_xp // 500 + 1). totalXp never resets on level-up; we
+    // render progress via modulo in the getters above. This keeps the
+    // optimistic local update consistent with what /gamification/stats will
+    // return next time we sync, so no numbers "jump" after a background sync.
+    final newXp = (state.totalXp + amount).clamp(0, 1 << 31).toInt();
+    final newLevel = (newXp ~/ AppConstants.xpPerLevel) + 1;
+    final didLevelUp = newLevel > state.level;
 
     state = state.copyWith(
       totalXp: newXp,
@@ -740,21 +851,44 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
     }
   }
 
-  /// Default quests — NO Journal
-  static List<Map<String, dynamic>> _defaultQuestDefs() => [
-        {'name': 'Drink Water', 'icon': 'water'},
-        {'name': 'Read 15 min', 'icon': 'book'},
-        {'name': 'Exercise', 'icon': 'fitness'},
-        {'name': 'Stretch', 'icon': 'fitness'},
-      ];
-
-  // Keep for backward compat but delegates to new system
-  static List<Map<String, dynamic>> _defaultHabits() =>
-      _defaultQuestDefs().map((q) => {...q, 'done': false}).toList();
+  // Intentionally no static "default quests" — the wizard is the sole
+  // source of truth for which quests a user tracks. If something goes
+  // wrong and no quests are found, we render an empty state rather
+  // than seeding fake ones the user never opted into.
 }
 
 final dashboardProvider =
     StateNotifierProvider<DashboardNotifier, DashboardState>((ref) {
   final api = ref.watch(apiServiceProvider);
-  return DashboardNotifier(api);
+  final notifier = DashboardNotifier(api);
+
+  // Auth transitions (logout → login, or new account on same device) wipe
+  // the per-user SharedPreferences cache via utils/user_session.dart. The
+  // notifier's in-memory state is still the *previous* account's data at
+  // that moment, so we explicitly reset the gamification fields to their
+  // defaults AND force a reload from the freshly-scoped prefs / server
+  // whenever we land in the authenticated state. Without this reset the
+  // next user can briefly see the previous user's XP / cash / streak
+  // before the server response lands — exactly the "it shows 0 sometimes,
+  // sometimes the other user's number" bug.
+  ref.listen<AuthState>(authProvider, (prev, next) {
+    final becameAuthed = (prev?.status != AuthStatus.authenticated) &&
+        (next.status == AuthStatus.authenticated);
+    final becameUnauthed = (prev?.status == AuthStatus.authenticated) &&
+        (next.status != AuthStatus.authenticated);
+    if (becameAuthed) {
+      // Zero out per-user fields so we never paint account A's XP/cash/
+      // streak while account B's /gamification/stats is still in flight.
+      notifier.resetForNewUser();
+      // ignore: discarded_futures
+      notifier.loadAll();
+    } else if (becameUnauthed) {
+      // On logout, immediately clear the visible surface so the login
+      // screen (or whatever re-uses the provider) doesn't flash stale
+      // numbers before the next account logs in.
+      notifier.resetForNewUser();
+    }
+  });
+
+  return notifier;
 });

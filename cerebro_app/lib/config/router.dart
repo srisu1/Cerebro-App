@@ -5,11 +5,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cerebro_app/config/constants.dart';
+import 'package:cerebro_app/config/theme.dart';
 import 'package:cerebro_app/screens/auth/login_screen.dart';
 import 'package:cerebro_app/screens/auth/register_screen.dart';
 import 'package:cerebro_app/screens/auth/set_password_screen.dart';
 import 'package:cerebro_app/screens/home/home_screen.dart';
+// ignore: unused_import — keep importable while the wizard is bypassed; restore by swapping the /onboarding builder.
 import 'package:cerebro_app/screens/onboarding/onboarding_screen.dart';
+// ignore: unused_import — keep importable while the wizard is bypassed; restore by swapping the /setup builder.
 import 'package:cerebro_app/screens/onboarding/setup_flow_screen.dart';
 import 'package:cerebro_app/screens/study/subjects_screen.dart';
 import 'package:cerebro_app/screens/study/study_session_screen.dart';
@@ -40,6 +45,7 @@ class Routes {
   static const String home = '/home';
   static const String subjects = '/study/subjects';
   static const String studySession = '/study/session';
+  static const String pastSessions = '/study/past-sessions';
   static const String studyAnalytics = '/study/analytics';
   static const String quizzes = '/study/quizzes';
   static const String takeQuiz = '/study/take-quiz';
@@ -70,8 +76,13 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: Routes.onboarding,
-        builder: (context, state) => const OnboardingScreen(),
+        // Onboarding disabled — auto-bypass to login (or home if logged in).
+        // Swap back to `const OnboardingScreen()` to re-enable the carousel.
+        builder: (context, state) => const _WizardBypassScreen(target: _BypassTarget.auto),
       ),
+      // The original onboarding screen is still importable if you need
+      // to re-enable it; leave the import and route builder above, flip
+      // the builder back to `const OnboardingScreen()`.
       GoRoute(
         path: Routes.login,
         builder: (context, state) => const LoginScreen(),
@@ -86,12 +97,16 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: Routes.setup,
-        builder: (context, state) => const SetupFlowScreen(),
+        // Setup wizard disabled — auto-bypass to home. Restore by
+        // replacing the builder with `const SetupFlowScreen()`.
+        builder: (context, state) => const _WizardBypassScreen(target: _BypassTarget.home),
       ),
       GoRoute(
         path: Routes.avatarSetup,
-        builder: (context, state) =>
-            const AvatarCustomizationScreen(isSetup: true),
+        // Avatar setup gate disabled — auto-bypass to home. Restore by
+        // replacing the builder with
+        // `const AvatarCustomizationScreen(isSetup: true)`.
+        builder: (context, state) => const _WizardBypassScreen(target: _BypassTarget.home),
       ),
       GoRoute(
         path: Routes.home,
@@ -104,6 +119,15 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: Routes.studySession,
         builder: (context, state) => const StudySessionScreen(),
+      ),
+      // Dedicated entry point that opens the Study Session screen with the
+      // Past Sessions sheet pre-opened. Kept as a separate path (rather
+      // than a query param on /study/session) so the Study Hub can link to
+      // it directly without clashing with live-session adoption logic.
+      GoRoute(
+        path: Routes.pastSessions,
+        builder: (context, state) =>
+            const StudySessionScreen(showPastOnOpen: true),
       ),
       GoRoute(
         path: Routes.studyAnalytics,
@@ -177,3 +201,72 @@ final routerProvider = Provider<GoRouter>((ref) {
     ),
   );
 });
+
+//  WIZARD BYPASS SCREEN
+//  Temporary replacement for the onboarding carousel, setup wizard,
+//  and avatar-setup gate while those flows are turned off. It:
+//    1. Marks every wizard completion flag as `true` in prefs so
+//       downstream guards (HomeScreen, login redirects, title
+//       screen routing) don't bounce the user back.
+//    2. Immediately redirects — to /home if we have a token,
+//       otherwise to /login.
+//  Shows a brief cream splash so the switch isn't jarring.
+enum _BypassTarget {
+  /// Always go to /home (we know we're authenticated).
+  home,
+  /// Pick /home if a token exists, else /login.
+  auto,
+}
+
+class _WizardBypassScreen extends StatefulWidget {
+  final _BypassTarget target;
+  const _WizardBypassScreen({required this.target});
+  @override
+  State<_WizardBypassScreen> createState() => _WizardBypassScreenState();
+}
+
+class _WizardBypassScreenState extends State<_WizardBypassScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Defer navigation to the next frame so GoRouter has finished
+    // building this screen before we push it off the stack.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _bypass());
+  }
+
+  Future<void> _bypass() async {
+    final prefs = await SharedPreferences.getInstance();
+    // Stamp all wizard steps "done" so nothing downstream re-opens them.
+    await prefs.setBool(AppConstants.onboardingCompleteKey, true);
+    await prefs.setBool(AppConstants.setupCompleteKey, true);
+    await prefs.setBool(AppConstants.avatarCreatedKey, true);
+    if (!mounted) return;
+
+    String dest;
+    switch (widget.target) {
+      case _BypassTarget.home:
+        dest = Routes.home;
+        break;
+      case _BypassTarget.auto:
+        final tk = prefs.getString(AppConstants.accessTokenKey);
+        dest = (tk != null && tk.isNotEmpty) ? Routes.home : Routes.login;
+        break;
+    }
+    if (!mounted) return;
+    context.go(dest);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Minimal splash — the user only sees this for one frame.
+    return const Scaffold(
+      backgroundColor: CerebroTheme.creamWarm,
+      body: Center(
+        child: CircularProgressIndicator(
+          color: CerebroTheme.olive,
+          strokeWidth: 3,
+        ),
+      ),
+    );
+  }
+}

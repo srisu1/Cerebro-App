@@ -128,53 +128,66 @@ class _ProfileTabState extends ConsumerState<ProfileTab>
           final isWide  = constraints.maxWidth > 800;
           final sidePad = isWide ? 80.0 : 24.0;
           final contentW = constraints.maxWidth - sidePad * 2;
-          const navH = 80.0;
+          // Bottom nav reserved headroom. Narrow screens need ~120pt
+          // because the sign-out row gets uncomfortably close to the nav
+          // otherwise. Wide screens don't have the same crunch — the
+          // settings card reaches a natural floor well above the nav —
+          // so we trim the reserved space to cut the dead zone below
+          // the card.
+          final navH = isWide ? 40.0 : 120.0;
 
           return SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             child: ConstrainedBox(
               constraints: BoxConstraints(minHeight: constraints.maxHeight),
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Padding(
                     padding: EdgeInsets.fromLTRB(sidePad, 28, sidePad, 0),
                     child: _stag(0.0, _buildTopRow(ds)),
                   ),
+                  // Generous gap between the top bar and the content row.
+                  // ~80pt on wide / ~32pt on narrow gives the page a
+                  // clear "header zone" before the cards start, and
+                  // pushes the content down enough to balance the extra
+                  // empty vertical space that used to live at the bottom.
+                  SizedBox(height: isWide ? 80 : 32),
 
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // Avatar section (full-width like dashboard)
-                      _stag(0.04, _buildAvatarArea(ds, contentW, sidePad)),
-
-                      // XP divider
-                      Padding(
-                        padding: EdgeInsets.symmetric(horizontal: sidePad),
-                        child: _stag(0.08, _buildXpDivider(ds)),
-                      ),
-                      const SizedBox(height: 10),
-
-                      // Content
-                      Padding(
-                        padding: EdgeInsets.fromLTRB(sidePad, 0, sidePad, navH),
-                        child: isWide
-                          ? _stag(0.12, _buildTwoColumnContent(ds))
-                          : Column(children: [
-                              _stag(0.12, _buildStatsGrid(ds)),
-                              const SizedBox(height: 14),
-                              _stag(0.16, _buildExchangeCard(ds)),
-                              const SizedBox(height: 14),
-                              _stag(0.20, _buildAchievementsCard()),
-                              const SizedBox(height: 14),
-                              _stag(0.24, _buildSettingsCard()),
-                              const SizedBox(height: 14),
-                              _stag(0.28, _buildTip(ds)),
-                            ]),
-                      ),
-                    ],
-                  ),
+                  // WIDE: two-column layout where the avatar + XP bar
+                  // anchor the top of the LEFT column (not the full-width
+                  // hero we used to render). This lets the Settings card
+                  // fill the RIGHT column from the very top, so the long
+                  // settings list stops getting pushed below the fold.
+                  // NARROW: stack everything; the full-width hero avatar
+                  // still reads great when there's only one column.
+                  if (isWide)
+                    Padding(
+                      padding: EdgeInsets.fromLTRB(sidePad, 0, sidePad, navH),
+                      child: _stag(0.08, _buildTwoColumnContent(ds)),
+                    )
+                  else ...[
+                    _stag(0.04, _buildAvatarArea(ds, contentW, sidePad)),
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: sidePad),
+                      child: _stag(0.08, _buildXpDivider(ds)),
+                    ),
+                    const SizedBox(height: 10),
+                    Padding(
+                      padding: EdgeInsets.fromLTRB(sidePad, 0, sidePad, navH),
+                      child: Column(children: [
+                        _stag(0.12, _buildStatsGrid(ds)),
+                        const SizedBox(height: 14),
+                        _stag(0.16, _buildExchangeCard(ds)),
+                        const SizedBox(height: 14),
+                        _stag(0.20, _buildAchievementsCard()),
+                        const SizedBox(height: 14),
+                        _stag(0.24, _buildSettingsCard()),
+                        const SizedBox(height: 14),
+                        _stag(0.28, _buildTip(ds)),
+                      ]),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -406,26 +419,148 @@ class _ProfileTabState extends ConsumerState<ProfileTab>
   }
 
   //  TWO-COLUMN (wide)
+  //  LEFT column: hero avatar / identity / XP bar, then generous
+  //  breathing space before Stats · Exchange · Tip. No more stuffing
+  //  everything against the top edge — the avatar sits on its own
+  //  "shelf" and the rest of the stack drops below.
+  //  RIGHT column: Achievements sits on top of the Settings card, so
+  //  the long settings list starts lower on the page and the hero +
+  //  achievements hold the top half of the row as a matched pair.
   Widget _buildTwoColumnContent(DashboardState ds) {
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // LEFT — 42%
-          Expanded(flex: 42, child: Column(children: [
+    // NOTE: no IntrinsicHeight. Settings column is still taller than the
+    // left column on long-list screens; forcing both to match would
+    // balloon the scroll distance for no reason. Top-aligning the Row
+    // and letting each column size itself keeps the layout compact.
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // LEFT — 42%
+        Expanded(flex: 42, child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildCompactHero(ds),
+            const SizedBox(height: 6),
+            _buildXpDivider(ds),
+            // Was 28 — trimmed to 16 so the stat pills / exchange / tip
+            // don't feel stranded way below the XP bar. User asked for
+            // the post-email content to ride a little higher.
+            const SizedBox(height: 16),
             _buildStatsGrid(ds),
             const SizedBox(height: 14),
             _buildExchangeCard(ds),
             const SizedBox(height: 14),
-            _buildAchievementsCard(),
-            const SizedBox(height: 14),
             _buildTip(ds),
-          ])),
-          const SizedBox(width: 30),
-          // RIGHT — 58%
-          Expanded(flex: 58, child: _buildSettingsCard()),
+          ],
+        )),
+        const SizedBox(width: 30),
+        // RIGHT — 58%
+        Expanded(flex: 58, child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildAchievementsCard(),
+            const SizedBox(height: 18),
+            _buildSettingsCard(),
+          ],
+        )),
+      ],
+    );
+  }
+
+  //  COMPACT HERO (wide-mode left column)
+  //  Stacks avatar → name/email/affiliation → level badge vertically so
+  //  it lives inside the 42% left column. The full-width Stack hero (see
+  //  _buildAvatarArea) is reserved for narrow mode where it has the
+  //  whole content row to breathe in.
+  Widget _buildCompactHero(DashboardState ds) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Avatar + edit badge.
+        // Approach: a fixed-width inner SizedBox (wraps just the avatar's
+        // visible footprint) is centered in the column. The edit badge is
+        // Positioned relative to that inner box — not the full column —
+        // so it sits right by the avatar's hair instead of floating at
+        // the column's right edge.
+        Center(
+          child: SizedBox(
+            width: 300,
+            // Was 280 — trimmed to 245 so the name/email/affiliation/level
+            // badge sit a bit higher in the left column without the column
+            // feeling cramped. The avatar stays centered in the box.
+            height: 245,
+            child: Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.center,
+              children: [
+                GestureDetector(
+                  onTap: () => context.go('/avatar'),
+                  child: ds.avatarConfig != null
+                    ? OverflowBox(
+                        maxWidth: 560, maxHeight: 560,
+                        // Bumped from 0.40 → 0.50 so the avatar fills more
+                        // of the hero slot (user asked for it a bit bigger).
+                        child: Transform.scale(
+                          scale: 0.50,
+                          child: AliveAvatar(
+                            config: ds.avatarConfig!,
+                            size: 290,
+                          ),
+                        ),
+                      )
+                    : _placeholderAvatar(),
+                ),
+                // Edit badge — hugs the avatar's head. Tapping it routes
+                // to /avatar (AvatarCustomizationScreen), same as tapping
+                // the avatar body itself.
+                Positioned(
+                  top: 20,
+                  right: 18,
+                  child: GestureDetector(
+                    onTap: () => context.go('/avatar'),
+                    child: _editBadge(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+        Text(ds.displayName,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontFamily: 'Bitroad', fontSize: 22, color: _brown, height: 1.1)),
+        const SizedBox(height: 2),
+        Text(_email ?? '',
+          textAlign: TextAlign.center,
+          style: GoogleFonts.gaegu(
+            fontSize: 13, fontWeight: FontWeight.w700, color: _brownSoft)),
+        if (_university != null || _course != null) ...[
+          const SizedBox(height: 2),
+          Text([_university, _course].whereType<String>().join(' · '),
+            textAlign: TextAlign.center,
+            style: GoogleFonts.nunito(fontSize: 11,
+              fontWeight: FontWeight.w600, color: _brownLt)),
         ],
-      ),
+        const SizedBox(height: 8),
+        // Level badge
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(colors: [_goldGlow, _goldDk]),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: _outline, width: 2),
+            boxShadow: [BoxShadow(color: _outline.withOpacity(0.35),
+              offset: const Offset(2, 2), blurRadius: 0)]),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Text('Lv.${ds.level}', style: GoogleFonts.gaegu(
+              fontSize: 14, fontWeight: FontWeight.w900, color: _brown)),
+            Container(width: 1.5, height: 12, color: _brown.withOpacity(0.25),
+              margin: const EdgeInsets.symmetric(horizontal: 7)),
+            Text(_title(ds.level), style: GoogleFonts.gaegu(
+              fontSize: 13, fontWeight: FontWeight.w700, color: _brownSoft)),
+          ]),
+        ),
+      ],
     );
   }
 
@@ -618,7 +753,12 @@ class _ProfileTabState extends ConsumerState<ProfileTab>
           ),
         ]),
         const SizedBox(height: 8),
+        // width: double.infinity so the card stretches to match the
+        // Settings card beneath it — the inner Wrap otherwise collapses
+        // the container to the chip row's intrinsic width (which on wide
+        // screens leaves ~400pt of empty space to the right).
         Container(
+          width: double.infinity,
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: Colors.white.withOpacity(0.88),
@@ -681,7 +821,9 @@ class _ProfileTabState extends ConsumerState<ProfileTab>
 
   //  TIP — same as dashboard daily insight
   Widget _buildTip(DashboardState ds) {
-    final xpToNext = ds.xpForNext - ds.totalXp;
+    // xpForNext / totalXp are now in different units (per-level bar vs
+    // cumulative total), so we use the dedicated xpToNextLevel getter.
+    final xpToNext = ds.xpToNextLevel;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -722,7 +864,13 @@ class _ProfileTabState extends ConsumerState<ProfileTab>
             border: Border.all(color: _outline, width: 2),
             boxShadow: [BoxShadow(color: _outline.withOpacity(0.4),
               offset: const Offset(3, 3), blurRadius: 0)]),
-          child: Column(children: [
+          child: Column(
+            // Left-align group labels ("Account", "Setup", …). Without
+            // this, Column defaults to centered, and the tiny caps labels
+            // float to the middle of the card while the wider setting
+            // rows fill the full width — it reads as "misaligned".
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
             _groupLabel('Account'),
             _settingsRow(Icons.face_rounded, 'Edit Avatar', _pinkLt,
               onTap: () => context.go('/avatar')),
@@ -730,12 +878,29 @@ class _ProfileTabState extends ConsumerState<ProfileTab>
             _settingsRow(Icons.lock_rounded, 'Change Password', _purpleLt.withOpacity(0.35),
               onTap: () => _showChangePassword()),
 
+            // Only the "slow-changing" wizard fields live here. Daily
+            // Goals and Medications were pulled on purpose — users
+            // change those frequently from the dashboard quest card and
+            // the Health → Medications tab respectively, so surfacing
+            // them under "Setup" just invites drift. Every row below
+            // opens a focused edit sheet that round-trips the matching
+            // wizard data to /auth/me.
+            _groupLabel('Setup'),
+            _settingsRow(Icons.school_rounded, 'Academic Info', _blueLt,
+              onTap: () => _openEditSheet(SettingsSection.academic)),
+            _settingsDivider(),
+            _settingsRow(Icons.timer_rounded, 'Study Time', _greenLt,
+              onTap: () => _openEditSheet(SettingsSection.studyTime)),
+            _settingsDivider(),
+            _settingsRow(Icons.bedtime_rounded, 'Sleep Schedule', _purpleLt.withOpacity(0.35),
+              onTap: () => _openEditSheet(SettingsSection.sleep)),
+            _settingsDivider(),
+            _settingsRow(Icons.favorite_rounded, 'Medical Conditions', _pink,
+              onTap: () => _openEditSheet(SettingsSection.conditions)),
+
             _groupLabel('Preferences'),
             _settingsRow(Icons.wb_sunny_rounded, 'Dark Mode', _cream,
               trailing: _toggle(false, null)),  // read-only for now
-            _settingsDivider(),
-            _settingsRow(Icons.menu_book_rounded, 'Study Preferences', _blueLt,
-              onTap: () => _snack('Coming soon!', _blueLt)),
             _settingsDivider(),
             _settingsRow(Icons.notifications_rounded, 'Notifications', _gold,
               trailing: _toggle(_notificationsOn, (v) => setState(() => _notificationsOn = v))),
@@ -754,6 +919,32 @@ class _ProfileTabState extends ConsumerState<ProfileTab>
     );
   }
 
+  //  SETUP EDIT SHEET LAUNCHER
+  //  Opens a bottom sheet dedicated to one wizard section. Each sheet
+  //  fetches current /auth/me values on open and PUTs back on save, so
+  //  changes flow through the same pipeline as the initial wizard.
+  void _openEditSheet(SettingsSection section) async {
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _SetupEditSheet(
+        section: section,
+        api: ref.read(apiServiceProvider),
+      ),
+    );
+    // On successful save, refresh the surfaces that read this data.
+    // Profile pills/headers pull from /auth/me; the dashboard + quest
+    // card pull from dashboardProvider.loadAll(). Without this refresh
+    // the user sees stale data until the next full app boot.
+    if (saved == true && mounted) {
+      _loadProfile();
+      try {
+        await ref.read(dashboardProvider.notifier).loadAll();
+      } catch (_) {}
+    }
+  }
+
   Widget _groupLabel(String label) => Padding(
     padding: const EdgeInsets.fromLTRB(14, 10, 14, 3),
     child: Text(label, style: GoogleFonts.nunito(
@@ -767,7 +958,11 @@ class _ProfileTabState extends ConsumerState<ProfileTab>
       onTap: trailing == null ? onTap : null,
       behavior: HitTestBehavior.opaque,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        // Slightly tighter vertical padding (was 9) — settings card is
+        // tall enough to clip behind the nav bar on short screens; this
+        // trims a few tens of pixels off the total height without losing
+        // tap-target size (still ~46pt with the 28pt icon + padding).
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
         child: Row(children: [
           Container(
             width: 28, height: 28,
@@ -848,71 +1043,114 @@ class _ProfileTabState extends ConsumerState<ProfileTab>
     );
   }
 
-  void _confirmLogout(BuildContext context) {
-    showDialog(context: context, builder: (ctx) => Dialog(
-      backgroundColor: _cardFill,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        side: BorderSide(color: _outline, width: 2.5)),
-      child: Padding(padding: const EdgeInsets.all(24),
+  // Every settings-surface dialog (Change Password, Sign Out, About)
+  // uses this wrapper so they all share the same rounded card, outline,
+  // header strip, and close button. This matches the _SetupEditSheet
+  // bottom-sheet shell in spirit so the whole Settings surface reads as
+  // one family of modals.
+  Widget _settingsDialogShell({
+    required BuildContext ctx,
+    required String title,
+    required Color headerColor,
+    required Widget body,
+    double maxWidth = 420,
+  }) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      child: Container(
+        constraints: BoxConstraints(maxWidth: maxWidth),
+        decoration: BoxDecoration(
+          color: _cardFill,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: _outline, width: 2.5),
+          boxShadow: [BoxShadow(color: _outline.withOpacity(0.45),
+            offset: const Offset(5, 5), blurRadius: 0)]),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Container(width: 50, height: 50,
-            decoration: BoxDecoration(color: _coral,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: _outline, width: 2)),
-            child: const Icon(Icons.logout_rounded, size: 24,
-              color: Colors.white)),
-          const SizedBox(height: 12),
-          Text('Sign Out?', style: GoogleFonts.gaegu(fontSize: 22,
-            fontWeight: FontWeight.w700, color: _brown)),
-          const SizedBox(height: 6),
-          Text('Your progress is saved!', textAlign: TextAlign.center,
-            style: GoogleFonts.nunito(fontSize: 13,
-              fontWeight: FontWeight.w600, color: _brownLt)),
-          const SizedBox(height: 16),
-          Row(children: [
-            Expanded(child: _dBtn('Stay', false, null,
-              () => Navigator.pop(ctx))),
-            const SizedBox(width: 10),
-            Expanded(child: _dBtn('Sign Out', true, _coral, () async {
-              Navigator.pop(ctx);
-              await ref.read(authProvider.notifier).logout();
-              if (mounted) context.go('/login');
-            })),
-          ]),
-        ])),
+          Container(
+            padding: const EdgeInsets.fromLTRB(20, 14, 12, 14),
+            decoration: BoxDecoration(
+              color: headerColor,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(19))),
+            child: Row(children: [
+              Expanded(child: Text(title,
+                style: const TextStyle(fontFamily: 'Bitroad',
+                  fontSize: 20, color: _brown))),
+              GestureDetector(
+                onTap: () => Navigator.pop(ctx),
+                child: Container(
+                  width: 30, height: 30,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.25),
+                    shape: BoxShape.circle),
+                  child: const Icon(Icons.close_rounded, size: 16, color: _brown),
+                ),
+              ),
+            ]),
+          ),
+          Padding(padding: const EdgeInsets.all(20), child: body),
+        ]),
+      ),
+    );
+  }
+
+  void _confirmLogout(BuildContext context) {
+    showDialog(context: context, builder: (ctx) => _settingsDialogShell(
+      ctx: ctx,
+      title: 'Sign Out?',
+      headerColor: _coral,
+      body: Column(mainAxisSize: MainAxisSize.min, children: [
+        Container(width: 50, height: 50,
+          decoration: BoxDecoration(color: _coral,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: _outline, width: 2)),
+          child: const Icon(Icons.logout_rounded, size: 24,
+            color: Colors.white)),
+        const SizedBox(height: 12),
+        Text('Your progress is saved!', textAlign: TextAlign.center,
+          style: GoogleFonts.nunito(fontSize: 13,
+            fontWeight: FontWeight.w600, color: _brownLt)),
+        const SizedBox(height: 16),
+        Row(children: [
+          Expanded(child: _dBtn('Stay', false, null,
+            () => Navigator.pop(ctx))),
+          const SizedBox(width: 10),
+          Expanded(child: _dBtn('Sign Out', true, _coral, () async {
+            Navigator.pop(ctx);
+            await ref.read(authProvider.notifier).logout();
+            if (mounted) context.go('/login');
+          })),
+        ]),
+      ]),
     ));
   }
 
   void _showAbout(BuildContext context) {
-    showDialog(context: context, builder: (ctx) => Dialog(
-      backgroundColor: _cardFill,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        side: BorderSide(color: _outline, width: 2.5)),
-      child: Padding(padding: const EdgeInsets.all(24),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Container(width: 52, height: 52,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [CerebroTheme.pinkPop, _coral]),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: _outline, width: 2)),
-            child: Center(child: Text('C', style: GoogleFonts.nunito(
-              fontSize: 24, fontWeight: FontWeight.w700, color: Colors.white)))),
-          const SizedBox(height: 12),
-          Text('CEREBRO', style: GoogleFonts.gaegu(fontSize: 22,
-            fontWeight: FontWeight.w700, color: _brown)),
-          Text('Smart Student Companion', style: GoogleFonts.nunito(
-            fontSize: 12, fontWeight: FontWeight.w600, color: _brownLt)),
-          const SizedBox(height: 8),
-          Text('v1.0 • FYP • London Met', textAlign: TextAlign.center,
-            style: GoogleFonts.nunito(fontSize: 11,
-              fontWeight: FontWeight.w600, color: _brownLt)),
-          const SizedBox(height: 16),
-          _dBtn('Cool!', true, CerebroTheme.pinkPop,
-            () => Navigator.pop(ctx)),
-        ])),
+    showDialog(context: context, builder: (ctx) => _settingsDialogShell(
+      ctx: ctx,
+      title: 'About CEREBRO',
+      headerColor: CerebroTheme.pinkPop,
+      body: Column(mainAxisSize: MainAxisSize.min, children: [
+        Container(width: 52, height: 52,
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [CerebroTheme.pinkPop, _coral]),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: _outline, width: 2)),
+          child: Center(child: Text('C', style: GoogleFonts.nunito(
+            fontSize: 24, fontWeight: FontWeight.w700, color: Colors.white)))),
+        const SizedBox(height: 12),
+        Text('CEREBRO', style: GoogleFonts.gaegu(fontSize: 22,
+          fontWeight: FontWeight.w700, color: _brown)),
+        Text('Smart Student Companion', style: GoogleFonts.nunito(
+          fontSize: 12, fontWeight: FontWeight.w600, color: _brownLt)),
+        const SizedBox(height: 8),
+        Text('v1.0 • FYP • London Met', textAlign: TextAlign.center,
+          style: GoogleFonts.nunito(fontSize: 11,
+            fontWeight: FontWeight.w600, color: _brownLt)),
+        const SizedBox(height: 16),
+        _dBtn('Cool!', true, CerebroTheme.pinkPop,
+          () => Navigator.pop(ctx)),
+      ]),
     ));
   }
 
@@ -1315,4 +1553,560 @@ class _PawBg extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter o) => false;
+}
+
+//  SETUP EDIT SHEET — shared bottom-sheet for per-section edits.
+//  One enum value per row in the Setup group. Each section shows a
+//  different body, but all share the loading shell + save button.
+enum SettingsSection {
+  academic,    // institution / university / course / year / degree_level
+  studyTime,   // daily_study_hours
+  sleep,       // bedtime / wake_time
+  dailyGoals,  // initial_habits (capped at 4, reseeds today's quests)
+  conditions,  // medical_conditions
+}
+
+class _SetupEditSheet extends StatefulWidget {
+  final SettingsSection section;
+  final dynamic api;
+  const _SetupEditSheet({required this.section, required this.api});
+  @override
+  State<_SetupEditSheet> createState() => _SetupEditSheetState();
+}
+
+class _SetupEditSheetState extends State<_SetupEditSheet> {
+  bool _loading = true;
+  bool _saving = false;
+  Map<String, dynamic> _me = {};
+
+  // Scratch state — only the fields relevant to the current section
+  // actually get populated. Kept as loose maps so the sheet body can
+  // mutate whatever it needs.
+  final _uniCtrl      = TextEditingController();
+  final _courseCtrl   = TextEditingController();
+  int _yearOfStudy    = 1;
+  String? _degreeLevel;
+  String? _institutionType;
+  double _dailyStudyHours = 3.0;
+  TimeOfDay _bedtime  = const TimeOfDay(hour: 23, minute: 0);
+  TimeOfDay _wakeTime = const TimeOfDay(hour: 7, minute: 30);
+  final Set<String> _habits = {};
+  final Set<String> _conditions = {};
+  final _customConditionCtrl = TextEditingController();
+
+  static const _habitLabels = [
+    'Drink Water', 'Exercise', 'Read', 'Meditate', 'No Junk Food',
+    'Walk 10k Steps', 'No Social Media', 'Study 2+ Hours', 'Sleep Before 12',
+  ];
+  static const _conditionPresets = [
+    'Migraine', 'ADHD', 'Anxiety', 'Depression', 'PCOS', 'Asthma',
+    'Diabetes', 'IBS', 'Insomnia', 'Hypertension', 'Dyslexia', 'Eczema',
+  ];
+  static const _maxDailyGoals = 4;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _uniCtrl.dispose();
+    _courseCtrl.dispose();
+    _customConditionCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    try {
+      final r = await widget.api.get('/auth/me');
+      if (r.statusCode == 200 && r.data is Map) {
+        _me = Map<String, dynamic>.from(r.data);
+        _uniCtrl.text    = (_me['university']   ?? '').toString();
+        _courseCtrl.text = (_me['course']       ?? '').toString();
+        _yearOfStudy     = (_me['year_of_study'] as int?) ?? 1;
+        _degreeLevel     = _me['degree_level']  as String?;
+        _institutionType = _me['institution_type'] as String?;
+        _dailyStudyHours = ((_me['daily_study_hours'] ?? 3.0) as num).toDouble();
+        _bedtime  = _parseTime(_me['bedtime']  as String?) ?? _bedtime;
+        _wakeTime = _parseTime(_me['wake_time'] as String?) ?? _wakeTime;
+        _habits
+          ..clear()
+          ..addAll(((_me['initial_habits'] as List?) ?? []).map((e) => e.toString()));
+        _conditions
+          ..clear()
+          ..addAll(((_me['medical_conditions'] as List?) ?? []).map((e) => e.toString()));
+      }
+    } catch (_) {}
+    if (mounted) setState(() => _loading = false);
+  }
+
+  TimeOfDay? _parseTime(String? s) {
+    if (s == null || s.isEmpty) return null;
+    final parts = s.split(':');
+    if (parts.length < 2) return null;
+    final h = int.tryParse(parts[0]);
+    final m = int.tryParse(parts[1]);
+    if (h == null || m == null) return null;
+    return TimeOfDay(hour: h, minute: m);
+  }
+
+  String _fmtTime(TimeOfDay t) =>
+      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}:00';
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    Map<String, dynamic> payload = {};
+    switch (widget.section) {
+      case SettingsSection.academic:
+        payload = {
+          'institution_type': _institutionType,
+          'university': _uniCtrl.text.trim(),
+          'course': _courseCtrl.text.trim(),
+          'year_of_study': _yearOfStudy,
+          if (_degreeLevel != null) 'degree_level': _degreeLevel,
+        };
+        break;
+      case SettingsSection.studyTime:
+        payload = {'daily_study_hours': _dailyStudyHours};
+        break;
+      case SettingsSection.sleep:
+        final bed = _bedtime.hour * 60 + _bedtime.minute;
+        final wake = _wakeTime.hour * 60 + _wakeTime.minute;
+        var diff = wake - bed; if (diff <= 0) diff += 24 * 60;
+        payload = {
+          'bedtime': _fmtTime(_bedtime),
+          'wake_time': _fmtTime(_wakeTime),
+          'sleep_hours_target': diff / 60.0,
+        };
+        break;
+      case SettingsSection.dailyGoals:
+        payload = {'initial_habits': _habits.toList()};
+        break;
+      case SettingsSection.conditions:
+        payload = {'medical_conditions': _conditions.toList()};
+        break;
+    }
+    try {
+      await widget.api.put('/auth/me', data: payload);
+
+      // When the user updates their Daily Goals picks we also need to
+      // regenerate the `/daily/habits` table rows so the Today's Quest
+      // card reflects the new choices. Without this the user row's
+      // `initial_habits` array moves but the actual quest list stays the
+      // same and the change feels like it "didn't save".
+      if (widget.section == SettingsSection.dailyGoals) {
+        try {
+          final listRes = await widget.api.get('/daily/habits');
+          if (listRes.statusCode == 200) {
+            for (final h in ((listRes.data as List?) ?? [])) {
+              final hid = h['id'];
+              if (hid == null) continue;
+              try {
+                await widget.api.delete('/daily/habits/$hid');
+              } catch (_) {}
+            }
+          }
+        } catch (_) {}
+        // Re-seed from the updated initial_habits (or 4-default fallback
+        // if the user cleared their picks entirely).
+        try {
+          await widget.api.post('/daily/habits/seed-defaults');
+        } catch (_) {}
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Saved!',
+            style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+          backgroundColor: _olive,
+          duration: const Duration(seconds: 1),
+        ));
+        Navigator.pop(context, true); // signal "saved" to the caller
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Save failed — check your connection.',
+            style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+          backgroundColor: _coral,
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  String get _title {
+    switch (widget.section) {
+      case SettingsSection.academic:   return 'Academic Info';
+      case SettingsSection.studyTime:  return 'Study Time';
+      case SettingsSection.sleep:      return 'Sleep Schedule';
+      case SettingsSection.dailyGoals: return 'Daily Goals';
+      case SettingsSection.conditions: return 'Medical Conditions';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.86,
+        ),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+          border: Border(
+            top:   BorderSide(color: _outline, width: 3),
+            left:  BorderSide(color: _outline, width: 3),
+            right: BorderSide(color: _outline, width: 3),
+          ),
+        ),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          // Grab handle
+          Padding(padding: const EdgeInsets.only(top: 10, bottom: 6),
+            child: Container(width: 40, height: 4,
+              decoration: BoxDecoration(
+                color: _outline.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(2),
+              ))),
+          // Title row
+          Padding(
+            padding: const EdgeInsets.fromLTRB(22, 4, 14, 10),
+            child: Row(children: [
+              Expanded(child: Text(_title,
+                style: const TextStyle(
+                  fontFamily: 'Bitroad', fontSize: 22, color: _brown))),
+              IconButton(
+                icon: const Icon(Icons.close_rounded, color: _brownLt),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ]),
+          ),
+          // Body
+          Flexible(child: _loading
+            ? const Padding(padding: EdgeInsets.all(40),
+                child: Center(child: CircularProgressIndicator()))
+            : SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(22, 4, 22, 14),
+                child: _body(),
+              )),
+          // Save footer
+          if (!_loading) Padding(
+            padding: const EdgeInsets.fromLTRB(22, 6, 22, 22),
+            child: GestureDetector(
+              onTap: _saving ? null : _save,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 120),
+                height: 48,
+                decoration: BoxDecoration(
+                  color: _saving ? _outline.withOpacity(0.2) : _olive,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: _outline, width: 2),
+                  boxShadow: _saving ? [] : [BoxShadow(
+                    color: _outline.withOpacity(0.2),
+                    offset: const Offset(0, 3), blurRadius: 0)],
+                ),
+                child: Center(child: _saving
+                  ? const SizedBox(width: 20, height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white))
+                  : Text('SAVE', style: GoogleFonts.nunito(
+                      fontSize: 16, fontWeight: FontWeight.w800,
+                      color: Colors.white, letterSpacing: 1.0))),
+              ),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _body() {
+    switch (widget.section) {
+      case SettingsSection.academic:   return _academicBody();
+      case SettingsSection.studyTime:  return _studyTimeBody();
+      case SettingsSection.sleep:      return _sleepBody();
+      case SettingsSection.dailyGoals: return _goalsBody();
+      case SettingsSection.conditions: return _conditionsBody();
+    }
+  }
+
+  Widget _academicBody() {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      _label('Institution type'),
+      Wrap(spacing: 8, runSpacing: 8, children: [
+        for (final t in ['school', 'sixth_form', 'college', 'university'])
+          _selectChip(
+            label: t.replaceAll('_', ' ').toUpperCase(),
+            selected: _institutionType == t,
+            onTap: () => setState(() => _institutionType = t),
+          ),
+      ]),
+      const SizedBox(height: 14),
+      _label('Institution name'),
+      _input(_uniCtrl, 'e.g. London Metropolitan University'),
+      const SizedBox(height: 14),
+      _label('Course / Programme'),
+      _input(_courseCtrl, 'e.g. BSc Computer Science'),
+      const SizedBox(height: 14),
+      _label('Year of study'),
+      Wrap(spacing: 8, runSpacing: 8, children: [
+        for (int i = 1; i <= 6; i++)
+          _selectChip(
+            label: 'Year $i',
+            selected: _yearOfStudy == i,
+            onTap: () => setState(() => _yearOfStudy = i),
+          ),
+      ]),
+      const SizedBox(height: 14),
+      _label('Degree level'),
+      Wrap(spacing: 8, runSpacing: 8, children: [
+        for (final d in ['undergraduate', 'masters', 'phd'])
+          _selectChip(
+            label: d.toUpperCase(),
+            selected: _degreeLevel == d,
+            onTap: () => setState(() => _degreeLevel = d),
+          ),
+      ]),
+    ]);
+  }
+
+  Widget _studyTimeBody() {
+    return Column(crossAxisAlignment: CrossAxisAlignment.center, children: [
+      const SizedBox(height: 10),
+      Text('${_dailyStudyHours.toStringAsFixed(_dailyStudyHours % 1 == 0 ? 0 : 1)} hours / day',
+        style: const TextStyle(fontFamily: 'Bitroad', fontSize: 32, color: _brown)),
+      const SizedBox(height: 8),
+      Slider(
+        value: _dailyStudyHours,
+        min: 0.5, max: 8, divisions: 15,
+        activeColor: _olive,
+        inactiveColor: _outline.withOpacity(0.2),
+        onChanged: (v) => setState(() => _dailyStudyHours = v),
+      ),
+      const SizedBox(height: 8),
+      Text('Drives the AI Coach\'s session suggestions + smart scheduler.',
+        textAlign: TextAlign.center,
+        style: GoogleFonts.gaegu(fontSize: 14,
+          fontWeight: FontWeight.w700, color: _brownLt)),
+    ]);
+  }
+
+  Widget _sleepBody() {
+    final bed = _bedtime.hour * 60 + _bedtime.minute;
+    final wake = _wakeTime.hour * 60 + _wakeTime.minute;
+    var diff = wake - bed; if (diff <= 0) diff += 24 * 60;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        Expanded(child: _timeTile('Bedtime', _bedtime, () async {
+          final t = await showTimePicker(context: context, initialTime: _bedtime);
+          if (t != null) setState(() => _bedtime = t);
+        })),
+        const SizedBox(width: 10),
+        Expanded(child: _timeTile('Wake Up', _wakeTime, () async {
+          final t = await showTimePicker(context: context, initialTime: _wakeTime);
+          if (t != null) setState(() => _wakeTime = t);
+        })),
+      ]),
+      const SizedBox(height: 14),
+      Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: _greenLt.withOpacity(0.4),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: _greenDk, width: 2),
+        ),
+        child: Text('${(diff / 60).toStringAsFixed(1)} hours of sleep',
+          textAlign: TextAlign.center,
+          style: GoogleFonts.gaegu(fontSize: 17,
+            fontWeight: FontWeight.w700, color: _brown)),
+      ),
+    ]);
+  }
+
+  Widget _goalsBody() {
+    final atCap = _habits.length >= _maxDailyGoals;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text('${_habits.length} / $_maxDailyGoals picked',
+        style: GoogleFonts.nunito(
+          fontSize: 13, fontWeight: FontWeight.w700,
+          color: atCap ? _oliveDk : _brownLt)),
+      const SizedBox(height: 10),
+      Wrap(spacing: 8, runSpacing: 8, children: [
+        for (final h in _habitLabels)
+          Opacity(
+            opacity: (!_habits.contains(h) && atCap) ? 0.5 : 1.0,
+            child: _selectChip(
+              label: h,
+              selected: _habits.contains(h),
+              onTap: () {
+                if (_habits.contains(h)) {
+                  setState(() => _habits.remove(h));
+                } else if (!atCap) {
+                  setState(() => _habits.add(h));
+                }
+              },
+            ),
+          ),
+      ]),
+      const SizedBox(height: 12),
+      Text('Changes reseed tomorrow\'s quest list.',
+        style: GoogleFonts.gaegu(fontSize: 14,
+          fontWeight: FontWeight.w700, color: _brownLt)),
+    ]);
+  }
+
+  Widget _conditionsBody() {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text('Tap any that apply, or add your own',
+        style: GoogleFonts.gaegu(fontSize: 15,
+          fontWeight: FontWeight.w700, color: _brownLt)),
+      const SizedBox(height: 10),
+      Wrap(spacing: 8, runSpacing: 8, children: [
+        for (final c in _conditionPresets)
+          _selectChip(
+            label: c,
+            selected: _conditions.contains(c),
+            onTap: () => setState(() {
+              if (_conditions.contains(c)) _conditions.remove(c);
+              else _conditions.add(c);
+            }),
+          ),
+      ]),
+      const SizedBox(height: 14),
+      Row(children: [
+        Expanded(child: _input(_customConditionCtrl, 'Add another…')),
+        const SizedBox(width: 10),
+        GestureDetector(
+          onTap: () {
+            final raw = _customConditionCtrl.text.trim();
+            if (raw.isEmpty) return;
+            final norm = raw.split(RegExp(r'\s+'))
+                .where((s) => s.isNotEmpty)
+                .map((w) => w[0].toUpperCase() + w.substring(1).toLowerCase())
+                .join(' ');
+            setState(() {
+              _conditions.add(norm);
+              _customConditionCtrl.clear();
+            });
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: _pink,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: _outline, width: 2),
+            ),
+            child: const Text('ADD',
+              style: TextStyle(fontFamily: 'Bitroad', fontSize: 14,
+                color: Colors.white)),
+          ),
+        ),
+      ]),
+      if (_conditions.any((c) => !_conditionPresets.contains(c))) ...[
+        const SizedBox(height: 12),
+        Text('Your additions', style: GoogleFonts.nunito(
+          fontSize: 12, fontWeight: FontWeight.w700, color: _brownLt)),
+        const SizedBox(height: 8),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          for (final c in _conditions.where((c) => !_conditionPresets.contains(c)))
+            GestureDetector(
+              onTap: () => setState(() => _conditions.remove(c)),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: _pinkLt,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: _outline, width: 2),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Text(c, style: GoogleFonts.gaegu(
+                    fontSize: 14, fontWeight: FontWeight.w700, color: _brown)),
+                  const SizedBox(width: 6),
+                  const Icon(Icons.close_rounded, size: 14, color: _brown),
+                ]),
+              ),
+            ),
+        ]),
+      ],
+    ]);
+  }
+
+  Widget _label(String t) => Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Text(t, style: GoogleFonts.nunito(
+      fontSize: 13, fontWeight: FontWeight.w700, color: _brownLt)));
+
+  Widget _input(TextEditingController c, String hint) => TextField(
+    controller: c,
+    style: GoogleFonts.nunito(fontSize: 15,
+      fontWeight: FontWeight.w600, color: _brown),
+    decoration: InputDecoration(
+      hintText: hint,
+      hintStyle: GoogleFonts.nunito(fontSize: 14, color: _brownLt),
+      filled: true,
+      fillColor: _cardFill,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: _outline, width: 2)),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: _outline, width: 2)),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: _pinkDk, width: 2)),
+    ),
+  );
+
+  Widget _selectChip({required String label, required bool selected, required VoidCallback onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? _pinkLt : _cardFill,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: _outline, width: 2),
+          boxShadow: selected ? [BoxShadow(
+            color: _outline.withOpacity(0.3),
+            offset: const Offset(2, 2), blurRadius: 0)] : [],
+        ),
+        child: Text(label, style: GoogleFonts.gaegu(
+          fontSize: 14, fontWeight: FontWeight.w700,
+          color: selected ? _brown : _brownLt)),
+      ),
+    );
+  }
+
+  Widget _timeTile(String label, TimeOfDay t, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: _cardFill,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: _outline, width: 2),
+        ),
+        child: Column(children: [
+          Text(label.toUpperCase(),
+            style: GoogleFonts.nunito(
+              fontSize: 10, fontWeight: FontWeight.w700,
+              letterSpacing: 0.8, color: _brownLt)),
+          const SizedBox(height: 3),
+          Text('${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}',
+            style: const TextStyle(
+              fontFamily: 'Bitroad', fontSize: 22, color: _brown)),
+        ]),
+      ),
+    );
+  }
 }
