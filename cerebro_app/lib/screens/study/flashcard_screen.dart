@@ -78,6 +78,16 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
   final Set<String> _selectedGenTopics = {};
   int _genCount = 10;
 
+  // Why a separate per-tab state block instead of reusing _selectedSubjectId:
+  // _selectedSubjectId is the "default subject for new cards" — this one is
+  // purely a display filter and users expect those to be independent.
+  String _cardsFilterSubjectId = 'all';       // 'all' | subject uuid | 'none'
+  String? _cardsFilterTopic;                  // null = all topics
+  final TextEditingController _cardsSearchCtrl = TextEditingController();
+  String _cardsSearch = '';
+  int _cardsPage = 1;
+  static const int _cardsPageSize = 10;
+
   @override
   void initState() {
     super.initState();
@@ -94,6 +104,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
     _tabCtrl.dispose();
     _frontCtrl.dispose();
     _backCtrl.dispose();
+    _cardsSearchCtrl.dispose();
     super.dispose();
   }
 
@@ -185,7 +196,12 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
   @override
   Widget build(BuildContext context) {
     final screenW = MediaQuery.of(context).size.width;
-    final contentW = (screenW * 0.92).clamp(360.0, 1200.0);
+    // Match Quiz Hub / Subjects / Subject Detail gutter:
+    //   contentW = screenW * 0.94 clamp 360..1500, plus inner 16px padding.
+    // The old 0.92/1200 pair produced noticeably different side margins from
+    // its sibling screens; keeping these four widths in sync is worth more
+    // than squeezing 20px of canvas width.
+    final contentW = (screenW * 0.94).clamp(360.0, 1500.0);
     return Scaffold(
       body: Stack(children: [
         // Base gradient
@@ -205,20 +221,27 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
           child: Center(
             child: SizedBox(
               width: contentW,
-              child: Column(children: [
-                const SizedBox(height: 16),
-                _header(),
-                _deckSelector(),
-                _tabBar(),
-                Expanded(
-                  child: _loading
-                    ? const Center(child: CircularProgressIndicator(color: _outline))
-                    : TabBarView(
-                        controller: _tabCtrl,
-                        children: [_reviewTab(), _allCardsTab(), _generateTab()],
-                      ),
-                ),
-              ]),
+              // Inner 16px padding matches the ListView padding on Quiz Hub
+              // and the Padding wrapper on Subjects + Subject Detail. Without
+              // this, contentW alone leaves the page hugging the screen
+              // edges and feeling cramped.
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(children: [
+                  const SizedBox(height: 16),
+                  _header(),
+                  _deckSelector(),
+                  _tabBar(),
+                  Expanded(
+                    child: _loading
+                      ? const Center(child: CircularProgressIndicator(color: _outline))
+                      : TabBarView(
+                          controller: _tabCtrl,
+                          children: [_reviewTab(), _allCardsTab(), _generateTab()],
+                        ),
+                  ),
+                ]),
+              ),
             ),
           ),
         ),
@@ -1106,30 +1129,393 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
 
   //  TAB 2: ALL CARDS (browse + create + delete)
 
+  //
+  // A card is kept by the filter if all of the following match:
+  //  - subject filter ('all' / uuid / 'none' for subject-less cards)
+  //  - topic filter (matches any tag or topic_refs entry, case-insensitive)
+  //  - search query (matches front_text or back_text, case-insensitive)
+  //
+  // We compute the filtered list fresh on every build — the lists are
+  // short enough that memoization would cost more than it saves, and
+  // avoiding a second source of truth keeps pagination + edit-invalidation
+  // trivially correct.
+  List<Map<String, dynamic>> get _filteredCards {
+    final q = _cardsSearch.trim().toLowerCase();
+    return _allCards.where((c) {
+      // Subject filter
+      if (_cardsFilterSubjectId == 'none') {
+        if (c['subject_id'] != null && c['subject_id'].toString().isNotEmpty) return false;
+      } else if (_cardsFilterSubjectId != 'all') {
+        if (c['subject_id']?.toString() != _cardsFilterSubjectId) return false;
+      }
+      // Topic filter
+      if (_cardsFilterTopic != null && _cardsFilterTopic!.isNotEmpty) {
+        final t = _cardsFilterTopic!.toLowerCase();
+        final tags = (c['tags'] as List?)?.map((e) => e.toString().toLowerCase()).toList() ?? const [];
+        final refs = (c['topic_refs'] as List?)
+            ?.map((e) => (e is Map ? (e['name'] ?? '').toString() : e.toString()).toLowerCase()).toList()
+            ?? const [];
+        if (!tags.contains(t) && !refs.contains(t)) return false;
+      }
+      // Search filter
+      if (q.isNotEmpty) {
+        final front = (c['front_text'] ?? '').toString().toLowerCase();
+        final back = (c['back_text'] ?? '').toString().toLowerCase();
+        if (!front.contains(q) && !back.contains(q)) return false;
+      }
+      return true;
+    }).toList();
+  }
+
+  int get _cardsTotalPages {
+    final n = _filteredCards.length;
+    if (n == 0) return 1;
+    return ((n - 1) ~/ _cardsPageSize) + 1;
+  }
+
+  List<Map<String, dynamic>> _pagedCards(List<Map<String, dynamic>> list) {
+    final tp = _cardsTotalPages;
+    final page = _cardsPage.clamp(1, tp);
+    final start = (page - 1) * _cardsPageSize;
+    final end = (start + _cardsPageSize).clamp(0, list.length);
+    return list.sublist(start, end);
+  }
+
+  // Topic universe — union of tags + topic_refs across all cards.
+  // Used to populate the topic filter dropdown. Case-normalized so
+  // "Photosynthesis" and "photosynthesis" collapse into one chip.
+  List<String> get _cardsTopicUniverse {
+    final seen = <String, String>{}; // normalized -> display
+    for (final c in _allCards) {
+      for (final t in (c['tags'] as List?) ?? const []) {
+        final s = t.toString();
+        final k = s.toLowerCase();
+        if (k.isNotEmpty) seen.putIfAbsent(k, () => s);
+      }
+      for (final r in (c['topic_refs'] as List?) ?? const []) {
+        final name = (r is Map ? (r['name'] ?? '').toString() : r.toString());
+        final k = name.toLowerCase();
+        if (k.isNotEmpty) seen.putIfAbsent(k, () => name);
+      }
+    }
+    final out = seen.values.toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return out;
+  }
+
   Widget _allCardsTab() {
+    final filtered = _filteredCards;
+    final tp = _cardsTotalPages;
+    final paged = _pagedCards(filtered);
+    final topics = _cardsTopicUniverse;
+
     return Column(children: [
-      // Create card button
       Padding(
         padding: const EdgeInsets.fromLTRB(4, 12, 4, 8),
-        child: _bigButton('+ Create Card', _purpleHdr, _showCreateDialog),
+        child: Row(children: [
+          // Search field — lightweight, inline, doesn't demand its own row
+          Expanded(child: Container(
+            decoration: BoxDecoration(
+              color: _cardFill,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: _outline.withOpacity(0.4), width: 1.5),
+              boxShadow: [BoxShadow(color: _outline.withOpacity(0.15),
+                offset: const Offset(2, 2), blurRadius: 0)],
+            ),
+            child: TextField(
+              controller: _cardsSearchCtrl,
+              style: GoogleFonts.nunito(fontSize: 13, color: _brown),
+              decoration: InputDecoration(
+                isDense: true,
+                prefixIcon: const Icon(Icons.search_rounded, size: 18, color: _brownLt),
+                hintText: 'Search cards…',
+                hintStyle: GoogleFonts.nunito(fontSize: 13, color: _brownLt),
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                suffixIcon: _cardsSearch.isEmpty ? null : IconButton(
+                  icon: const Icon(Icons.close_rounded, size: 18, color: _brownLt),
+                  onPressed: () {
+                    _cardsSearchCtrl.clear();
+                    setState(() { _cardsSearch = ''; _cardsPage = 1; });
+                  },
+                ),
+              ),
+              onChanged: (v) => setState(() { _cardsSearch = v; _cardsPage = 1; }),
+            ),
+          )),
+          const SizedBox(width: 8),
+          // AI-first CTA — wider + primary color, nudges users toward the
+          // generate flow instead of manual entry. Manual still available
+          // to the right but visually demoted.
+          _miniPill('+ AI', _purpleHdr, () => _tabCtrl.animateTo(2),
+            tip: 'Generate with AI'),
+          const SizedBox(width: 6),
+          _miniPill('+ Card', _greenHdr, _showCreateDialog,
+            tip: 'Create manually'),
+        ]),
       ),
-      // Card list
+
+      if (_subjects.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 0, 4, 6),
+          child: SizedBox(
+            height: 34,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: [
+                _filterPill('All subjects', _cardsFilterSubjectId == 'all',
+                  () => setState(() { _cardsFilterSubjectId = 'all'; _cardsPage = 1; })),
+                ..._subjects.map((s) {
+                  final id = s['id']?.toString() ?? '';
+                  return _filterPill(s['name'] ?? 'Subject',
+                    _cardsFilterSubjectId == id,
+                    () => setState(() { _cardsFilterSubjectId = id; _cardsPage = 1; }));
+                }),
+                _filterPill('No subject', _cardsFilterSubjectId == 'none',
+                  () => setState(() { _cardsFilterSubjectId = 'none'; _cardsPage = 1; })),
+              ],
+            ),
+          ),
+        ),
+
+      if (topics.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 0, 4, 6),
+          child: SizedBox(
+            height: 32,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: [
+                _topicChip('all topics', _cardsFilterTopic == null,
+                  () => setState(() { _cardsFilterTopic = null; _cardsPage = 1; })),
+                for (final t in topics)
+                  _topicChip(t, _cardsFilterTopic == t,
+                    () => setState(() { _cardsFilterTopic = t; _cardsPage = 1; })),
+              ],
+            ),
+          ),
+        ),
+
+      // Count/hint row
+      Padding(
+        padding: const EdgeInsets.fromLTRB(6, 2, 6, 4),
+        child: Row(children: [
+          Text('${filtered.length} card${filtered.length == 1 ? '' : 's'}',
+            style: GoogleFonts.nunito(fontSize: 11, fontWeight: FontWeight.w700, color: _brownLt)),
+          if (filtered.length != _allCards.length) ...[
+            const SizedBox(width: 6),
+            Text('(of ${_allCards.length})',
+              style: GoogleFonts.nunito(fontSize: 11, fontWeight: FontWeight.w500, color: _brownLt)),
+          ],
+          const Spacer(),
+          if (filtered.isNotEmpty)
+            Text('Page $_cardsPage / $tp',
+              style: GoogleFonts.nunito(fontSize: 11, fontWeight: FontWeight.w700, color: _brownLt)),
+        ]),
+      ),
+
       Expanded(
         child: _allCards.isEmpty
-          ? _emptyState(icon: Icons.style_rounded, title: 'No cards yet', subtitle: 'Create or generate some!')
-          : ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              itemCount: _allCards.length,
-              itemBuilder: (ctx, i) => _cardTile(_allCards[i], i),
-            ),
+          ? _emptyAllCards()
+          : filtered.isEmpty
+            ? _emptyFiltered()
+            : ListView.builder(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                itemCount: paged.length,
+                itemBuilder: (ctx, i) => _cardTile(paged[i], i),
+              ),
       ),
+
+      if (_allCards.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 4, 4, 8),
+          child: _cardsPaginationBar(tp),
+        ),
     ]);
+  }
+
+  // Little pill used for '+ AI' / '+ Card' toolbar CTAs.
+  Widget _miniPill(String label, Color fill, VoidCallback onTap, {String? tip}) {
+    final child = GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: fill.withOpacity(0.45),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: _outline, width: 1.7),
+          boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
+            offset: const Offset(3, 3), blurRadius: 0)],
+        ),
+        child: Text(label, style: GoogleFonts.gaegu(
+          fontSize: 16, fontWeight: FontWeight.w700, color: _brown)),
+      ),
+    );
+    return tip == null ? child : Tooltip(message: tip, child: child);
+  }
+
+  Widget _filterPill(String label, bool active, VoidCallback onTap) => Padding(
+    padding: const EdgeInsets.only(right: 8),
+    child: GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: active ? _purpleHdr.withOpacity(0.55) : _cardFill,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: active ? _outline : _outline.withOpacity(0.35),
+            width: active ? 2 : 1.5,
+          ),
+          boxShadow: [BoxShadow(color: _outline.withOpacity(active ? 0.28 : 0.15),
+            offset: const Offset(2, 2), blurRadius: 0)],
+        ),
+        child: Text(label, style: GoogleFonts.nunito(
+          fontSize: 12, fontWeight: FontWeight.w700,
+          color: active ? _brown : _brownLt)),
+      ),
+    ),
+  );
+
+  Widget _topicChip(String label, bool active, VoidCallback onTap) => Padding(
+    padding: const EdgeInsets.only(right: 6),
+    child: GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: active ? _goldHdr.withOpacity(0.55) : _goldLt.withOpacity(0.3),
+          borderRadius: BorderRadius.circular(11),
+          border: Border.all(
+            color: active ? _outline : _outline.withOpacity(0.25),
+            width: active ? 1.6 : 1),
+        ),
+        child: Text(label, style: GoogleFonts.nunito(
+          fontSize: 11, fontWeight: FontWeight.w700,
+          color: active ? _brown : _brownLt)),
+      ),
+    ),
+  );
+
+  Widget _cardsPaginationBar(int totalPages) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: _cardFill,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _outline.withOpacity(0.35), width: 1.5),
+      ),
+      child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+        _pageBtn('Prev', _cardsPage > 1, () => setState(() => _cardsPage--)),
+        const SizedBox(width: 10),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+          decoration: BoxDecoration(
+            color: _sageHdr.withOpacity(0.35),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: _outline.withOpacity(0.4), width: 1.2),
+          ),
+          child: Text('Page $_cardsPage / $totalPages',
+            style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w700, color: _brown)),
+        ),
+        const SizedBox(width: 10),
+        _pageBtn('Next', _cardsPage < totalPages, () => setState(() => _cardsPage++)),
+      ]),
+    );
+  }
+
+  Widget _pageBtn(String label, bool enabled, VoidCallback onTap) => GestureDetector(
+    onTap: enabled ? onTap : null,
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      decoration: BoxDecoration(
+        color: enabled ? _cardFill : _cardFill.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: enabled ? _outline : _outline.withOpacity(0.25),
+          width: 1.5),
+        boxShadow: enabled
+          ? [BoxShadow(color: _outline.withOpacity(0.18),
+              offset: const Offset(2, 2), blurRadius: 0)]
+          : const [],
+      ),
+      child: Text(label, style: GoogleFonts.gaegu(
+        fontSize: 15, fontWeight: FontWeight.w700,
+        color: enabled ? _brown : _brownLt.withOpacity(0.5))),
+    ),
+  );
+
+  // Primary empty state — zero cards anywhere. Push users toward AI.
+  Widget _emptyAllCards() {
+    return Center(child: Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.auto_awesome_rounded, size: 56, color: _purpleHdr.withOpacity(0.8)),
+        const SizedBox(height: 10),
+        Text('No cards yet',
+          style: GoogleFonts.gaegu(fontSize: 24, fontWeight: FontWeight.w700, color: _brown)),
+        const SizedBox(height: 4),
+        Text('Upload notes and let AI generate smart cards — or create a few manually to get started.',
+          style: GoogleFonts.nunito(fontSize: 13, fontWeight: FontWeight.w600, color: _brownLt),
+          textAlign: TextAlign.center),
+        const SizedBox(height: 16),
+        Row(mainAxisSize: MainAxisSize.min, children: [
+          _miniPill('Generate with AI', _purpleHdr, () => _tabCtrl.animateTo(2)),
+          const SizedBox(width: 10),
+          _miniPill('Create manually', _greenHdr, _showCreateDialog),
+        ]),
+      ]),
+    ));
+  }
+
+  // Secondary empty state — filter matched nothing. Offer a clear-all.
+  Widget _emptyFiltered() {
+    return Center(child: Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.filter_alt_off_rounded, size: 52, color: _outline.withOpacity(0.35)),
+        const SizedBox(height: 10),
+        Text('No cards match',
+          style: GoogleFonts.gaegu(fontSize: 22, fontWeight: FontWeight.w700, color: _brown)),
+        const SizedBox(height: 4),
+        Text('Try a different subject, topic, or search term.',
+          style: GoogleFonts.nunito(fontSize: 13, fontWeight: FontWeight.w600, color: _brownLt),
+          textAlign: TextAlign.center),
+        const SizedBox(height: 12),
+        _miniPill('Clear filters', _sageHdr, () {
+          _cardsSearchCtrl.clear();
+          setState(() {
+            _cardsFilterSubjectId = 'all';
+            _cardsFilterTopic = null;
+            _cardsSearch = '';
+            _cardsPage = 1;
+          });
+        }),
+      ]),
+    ));
   }
 
   Widget _cardTile(Map<String, dynamic> card, int index) {
     final isDue = card['next_review_date'] != null &&
         DateTime.tryParse(card['next_review_date'].toString())?.isBefore(
           DateTime.now().add(const Duration(days: 1))) == true;
+
+    // Resolve subject + deck names for the context badges at the bottom
+    // of the tile. Looked up from the already-loaded _subjects / _decks
+    // lists so we don't need per-card network round-trips.
+    final subjId = card['subject_id']?.toString();
+    final deckId = card['deck_id']?.toString();
+    final subj = subjId == null ? null : _subjects.firstWhere(
+      (s) => s['id']?.toString() == subjId,
+      orElse: () => const <String, dynamic>{});
+    final deck = deckId == null ? null : _decks.firstWhere(
+      (d) => d['id']?.toString() == deckId,
+      orElse: () => const <String, dynamic>{});
+    final subjName = (subj?['name'] as String?) ?? '';
+    final deckName = (deck?['name'] as String?) ?? '';
+    final tags = (card['tags'] as List?)?.cast<dynamic>() ?? const [];
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -1140,85 +1526,315 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
         boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
           offset: const Offset(3, 3), blurRadius: 0)],
       ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.fromLTRB(14, 4, 8, 4),
-        leading: Container(
-          width: 36, height: 36,
-          decoration: BoxDecoration(
-            color: isDue ? _coralHdr.withOpacity(0.3) : _greenHdr.withOpacity(0.3),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(
-            isDue ? Icons.schedule_rounded : Icons.check_circle_rounded,
-            color: _outline, size: 20,
-          ),
+      child: InkWell(
+        // Tap-to-edit — matches the "let users edit AI-generated cards"
+        // best practice. Detail-only modal removed; edit dialog includes
+        // the stats the old modal exposed plus full editability.
+        onTap: () => _showEditCardDialog(card),
+        borderRadius: BorderRadius.circular(14),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            // Due/ready icon
+            Container(
+              width: 32, height: 32,
+              margin: const EdgeInsets.only(top: 2),
+              decoration: BoxDecoration(
+                color: isDue ? _coralHdr.withOpacity(0.3) : _greenHdr.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                isDue ? Icons.schedule_rounded : Icons.check_circle_rounded,
+                color: _outline, size: 18,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  card['front_text'] ?? '',
+                  style: GoogleFonts.nunito(fontSize: 14, fontWeight: FontWeight.w800, color: _brown),
+                  maxLines: 2, overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  card['back_text'] ?? '',
+                  style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w500, color: _brownLt),
+                  maxLines: 1, overflow: TextOverflow.ellipsis,
+                ),
+                if (subjName.isNotEmpty || deckName.isNotEmpty || tags.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Wrap(spacing: 4, runSpacing: 4, children: [
+                    if (subjName.isNotEmpty)
+                      _tileBadge(Icons.book_rounded, subjName, _skyHdr),
+                    if (deckName.isNotEmpty)
+                      _tileBadge(Icons.layers_rounded, deckName, _purpleHdr),
+                    for (final t in tags.take(2))
+                      _tileBadge(Icons.label_rounded, t.toString(), _sageHdr),
+                  ]),
+                ],
+              ],
+            )),
+            // Edit hint + delete
+            Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+              const Icon(Icons.edit_rounded, color: _brownLt, size: 16),
+              const SizedBox(height: 10),
+              GestureDetector(
+                onTap: () => _deleteCard(card),
+                behavior: HitTestBehavior.opaque,
+                child: Padding(
+                  padding: const EdgeInsets.all(4),
+                  child: Icon(Icons.delete_outline_rounded,
+                    color: Colors.red.shade400, size: 18),
+                ),
+              ),
+            ]),
+          ]),
         ),
-        title: Text(
-          card['front_text'] ?? '',
-          style: GoogleFonts.nunito(fontSize: 14, fontWeight: FontWeight.w700, color: _brown),
-          maxLines: 2, overflow: TextOverflow.ellipsis,
-        ),
-        subtitle: Text(
-          card['back_text'] ?? '',
-          style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w500, color: _brownLt),
-          maxLines: 1, overflow: TextOverflow.ellipsis,
-        ),
-        trailing: IconButton(
-          icon: const Icon(Icons.delete_outline_rounded, color: _brownLt, size: 20),
-          onPressed: () => _deleteCard(card),
-        ),
-        onTap: () => _showCardDetail(card),
       ),
     );
   }
 
-  void _showCardDetail(Map<String, dynamic> card) {
-    showDialog(context: context, builder: (ctx) => AlertDialog(
-      backgroundColor: _cardFill,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
-        side: const BorderSide(color: _outline, width: 3),
+  Widget _tileBadge(IconData icon, String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.32),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: _outline.withOpacity(0.25), width: 1),
       ),
-      title: Text('Flashcard', style: GoogleFonts.gaegu(fontSize: 24, fontWeight: FontWeight.w700, color: _brown)),
-      content: SingleChildScrollView(child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _detailLabel('Front'),
-          Text(card['front_text'] ?? '', style: GoogleFonts.nunito(fontSize: 15, fontWeight: FontWeight.w600, color: _brown)),
-          const SizedBox(height: 16),
-          _detailLabel('Back'),
-          Text(card['back_text'] ?? '', style: GoogleFonts.nunito(fontSize: 15, fontWeight: FontWeight.w600, color: _brown)),
-          const SizedBox(height: 16),
-          Row(children: [
-            _miniStat('Reviews', '${card['total_reviews'] ?? 0}'),
-            const SizedBox(width: 12),
-            _miniStat('Correct', '${card['correct_reviews'] ?? 0}'),
-            const SizedBox(width: 12),
-            _miniStat('Difficulty', '${card['difficulty'] ?? 3}'),
-          ]),
-        ],
-      )),
-      actions: [TextButton(
-        onPressed: () => Navigator.pop(ctx),
-        child: Text('Close', style: GoogleFonts.gaegu(fontSize: 18, fontWeight: FontWeight.w700, color: _brown)),
-      )],
-    ));
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, size: 10, color: _brownLt),
+        const SizedBox(width: 3),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 120),
+          child: Text(label,
+            maxLines: 1, overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.nunito(fontSize: 10, fontWeight: FontWeight.w700, color: _brown)),
+        ),
+      ]),
+    );
   }
 
-  Widget _detailLabel(String text) => Padding(
-    padding: const EdgeInsets.only(bottom: 4),
-    child: Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(color: _purpleHdr.withOpacity(0.3), borderRadius: BorderRadius.circular(8)),
-      child: Text(text, style: GoogleFonts.nunito(fontSize: 11, fontWeight: FontWeight.w700, color: _brownLt)),
-    ),
-  );
+  // Editable dialog — replaces the old view-only detail modal.
+  //
+  // Lets users edit AI-generated cards (fix a wrong answer, tweak a
+  // question, move to a different deck/subject, retag). This is the
+  // "AI + CRUD, not pure CRUD" philosophy: AI can seed, humans can
+  // refine, SRS state stays untouched so the review signal is honest.
+  void _showEditCardDialog(Map<String, dynamic> card) {
+    final frontCtrl = TextEditingController(text: card['front_text']?.toString() ?? '');
+    final backCtrl = TextEditingController(text: card['back_text']?.toString() ?? '');
+    final tagsCtrl = TextEditingController(
+      text: ((card['tags'] as List?)?.join(', ')) ?? '');
 
-  Widget _miniStat(String label, String value) => Column(children: [
-    Text(value, style: GoogleFonts.gaegu(fontSize: 20, fontWeight: FontWeight.w700, color: _brown)),
-    Text(label, style: GoogleFonts.nunito(fontSize: 10, fontWeight: FontWeight.w600, color: _brownLt)),
-  ]);
+    // Start each dropdown at the card's current value so "no change" is
+    // the default. The initial* copies let us detect actual user edits
+    // so we only send changed fields in the PATCH body.
+    String? subjectId = card['subject_id']?.toString();
+    String? deckId = card['deck_id']?.toString();
+    int difficulty = ((card['difficulty'] as num?)?.toInt() ?? 3).clamp(1, 5);
+
+    final initFront = frontCtrl.text;
+    final initBack = backCtrl.text;
+    final initTags = tagsCtrl.text;
+    final initSubjectId = subjectId;
+    final initDeckId = deckId;
+    final initDifficulty = difficulty;
+
+    showDialog(context: context, builder: (ctx) => StatefulBuilder(builder: (ctx, setD) {
+      return AlertDialog(
+        backgroundColor: _cardFill,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: const BorderSide(color: _outline, width: 3),
+        ),
+        title: Row(children: [
+          Text('Edit Flashcard', style: GoogleFonts.gaegu(
+            fontSize: 24, fontWeight: FontWeight.w700, color: _brown)),
+          const Spacer(),
+          // Small stats pill — gives users context on the card's SRS
+          // history without opening a separate modal.
+          Tooltip(
+            message: 'Reviews · Correct · Difficulty',
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: _sageHdr.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: _outline.withOpacity(0.3), width: 1),
+              ),
+              child: Text(
+                '${card['total_reviews'] ?? 0} · ${card['correct_reviews'] ?? 0}',
+                style: GoogleFonts.nunito(fontSize: 11, fontWeight: FontWeight.w700, color: _brownLt)),
+            ),
+          ),
+        ]),
+        content: SingleChildScrollView(child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _inputField(frontCtrl, 'Front (Question)', maxLines: 3),
+            const SizedBox(height: 10),
+            _inputField(backCtrl, 'Back (Answer)', maxLines: 3),
+            const SizedBox(height: 10),
+            _inputField(tagsCtrl, 'Tags (comma-separated)'),
+            const SizedBox(height: 12),
+            if (_subjects.isNotEmpty) DropdownButtonFormField<String?>(
+              value: subjectId,
+              isExpanded: true,
+              decoration: _dropdownDeco('Subject'),
+              items: [
+                DropdownMenuItem<String?>(
+                  value: null,
+                  child: Text('No subject',
+                    style: GoogleFonts.nunito(
+                      fontSize: 14, fontStyle: FontStyle.italic, color: _brownLt))),
+                ..._subjects.map((s) => DropdownMenuItem<String?>(
+                  value: s['id']?.toString(),
+                  child: Text(s['name'] ?? '',
+                    style: GoogleFonts.nunito(fontSize: 14, color: _brown),
+                    overflow: TextOverflow.ellipsis))),
+              ],
+              onChanged: (v) => setD(() => subjectId = v),
+            ),
+            if (_subjects.isNotEmpty) const SizedBox(height: 10),
+            if (_decks.isNotEmpty) DropdownButtonFormField<String?>(
+              value: deckId,
+              isExpanded: true,
+              decoration: _dropdownDeco('Deck'),
+              items: [
+                DropdownMenuItem<String?>(
+                  value: null,
+                  child: Text('No deck',
+                    style: GoogleFonts.nunito(
+                      fontSize: 14, fontStyle: FontStyle.italic, color: _brownLt))),
+                ..._decks.map((d) => DropdownMenuItem<String?>(
+                  value: d['id']?.toString(),
+                  child: Text(d['name'] ?? '',
+                    style: GoogleFonts.nunito(fontSize: 14, color: _brown),
+                    overflow: TextOverflow.ellipsis))),
+              ],
+              onChanged: (v) => setD(() => deckId = v),
+            ),
+            if (_decks.isNotEmpty) const SizedBox(height: 12),
+            // Difficulty — 1..5 quick-pick row. 3 is the default SM-2
+            // baseline; users rarely need finer granularity than this.
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text('Difficulty:', style: GoogleFonts.gaegu(
+                fontSize: 16, fontWeight: FontWeight.w700, color: _brown)),
+            ),
+            const SizedBox(height: 4),
+            Row(children: List.generate(5, (i) {
+              final val = i + 1;
+              final sel = val == difficulty;
+              return Expanded(child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2),
+                child: GestureDetector(
+                  onTap: () => setD(() => difficulty = val),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    decoration: BoxDecoration(
+                      color: sel ? _purpleHdr.withOpacity(0.55) : _cardFill,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: sel ? _outline : _outline.withOpacity(0.35),
+                        width: sel ? 2 : 1.4),
+                    ),
+                    child: Center(child: Text('$val',
+                      style: GoogleFonts.gaegu(
+                        fontSize: 18, fontWeight: FontWeight.w700,
+                        color: sel ? _brown : _brownLt))),
+                  ),
+                ),
+              ));
+            })),
+            const SizedBox(height: 8),
+            Text(
+              _difficultyHint(difficulty),
+              style: GoogleFonts.nunito(fontSize: 11, fontWeight: FontWeight.w600, color: _brownLt)),
+          ],
+        )),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Cancel', style: GoogleFonts.gaegu(fontSize: 18, color: _brownLt))),
+          TextButton(
+            onPressed: () async {
+              final front = frontCtrl.text.trim();
+              final back = backCtrl.text.trim();
+              if (front.isEmpty || back.isEmpty) {
+                ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(
+                  content: Text('Front and back can\'t be empty')));
+                return;
+              }
+
+              // Build a partial PATCH body — only fields the user actually
+              // changed. Tags are normalized: split on comma, trim empties.
+              final body = <String, dynamic>{};
+              if (front != initFront) body['front_text'] = front;
+              if (back != initBack) body['back_text'] = back;
+              if (tagsCtrl.text != initTags) {
+                body['tags'] = tagsCtrl.text
+                  .split(',').map((t) => t.trim()).where((t) => t.isNotEmpty).toList();
+              }
+              if (subjectId != initSubjectId) body['subject_id'] = subjectId;
+              if (deckId != initDeckId) body['deck_id'] = deckId;
+              if (difficulty != initDifficulty) body['difficulty'] = difficulty;
+
+              if (body.isEmpty) {
+                Navigator.pop(ctx);
+                return;
+              }
+
+              final api = ref.read(apiServiceProvider);
+              try {
+                await api.put('/study/flashcards/${card['id']}', data: body);
+                if (mounted) Navigator.pop(ctx);
+                await _loadData();
+                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: const Text('Card updated'),
+                  backgroundColor: _greenDk));
+              } catch (e) {
+                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text('Update failed: $e'),
+                  backgroundColor: Colors.red.shade400));
+              }
+            },
+            child: Text('Save',
+              style: GoogleFonts.gaegu(
+                fontSize: 18, fontWeight: FontWeight.w700, color: _greenDk))),
+        ],
+      );
+    }));
+  }
+
+  String _difficultyHint(int d) {
+    switch (d) {
+      case 1: return 'very easy — you almost always get this right';
+      case 2: return 'easy — usually remembered';
+      case 3: return 'medium — baseline for new cards';
+      case 4: return 'hard — you often stumble';
+      default: return 'very hard — surfaces more often in review';
+    }
+  }
+
+  InputDecoration _dropdownDeco(String label) => InputDecoration(
+    labelText: label,
+    labelStyle: GoogleFonts.nunito(fontSize: 13, color: _brownLt),
+    border: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: const BorderSide(color: _outline, width: 1.5)),
+    enabledBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: const BorderSide(color: _outline, width: 1.5)),
+    focusedBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: const BorderSide(color: _purpleHdr, width: 2)),
+    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+  );
 
   Future<void> _deleteCard(Map<String, dynamic> card) async {
     final confirm = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(

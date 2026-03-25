@@ -98,12 +98,22 @@ class _SubjectUi {
     final iconKey  = (j['icon']  as String?) ?? 'book';
     final cur = _asDouble(j['current_proficiency']) ?? 0.0;
     final tgt = _asDouble(j['target_proficiency'])  ?? 100.0;
+    // Backend (/study/subjects) now returns derived topic counts alongside
+    // each subject so cards can render "X/Y topics" without a second
+    // round-trip. Older payloads without these fields fall back to 0/0 —
+    // better to show 0 than to silently misreport a stale number.
+    final topicsTotal = j['topics_total'] is int
+        ? j['topics_total'] as int
+        : int.tryParse(j['topics_total']?.toString() ?? '') ?? 0;
+    final topicsMastered = j['topics_mastered'] is int
+        ? j['topics_mastered'] as int
+        : int.tryParse(j['topics_mastered']?.toString() ?? '') ?? 0;
     return _SubjectUi(
       id: j['id']?.toString() ?? '',
       name: (j['name'] as String?) ?? 'Untitled',
       code: (j['code'] as String?) ?? '',
-      totalTopics: 0,
-      completedTopics: 0,
+      totalTopics: topicsTotal,
+      completedTopics: topicsMastered.clamp(0, topicsTotal),
       avgScore: cur.round(),
       targetScore: tgt.round(),
       accent: _hexToColor(colorHex),
@@ -319,6 +329,15 @@ class _SubjectsScreenState extends ConsumerState<SubjectsScreen>
   bool _loading = true;
   String? _error;
 
+  // Page size 6 — keeps pages dense on 4-col layouts (1.5 rows is still
+  // OK, it looks balanced with trailing pair) and, more importantly,
+  // makes pagination obviously present even on accounts with only a
+  // handful of subjects. The bar is rendered unconditionally (even when
+  // totalPages == 1) so the affordance is always visible. Page is
+  // 1-indexed.
+  int _page = 1;
+  static const int _pageSize = 6;
+
   @override
   void initState() {
     super.initState();
@@ -346,7 +365,17 @@ class _SubjectsScreenState extends ConsumerState<SubjectsScreen>
         }
       }
       if (!mounted) return;
-      setState(() { _subjects = list; _loading = false; });
+      setState(() {
+        _subjects = list;
+        _loading = false;
+        // Reset pagination cursor so a load-after-delete doesn't leave
+        // the user on an orphan page.
+        final filteredCount = _countFiltered(list, _filter, _query);
+        final maxPage = filteredCount == 0
+          ? 1
+          : ((filteredCount - 1) ~/ _pageSize) + 1;
+        if (_page > maxPage) _page = maxPage;
+      });
     } catch (e) {
       debugPrint('Load subjects error: $e');
       if (!mounted) return;
@@ -365,12 +394,111 @@ class _SubjectsScreenState extends ConsumerState<SubjectsScreen>
     return it.toList();
   }
 
+  int _countFiltered(List<_SubjectUi> subjects, String filter, String query) {
+    Iterable<_SubjectUi> it = subjects;
+    if (filter == 'inprogress') it = it.where((s) => s.progress < 1.0);
+    if (filter == 'mastered')   it = it.where((s) => s.progress >= 1.0);
+    if (query.isNotEmpty) {
+      final q = query.toLowerCase();
+      it = it.where((s) => s.name.toLowerCase().contains(q) || s.code.toLowerCase().contains(q));
+    }
+    return it.length;
+  }
+
+  int get _totalPages {
+    final n = _filtered.length;
+    if (n == 0) return 1;
+    return ((n - 1) ~/ _pageSize) + 1;
+  }
+
+  List<_SubjectUi> get _pagedItems {
+    final list = _filtered;
+    final tp = _totalPages;
+    // Clamp page defensively — the filter/query can change at any time.
+    final page = _page.clamp(1, tp);
+    final start = (page - 1) * _pageSize;
+    final end = (start + _pageSize).clamp(0, list.length);
+    return list.sublist(start, end);
+  }
+
+  void _goToPage(int p) {
+    final clamped = p.clamp(1, _totalPages);
+    if (clamped == _page) return;
+    setState(() => _page = clamped);
+  }
+
+  // Called from the FilterPill / search change sites — keeps the visible
+  // page in sync so switching from "All" (3 pages) to "Mastered" (1 page)
+  // doesn't strand the user on page 3 showing nothing.
+  void _onFilterChanged() {
+    setState(() {
+      final tp = _totalPages;
+      if (_page > tp) _page = tp;
+    });
+  }
+
   void _showAddSubject() {
     showDialog(
       context: context,
       barrierColor: Colors.black45,
       builder: (_) => _AddSubjectModal(onSaved: _loadSubjects),
     );
+  }
+
+  // The modal already supports both create and update; we just pass the
+  // current _SubjectUi and re-run _loadSubjects on save so the card's
+  // name / color / icon refresh without needing a full page reload.
+  void _editSubject(_SubjectUi s) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black45,
+      builder: (_) => _AddSubjectModal(existing: s, onSaved: _loadSubjects),
+    );
+  }
+
+  // Mirrors the same flow _SubjectDetailModal._confirmDelete uses so
+  // deleting from the card or from inside the subject detail sheet lands
+  // on identical backend calls and messaging.
+  Future<void> _deleteSubject(_SubjectUi s) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: _cardFill,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Delete ${s.name}?',
+              style: const TextStyle(fontFamily: _bitroad, fontSize: 20, color: _brown)),
+            const SizedBox(height: 8),
+            Text('This removes the subject and unlinks its materials, decks, and quizzes. This cannot be undone.',
+              style: _gaegu(size: 13, color: _brownSoft)),
+            const SizedBox(height: 16),
+            Row(children: [
+              Expanded(child: _SoftButton(
+                label: 'cancel', fill: _cream,
+                onTap: () => Navigator.of(ctx).pop(false))),
+              const SizedBox(width: 10),
+              Expanded(child: _SoftButton(
+                label: 'delete', fill: _red, textColor: Colors.white,
+                onTap: () => Navigator.of(ctx).pop(true))),
+            ]),
+          ]),
+        ),
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await ref.read(apiServiceProvider).delete('/study/subjects/${s.id}');
+      if (!mounted) return;
+      await _loadSubjects();
+    } catch (e) {
+      debugPrint('Delete subject error: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Delete failed: $e', style: GoogleFonts.nunito()),
+        backgroundColor: _mTerra));
+    }
   }
 
   void _showSubjectDetail(_SubjectUi s) {
@@ -591,9 +719,21 @@ class _SubjectsScreenState extends ConsumerState<SubjectsScreen>
   @override
   Widget build(BuildContext context) {
     final screenW = MediaQuery.of(context).size.width;
-    final contentW = (screenW * 0.92).clamp(360.0, 1200.0);
+    // Widened to 0.94 / max 1500 to match Subject Detail + Quiz Hub so
+    // wide-desktop viewports don't leave huge left/right gutters.
+    final contentW = (screenW * 0.94).clamp(360.0, 1500.0);
     final isWide = contentW >= 900;
-    final crossAxis = contentW >= 1050 ? 3 : (contentW >= 720 ? 2 : 1);
+    // Bumped breakpoints so wide displays pack 4 columns — cards were
+    // dominating the viewport at 3 columns. 4 cols @ contentW 1500 ≈
+    // 363px per card vs 489px before, so they feel right-sized without
+    // losing label / progress-bar legibility.
+    final crossAxis = contentW >= 1200
+        ? 4
+        : contentW >= 900
+          ? 3
+          : contentW >= 620
+            ? 2
+            : 1;
 
     return Material(
       type: MaterialType.transparency,
@@ -612,22 +752,30 @@ class _SubjectsScreenState extends ConsumerState<SubjectsScreen>
           child: Center(
             child: SizedBox(
               width: contentW,
-              child: Column(
-                children: [
-                  const SizedBox(height: 16),
-                  _stagger(0.00, _header()),
-                  const SizedBox(height: 14),
-                  _stagger(0.06, _searchAndFilters()),
-                  const SizedBox(height: 18),
-                  _stagger(0.12, _statsStrip()),
-                  const SizedBox(height: 18),
-                  Expanded(
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.only(bottom: 110),
-                      child: _stagger(0.18, _grid(isWide, crossAxis)),
+              // Inner 16px horizontal gutter matches Quiz Hub's effective
+              // side spacing exactly (Quiz Hub uses the same contentW
+              // wrapper plus a ListView.padding of 16). Without this the
+              // subjects grid looks 16px wider than Quiz Hub's content on
+              // every viewport.
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  children: [
+                    const SizedBox(height: 16),
+                    _stagger(0.00, _header()),
+                    const SizedBox(height: 14),
+                    _stagger(0.06, _searchAndFilters()),
+                    const SizedBox(height: 18),
+                    _stagger(0.12, _statsStrip()),
+                    const SizedBox(height: 18),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.only(bottom: 110),
+                        child: _stagger(0.18, _grid(isWide, crossAxis)),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -707,7 +855,11 @@ class _SubjectsScreenState extends ConsumerState<SubjectsScreen>
             const SizedBox(width: 10),
             Expanded(
               child: TextField(
-                onChanged: (v) => setState(() => _query = v),
+                onChanged: (v) {
+                  // Reset to page 1 whenever the query changes so the
+                  // newly-filtered set is always shown from the top.
+                  setState(() { _query = v; _page = 1; });
+                },
                 style: _gaegu(size: 15, color: _brown, weight: FontWeight.w600),
                 decoration: InputDecoration(
                   hintText: 'Search subject or code...',
@@ -727,11 +879,14 @@ class _SubjectsScreenState extends ConsumerState<SubjectsScreen>
         ),
         const SizedBox(height: 10),
         Row(children: [
-          _FilterPill(label: 'All',        selected: _filter == 'all',        onTap: () => setState(() => _filter = 'all')),
+          _FilterPill(label: 'All',        selected: _filter == 'all',
+            onTap: () => setState(() { _filter = 'all'; _page = 1; })),
           const SizedBox(width: 8),
-          _FilterPill(label: 'In Progress',selected: _filter == 'inprogress', onTap: () => setState(() => _filter = 'inprogress')),
+          _FilterPill(label: 'In Progress',selected: _filter == 'inprogress',
+            onTap: () => setState(() { _filter = 'inprogress'; _page = 1; })),
           const SizedBox(width: 8),
-          _FilterPill(label: 'Mastered',   selected: _filter == 'mastered',   onTap: () => setState(() => _filter = 'mastered')),
+          _FilterPill(label: 'Mastered',   selected: _filter == 'mastered',
+            onTap: () => setState(() { _filter = 'mastered'; _page = 1; })),
           const Spacer(),
           Text('${_filtered.length} showing',
               style: _gaegu(size: 12, color: _brownSoft, weight: FontWeight.w700)),
@@ -765,21 +920,116 @@ class _SubjectsScreenState extends ConsumerState<SubjectsScreen>
   Widget _grid(bool isWide, int crossAxis) {
     if (_loading) return _loadingState();
     if (_error != null) return _errorState();
-    final items = _filtered;
-    if (items.isEmpty) return _emptyState();
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: items.length,
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: crossAxis,
-        mainAxisSpacing: 16,
-        crossAxisSpacing: 16,
-        childAspectRatio: 1.35,
+    final allFiltered = _filtered;
+    if (allFiltered.isEmpty) return _emptyState();
+    final items = _pagedItems;
+    final tp = _totalPages;
+    return Column(children: [
+      GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: items.length,
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: crossAxis,
+          mainAxisSpacing: 14,
+          crossAxisSpacing: 14,
+          // Slightly more square — at 4 cols the 1.35 ratio made cards
+          // feel short; 1.25 keeps room for the code line + stats pills
+          // without wasting vertical space on wider columns.
+          childAspectRatio: 1.25,
+        ),
+        itemBuilder: (_, i) => _SubjectCard(
+          subject: items[i],
+          onTap: () => _showSubjectDetail(items[i]),
+          onEdit: () => _editSubject(items[i]),
+          onDelete: () => _deleteSubject(items[i]),
+        ),
       ),
-      itemBuilder: (_, i) => _SubjectCard(
-        subject: items[i],
-        onTap: () => _showSubjectDetail(items[i]),
+      // Always render the pagination bar — even for a single page — so
+      // the user sees the affordance immediately and understands there's
+      // no infinite scroll. Prev/Next pills disable themselves when
+      // there's nothing to go to.
+      const SizedBox(height: 18),
+      _paginationBar(tp),
+    ]);
+  }
+
+  // Prev / page indicator / Next. Cream pill chrome + hard 3px drop
+  // shadow to match the filter pills and stat tiles on this page.
+  Widget _paginationBar(int totalPages) {
+    final canPrev = _page > 1;
+    final canNext = _page < totalPages;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        _paginationButton(
+          icon: Icons.chevron_left_rounded,
+          label: 'Prev',
+          enabled: canPrev,
+          onTap: canPrev ? () => _goToPage(_page - 1) : null,
+        ),
+        const SizedBox(width: 12),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+          decoration: BoxDecoration(
+            color: _mSage.withOpacity(0.55),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: _outline.withOpacity(0.3), width: 1.5),
+            boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
+                offset: const Offset(3, 3), blurRadius: 0)],
+          ),
+          child: Text('Page $_page / $totalPages',
+            style: const TextStyle(fontFamily: _bitroad, fontSize: 14, color: _brown, height: 1.1)),
+        ),
+        const SizedBox(width: 12),
+        _paginationButton(
+          icon: Icons.chevron_right_rounded,
+          label: 'Next',
+          trailing: true,
+          enabled: canNext,
+          onTap: canNext ? () => _goToPage(_page + 1) : null,
+        ),
+      ],
+    );
+  }
+
+  Widget _paginationButton({
+    required IconData icon,
+    required String label,
+    required bool enabled,
+    required VoidCallback? onTap,
+    bool trailing = false,
+  }) {
+    final fill = enabled
+      ? Colors.white.withOpacity(0.88)
+      : Colors.white.withOpacity(0.45);
+    final fg = enabled ? _brown : _brownSoft;
+    final children = <Widget>[
+      if (!trailing) Icon(icon, size: 18, color: fg),
+      if (!trailing) const SizedBox(width: 4),
+      Text(label,
+        style: _gaegu(size: 13, weight: FontWeight.w700, color: fg)),
+      if (trailing) const SizedBox(width: 4),
+      if (trailing) Icon(icon, size: 18, color: fg),
+    ];
+    return Opacity(
+      opacity: enabled ? 1.0 : 0.55,
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+          decoration: BoxDecoration(
+            color: fill,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: _outline.withOpacity(0.22), width: 1.5),
+            boxShadow: enabled
+              ? [BoxShadow(color: _outline.withOpacity(0.18),
+                  offset: const Offset(3, 3), blurRadius: 0)]
+              : null,
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: children),
+        ),
       ),
     );
   }
@@ -879,7 +1129,14 @@ class _SubjectsScreenState extends ConsumerState<SubjectsScreen>
 class _SubjectCard extends StatelessWidget {
   final _SubjectUi subject;
   final VoidCallback onTap;
-  const _SubjectCard({required this.subject, required this.onTap});
+  final VoidCallback? onEdit;
+  final VoidCallback? onDelete;
+  const _SubjectCard({
+    required this.subject,
+    required this.onTap,
+    this.onEdit,
+    this.onDelete,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -902,7 +1159,7 @@ class _SubjectCard extends StatelessWidget {
             children: [
               // Accent band / header
               Container(
-                padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+                padding: const EdgeInsets.fromLTRB(14, 12, 6, 12),
                 decoration: BoxDecoration(
                   color: subject.accent.withOpacity(mastered ? 0.7 : 0.42),
                   border: Border(bottom: BorderSide(color: _outline.withOpacity(0.18), width: 1.5)),
@@ -934,6 +1191,7 @@ class _SubjectCard extends StatelessWidget {
                   ),
                   if (mastered)
                     Container(
+                      margin: const EdgeInsets.only(right: 4),
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(
                         color: _mButter,
@@ -942,6 +1200,48 @@ class _SubjectCard extends StatelessWidget {
                       ),
                       child: const Text('★',
                         style: TextStyle(fontFamily: _bitroad, fontSize: 12, color: _brown)),
+                    ),
+                  // PopupMenuButton swallows tap events on its anchor so
+                  // the card's outer GestureDetector won't fire on menu
+                  // open (no accidental detail-page navigation).
+                  if (onEdit != null || onDelete != null)
+                    PopupMenuButton<String>(
+                      tooltip: 'Subject actions',
+                      icon: const Icon(Icons.more_vert_rounded, size: 18, color: _brown),
+                      padding: EdgeInsets.zero,
+                      splashRadius: 18,
+                      color: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: BorderSide(color: _outline.withOpacity(0.3), width: 1.2),
+                      ),
+                      onSelected: (v) {
+                        if (v == 'edit') onEdit?.call();
+                        if (v == 'delete') onDelete?.call();
+                      },
+                      itemBuilder: (ctx) => [
+                        if (onEdit != null)
+                          PopupMenuItem<String>(
+                            value: 'edit',
+                            height: 36,
+                            child: Row(children: [
+                              const Icon(Icons.edit_rounded, size: 16, color: _brownLt),
+                              const SizedBox(width: 8),
+                              Text('Edit', style: _gaegu(size: 14, color: _brown, weight: FontWeight.w700)),
+                            ]),
+                          ),
+                        if (onDelete != null)
+                          PopupMenuItem<String>(
+                            value: 'delete',
+                            height: 36,
+                            child: Row(children: [
+                              Icon(Icons.delete_outline_rounded, size: 16, color: Colors.red.shade400),
+                              const SizedBox(width: 8),
+                              Text('Delete',
+                                style: _gaegu(size: 14, color: Colors.red.shade500, weight: FontWeight.w700)),
+                            ]),
+                          ),
+                      ],
                     ),
                 ]),
               ),
