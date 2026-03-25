@@ -1023,45 +1023,58 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
   }
 
   //  DAILY INSIGHT TIP
+  //  Tapping (or tapping "See more") opens the full cross-
+  //  domain Insights screen.
   Widget _buildInsightTip(DashboardState dash) {
     final insight = _getInsight(dash);
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 11, 14, 11),
-      decoration: BoxDecoration(
-        color: _pinkLt.withOpacity(0.22),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: _outline.withOpacity(0.18), width: 1),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 24, height: 24,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-              border: Border.all(color: _outline.withOpacity(0.3), width: 1.5),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => context.push(Routes.insights),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 11, 14, 11),
+        decoration: BoxDecoration(
+          color: _pinkLt.withOpacity(0.22),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: _outline.withOpacity(0.18), width: 1),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 24, height: 24,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                border: Border.all(color: _outline.withOpacity(0.3), width: 1.5),
+              ),
+              child: Icon(Icons.lightbulb_outline_rounded, size: 12, color: _pinkDk),
             ),
-            child: Icon(Icons.lightbulb_outline_rounded, size: 12, color: _pinkDk),
-          ),
-          const SizedBox(width: 9),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('DAILY INSIGHT',
-                  style: GoogleFonts.nunito(
-                    fontSize: 10, fontWeight: FontWeight.w700,
-                    letterSpacing: 0.7, color: _pinkDk)),
-                const SizedBox(height: 3),
-                Text(insight,
-                  style: GoogleFonts.gaegu(
-                    fontSize: 15, fontWeight: FontWeight.w700,
-                    color: _brown, height: 1.4)),
-              ],
+            const SizedBox(width: 9),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: [
+                    Text('DAILY INSIGHT',
+                      style: GoogleFonts.nunito(
+                        fontSize: 10, fontWeight: FontWeight.w700,
+                        letterSpacing: 0.7, color: _pinkDk)),
+                    const Spacer(),
+                    Text('See more →',
+                      style: GoogleFonts.nunito(
+                        fontSize: 10, fontWeight: FontWeight.w700,
+                        letterSpacing: 0.3, color: _pinkDk)),
+                  ]),
+                  const SizedBox(height: 3),
+                  Text(insight,
+                    style: GoogleFonts.gaegu(
+                      fontSize: 15, fontWeight: FontWeight.w700,
+                      color: _brown, height: 1.4)),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

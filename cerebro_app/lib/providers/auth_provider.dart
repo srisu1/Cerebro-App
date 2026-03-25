@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cerebro_app/services/api_service.dart';
 import 'package:cerebro_app/services/google_oauth_service.dart';
 import 'package:cerebro_app/config/constants.dart';
+import 'package:cerebro_app/utils/user_session.dart';
 
 final apiServiceProvider = Provider<ApiService>((ref) => ApiService());
 
@@ -111,6 +112,16 @@ class AuthNotifier extends StateNotifier<AuthState> {
       await prefs.setString(AppConstants.accessTokenKey, accessToken);
       await prefs.setString(AppConstants.refreshTokenKey, refreshToken);
 
+      // If this account differs from the one whose data is in prefs,
+      // wipe the per-user cache so XP/cash/quests/avatar don't leak in.
+      // Removing the cached user_id first forces a fresh /auth/me lookup
+      // so we compare against the *new* account's id, not whatever was
+      // stamped from the previous session.
+      await prefs.remove(AppConstants.userIdKey);
+      try {
+        await refreshUserScope(_api);
+      } catch (_) {}
+
       state = state.copyWith(status: AuthStatus.authenticated);
       return true;
     } catch (e) {
@@ -157,6 +168,13 @@ class AuthNotifier extends StateNotifier<AuthState> {
       await prefs.setString(AppConstants.accessTokenKey, accessToken);
       await prefs.setString(AppConstants.refreshTokenKey, refreshToken);
 
+      // Wipe per-user prefs if this is a different account than last time.
+      // (See login() for the same dance + reasoning.)
+      await prefs.remove(AppConstants.userIdKey);
+      try {
+        await refreshUserScope(_api);
+      } catch (_) {}
+
       state = state.copyWith(status: AuthStatus.authenticated);
       return true;
     } catch (e) {
@@ -180,12 +198,14 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
-  /// Logout - clear tokens
+  /// Logout - clear tokens AND per-user cache so the next account that
+  /// signs in on this device starts from a clean slate.
   Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(AppConstants.accessTokenKey);
     await prefs.remove(AppConstants.refreshTokenKey);
     await prefs.remove(AppConstants.userIdKey);
+    await clearUserScope();
 
     state = const AuthState(status: AuthStatus.unauthenticated);
   }

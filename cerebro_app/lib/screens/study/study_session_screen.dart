@@ -25,6 +25,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cerebro_app/providers/auth_provider.dart';
 import 'package:cerebro_app/providers/dashboard_provider.dart';
+import 'package:cerebro_app/providers/study_session_provider.dart';
 import 'package:cerebro_app/screens/study/study_tab.dart';
 
 const _ombre1  = Color(0xFFFFFBF7);
@@ -124,7 +125,14 @@ const _ambientUrls = <String, String>{
 
 //  MAIN SCREEN
 class StudySessionScreen extends ConsumerStatefulWidget {
-  const StudySessionScreen({Key? key}) : super(key: key);
+  /// When true, the screen auto-opens the Past Sessions bottom sheet on
+  /// first frame — used by the Study Hub's "History" entry point so users
+  /// can reach their past sessions even when a live session is running
+  /// (otherwise the sheet is only reachable via the setup phase, which is
+  /// not rendered once a session has started).
+  final bool showPastOnOpen;
+  const StudySessionScreen({Key? key, this.showPastOnOpen = false})
+      : super(key: key);
   @override
   ConsumerState<StudySessionScreen> createState() => _StudySessionScreenState();
 }
@@ -213,6 +221,153 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
     _fetchSubjects();
     _fetchPastSessions();
     _loadStreak();
+    // Adopt any existing live session from the global provider — if the user
+    // started one from the dashboard hero, we want to land in that session's
+    // running state immediately instead of the setup picker.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      _adoptGlobalSession();
+      // Auto-open the Past Sessions sheet if this screen was opened via the
+      // Study Hub's "History" entry point. Critically, we AWAIT the fetch
+      // before showing the sheet — `_PastSessionsSheet` captures the list
+      // reference at construction time, so opening it before the fetch
+      // completes would leave the sheet stuck on "No sessions yet" even
+      // after the fetch populates our local state.
+      if (widget.showPastOnOpen) {
+        // The fetch was kicked off synchronously in initState above; wait
+        // for it to settle before opening the sheet so the first render
+        // shows the real data instead of the empty initial list.
+        await _fetchPastSessions();
+        if (!mounted) return;
+        _showPastSessions();
+      }
+    });
+  }
+
+  /// If `studySessionProvider` reports a live session, skip the setup UI and
+  /// jump straight into `_Phase.running` (or `_Phase.paused` if paused),
+  /// seeding our local timer fields from the provider's server-computed
+  /// elapsed time. This is what makes the "start a session on dashboard
+  /// hero → land in full session screen already running" flow work.
+  ///
+  /// If the provider has `endRequested == true`, we jump straight to the
+  /// Wrapped / completion phase instead — this is how the mini session bar
+  /// and the Study tab hero's Stop button route users into the rating UI
+  /// rather than quietly finalizing the row.
+  void _adoptGlobalSession() {
+    if (!mounted) return;
+    final s = ref.read(studySessionProvider);
+    if (!s.isLive) return;
+    // Already past setup — don't clobber.
+    if (_phase != _Phase.setup) return;
+
+    // Seed local fields from the server-authoritative snapshot.
+    _sessionType = s.sessionType;
+    _durationMin = s.plannedDurationMinutes;
+    _selectedSubjectId = s.subjectId;
+    _selectedSubjectName = s.subjectName;
+    if (s.title != null && _titleCtrl.text.isEmpty) {
+      _titleCtrl.text = s.title!;
+    }
+    _startTime = s.startTime;
+    _totalStudiedSec = s.elapsedSeconds;
+    _distractionCount = s.distractions;
+    _remainSec = (_durationMin * 60 - _totalStudiedSec)
+        .clamp(0, _durationMin * 60);
+    _isBreakPhase = false;
+    _showed5min = _totalStudiedSec >= 300;
+    _showed15min = _totalStudiedSec >= 900;
+    _showedHalfway = _totalStudiedSec >= (_durationMin * 30);
+
+    // "Stop" pressed from mini bar or hero → land directly on Wrapped.
+    if (s.endRequested) {
+      setState(() {
+        _phase = _Phase.completed;
+        _endTime = DateTime.now();
+        // Seed the slider with the max allowed focus for this session's
+        // distraction count so the default is not nonsensically high.
+        _focusScore = _focusScore.clamp(1, _maxFocusForDistractions());
+      });
+      // Clear the flag so rebuilds don't re-trigger this branch.
+      ref.read(studySessionProvider.notifier).consumeEndRequest();
+      if (_selectedSubjectId != null && _subjectTopics.isEmpty) {
+        _fetchSubjectTopics();
+      }
+      _enterCtrl.reset();
+      _enterCtrl.forward();
+      return;
+    }
+
+    setState(() {
+      _phase = s.phase == SessionPhase.paused
+          ? _Phase.paused
+          : _Phase.running;
+    });
+    _enterCtrl.reset();
+    _enterCtrl.forward();
+    // Only resume the local tick when actually running; paused sessions
+    // stay frozen until the user explicitly resumes.
+    if (s.phase == SessionPhase.running) {
+      _beginTick();
+    }
+  }
+
+  /// Max focus score the user is allowed to claim given how many times
+  /// attention drifted during this session.
+  ///
+  ///   0  distractions → 100
+  ///   1              → 90
+  ///   2              → 80
+  ///   …
+  ///   7+             → 30 (floor — we still let them log *something*)
+  ///
+  /// Per product decision: the session-recap slider is not a place to
+  /// rewrite history. If you paused twice and wandered off to Daily once,
+  /// you cannot claim "100% focused". Matches the backend's fallback
+  /// derivation in /sessions/{id}/end when focus_score is omitted
+  /// (max(30, 85 - distractions*10)), but with a slightly more generous
+  /// no-distraction ceiling to reward clean runs.
+  int _maxFocusForDistractions() {
+    final d = (ref.read(studySessionProvider).distractions)
+        .clamp(0, 100);
+    // Grant a full 100 only when there are zero distractions. After that
+    // every distraction shaves 10 points off, floored at 30.
+    if (d == 0) return 100;
+    return (100 - d * 10).clamp(30, 100);
+  }
+
+  /// Surface a brief, non-blocking explainer when the user tries to push
+  /// the focus slider past the distraction-imposed cap. Uses a throttled
+  /// SnackBar so rapid drags don't flood the screen with duplicates.
+  ///
+  /// Why a SnackBar (not a dialog): the completion screen is a chained
+  /// series of taps — slider → notes → topics → save. A modal would break
+  /// that flow. The SnackBar hints, auto-dismisses, and the slider
+  /// physically snaps back so the cap is self-evident on the next drag.
+  DateTime? _lastCapNudge;
+  void _nudgeCapTooltip(int maxFocus, int distractions) {
+    final now = DateTime.now();
+    if (_lastCapNudge != null &&
+        now.difference(_lastCapNudge!).inMilliseconds < 1200) {
+      return; // throttle — avoid a snackbar spam during a single drag
+    }
+    _lastCapNudge = now;
+    if (!mounted) return;
+    final d = distractions;
+    final plural = d == 1 ? 'distraction' : 'distractions';
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(
+          'Capped at $maxFocus% — $d $plural this session.',
+          style: GoogleFonts.gaegu(
+              fontSize: 14, fontWeight: FontWeight.w700, color: _brown),
+        ),
+        backgroundColor: const Color(0xFFFFE8C9),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(milliseconds: 1600),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12)),
+      ));
   }
 
   String _todayKey() => DateTime.now().toIso8601String().substring(0, 10);
@@ -308,15 +463,30 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
     }
   }
 
+  // Historical NOTE: this used to `catch (_) {}` which silently buried any
+  // backend error (401, 500, data-shape mismatch), making "past sessions
+  // not loading" look like a UI bug. We now log to debugPrint so problems
+  // are at least visible in the console. The sheet itself does its own
+  // fetch with a visible error UI; this version stays quiet for the
+  // background counts shown in the setup-phase rhythm card.
   Future<void> _fetchPastSessions() async {
-    setState(() => _pastLoading = true);
+    if (mounted) setState(() => _pastLoading = true);
     try {
       final api = ref.read(apiServiceProvider);
-      final resp = await api.get('/study/sessions', queryParams: {'limit': '50'});
+      final resp = await api.get(
+          '/study/sessions', queryParams: {'limit': '50'});
       if (resp.statusCode == 200 && resp.data is List) {
-        setState(() => _pastSessions = List<Map<String, dynamic>>.from(resp.data));
+        if (mounted) {
+          setState(() =>
+              _pastSessions = List<Map<String, dynamic>>.from(resp.data));
+        }
+      } else {
+        debugPrint('[_fetchPastSessions] unexpected shape: '
+            'status=${resp.statusCode} dataType=${resp.data.runtimeType}');
       }
-    } catch (_) {}
+    } catch (e, st) {
+      debugPrint('[_fetchPastSessions] failed: $e\n$st');
+    }
     if (mounted) setState(() => _pastLoading = false);
   }
 
@@ -417,6 +587,14 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
 
   //  TIMER LOGIC
   void _startTimer() {
+    // If the global provider already has a live session (user started from
+    // the hero), don't spin up a second one — adopt instead.
+    final global = ref.read(studySessionProvider);
+    if (global.isLive) {
+      _adoptGlobalSession();
+      return;
+    }
+
     _startTime = DateTime.now();
     _remainSec = _durationMin * 60;
     _pomodoroCount = 0;
@@ -430,6 +608,21 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
     _enterCtrl.reset();
     _enterCtrl.forward();
     _beginTick();
+
+    // Persist the session on the backend so the global provider, mini
+    // player, dashboard hero, and cross-tab guard all have a row to track.
+    // Fire-and-forget: the local tick keeps working even if this fails,
+    // and the provider will surface any error via state.error.
+    // ignore: discarded_futures
+    ref.read(studySessionProvider.notifier).start(
+          subjectId: _selectedSubjectId,
+          subjectName: _selectedSubjectName,
+          title: _titleCtrl.text.trim().isEmpty ? null : _titleCtrl.text.trim(),
+          sessionType: _sessionType,
+          plannedDurationMinutes: _durationMin,
+          topicsCovered: _topics,
+        );
+
     // Start ambient if selected
     if (_ambientSound != 'none') {
       _playAmbient(_ambientSound);
@@ -499,11 +692,18 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
   void _pauseTimer() {
     _ticker?.cancel();
     setState(() => _phase = _Phase.paused);
+    // Mirror to global provider so the hero button swaps to Resume and the
+    // distraction counter bumps. Fire-and-forget — local state is the
+    // source of truth for the UI while the request is in flight.
+    // ignore: discarded_futures
+    ref.read(studySessionProvider.notifier).pause();
   }
 
   void _resumeTimer() {
     setState(() => _phase = _isBreakPhase ? _Phase.onBreak : _Phase.running);
     _beginTick();
+    // ignore: discarded_futures
+    ref.read(studySessionProvider.notifier).resume();
   }
 
   void _skipBreak() {
@@ -535,12 +735,79 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
     }
   }
 
+  //
+  // Two paths depending on whether the global provider owns the session:
+  //
+  //  • Provider has a live row (normal case — `_startTimer` created it) →
+  //    call `notifier.end()` which PUTs /sessions/{id}/end. The backend
+  //    handles duration/focus-score/XP calculation there; we read the
+  //    committed row back via /study/sessions for the Wrapped screen.
+  //
+  //  • No provider session (edge case — provider.start() failed silently
+  //    or the screen was entered standalone somehow) → fall back to the
+  //    original POST /study/sessions path so the user's effort is never
+  //    lost even if Option B networking hiccupped.
   Future<void> _saveSession() async {
     if (_saving) return;
     setState(() => _saving = true);
     try {
       final api = ref.read(apiServiceProvider);
       final mins = (_totalStudiedSec / 60).ceil().clamp(1, 720);
+      final sessionState = ref.read(studySessionProvider);
+      final hasLiveSession = sessionState.sessionId != null;
+
+      if (hasLiveSession) {
+        // Option B: finalize the backend row the provider is tracking.
+        final ok = await ref.read(studySessionProvider.notifier).end(
+              focusScore: _focusScore,
+              notes: _notesCtrl.text.trim().isEmpty
+                  ? null
+                  : _notesCtrl.text.trim(),
+              topicsCovered: _topics,
+            );
+        if (ok) {
+          // XP is computed server-side on /end — re-read the finalized row
+          // so the Wrapped screen shows the real number. Swallow failures:
+          // worst case the user sees 0 XP but their session is saved.
+          int xp = 0;
+          try {
+            final r = await api.get('/study/sessions',
+                queryParams: {'limit': '1'});
+            if (r.data is List && (r.data as List).isNotEmpty) {
+              final first = Map<String, dynamic>.from(r.data[0] as Map);
+              xp = (first['xp_earned'] as num?)?.toInt() ?? 0;
+            }
+          } catch (_) {}
+          if (mounted) {
+            setState(() { _xpEarned = xp; _saved = true; });
+            _xpCtrl.forward(from: 0);
+          }
+          await _bumpStreak();
+          // Force dashboard to re-sync from /gamification/stats so the
+          // newly-awarded XP/level/cash/streak appear immediately. Without
+          // this, dashboard keeps showing the stale cached values until
+          // the user happens to toggle a habit (which was the bug report).
+          // ignore: discarded_futures
+          ref.read(dashboardProvider.notifier).refresh();
+          ref.read(dashboardProvider.notifier).checkAchievements();
+          _fetchPastSessions();
+        } else if (mounted) {
+          // provider.end() sets state.error on failure; surface it.
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(
+              ref.read(studySessionProvider).error
+                  ?? 'Could not save session. Try again.',
+              style: GoogleFonts.nunito(fontSize: 13),
+            ),
+            backgroundColor: _coralHdr,
+          ));
+        }
+        return;
+      }
+
+      // Legacy fallback path — provider has no session, so create one
+      // via the standard POST. Reaches this only on the pre-Option-B
+      // edge case where /sessions/start never ran.
       final body = <String, dynamic>{
         'session_type': _sessionType,
         'duration_minutes': mins,
@@ -564,6 +831,11 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
         _xpCtrl.forward(from: 0);
         // Bump daily streak
         await _bumpStreak();
+        // Re-sync the dashboard from /gamification/stats so XP + streak
+        // update immediately — otherwise the pills show stale zeros until
+        // the user toggles a quest. See dashboard_provider._syncFromApi.
+        // ignore: discarded_futures
+        ref.read(dashboardProvider.notifier).refresh();
         // Check for achievements
         ref.read(dashboardProvider.notifier).checkAchievements();
         // Refresh past sessions
@@ -763,6 +1035,27 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
   //  BUILD
   @override
   Widget build(BuildContext context) {
+    // If the mini session bar or the hub hero flipped `endRequested` while
+    // this screen is already open in running/paused phase, jump us to the
+    // Wrapped rating view. Guard with `_phase != completed` so we don't
+    // re-enter the branch on every rebuild.
+    ref.listen<SessionState>(studySessionProvider, (prev, next) {
+      if (!next.endRequested) return;
+      if (_phase == _Phase.completed || _phase == _Phase.setup) return;
+      _ticker?.cancel();
+      _endTime = DateTime.now();
+      setState(() {
+        _phase = _Phase.completed;
+        _focusScore = _focusScore.clamp(1, _maxFocusForDistractions());
+      });
+      ref.read(studySessionProvider.notifier).consumeEndRequest();
+      if (_selectedSubjectId != null && _subjectTopics.isEmpty) {
+        _fetchSubjectTopics();
+      }
+      _enterCtrl.reset();
+      _enterCtrl.forward();
+    });
+
     return Scaffold(
       backgroundColor: _ombre1,
       body: Stack(children: [
@@ -905,14 +1198,18 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
       padding: EdgeInsets.fromLTRB(hPad, 56, hPad, 18),
       child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
         // Back — bumped to 46px to match the heavier title type scale
+        //
+        // With Option B session state, popping this route doesn't end the
+        // session — the global provider keeps it running and the mini
+        // session bar will show on any tab they navigate to. So back =
+        // plain route pop, no confirm dialog. The cross-tab guard
+        // (home_screen._handleTabTap) is the only thing that blocks
+        // navigation during a live session, and only when leaving the
+        // Study tab entirely.
         GestureDetector(
           onTap: () {
-            if (onTimer) {
-              _showExitConfirm();
-            } else {
-              _stopAmbient();
-              Navigator.of(context).pop();
-            }
+            _stopAmbient();
+            Navigator.of(context).pop();
           },
           child: Container(
             width: 46, height: 46,
@@ -965,29 +1262,13 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
     );
   }
 
-  void _showExitConfirm() {
-    showDialog(context: context, builder: (ctx) => AlertDialog(
-      backgroundColor: _cardFill,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        side: BorderSide(color: _outline.withOpacity(0.3), width: 1.5)),
-      title: Text('End Session?', style: GoogleFonts.gaegu(
-        fontSize: 22, fontWeight: FontWeight.w700, color: _brown)),
-      content: Text(
-        'You\'ve studied for ${_fmtMin(_totalStudiedSec)}. Save progress?',
-        style: GoogleFonts.nunito(fontSize: 14, color: _brownLt)),
-      actions: [
-        TextButton(
-          onPressed: () { Navigator.pop(ctx); _stopAmbient(); Navigator.pop(context); },
-          child: Text('Discard', style: GoogleFonts.gaegu(
-            fontSize: 16, fontWeight: FontWeight.w700, color: _coralHdr))),
-        TextButton(
-          onPressed: () { Navigator.pop(ctx); _stopTimer(); },
-          child: Text('Save & Finish', style: GoogleFonts.gaegu(
-            fontSize: 16, fontWeight: FontWeight.w700, color: _greenDk))),
-      ],
-    ));
-  }
+  // _showExitConfirm() was the legacy "are you sure?" dialog that fired on
+  // back-button while a local timer was running. Removed in the Option B
+  // (global persistent session) refactor: popping this route no longer
+  // ends anything — the global StudySessionNotifier keeps the session
+  // alive and the MiniSessionBar surfaces it on every other tab. The only
+  // remaining navigation guard lives in HomeScreen._handleTabTap and only
+  // fires when the user tries to leave the Study tab entirely.
 
   //  1. SETUP PHASE
   Widget _buildSetup({bool desktop = false}) {
@@ -2843,62 +3124,133 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
                   color: _focusColor(_focusScore))),
               ),
             ]),
-            Column(mainAxisSize: MainAxisSize.min, children: [
-              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [20, 40, 60, 80, 100].map((v) {
-                  final sel = (_focusScore - v).abs() < 10;
-                  return GestureDetector(
-                    onTap: () => setState(() => _focusScore = v),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 180),
-                      width: sel ? 54 : 44, height: sel ? 54 : 44,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: sel ? _focusColor(v).withOpacity(0.18)
-                            : Colors.transparent,
-                        border: sel ? Border.all(
-                          color: _focusColor(v), width: 1.8) : null),
-                      child: CustomPaint(painter: _FacePainter(
-                        score: v,
-                        color: sel ? _focusColor(v) : _brownLt.withOpacity(0.4),
-                        size: sel ? 54 : 44)),
-                    ),
-                  );
-                }).toList()),
-              const SizedBox(height: 6),
-              SliderTheme(
-                data: SliderThemeData(
-                  activeTrackColor: _focusColor(_focusScore),
-                  inactiveTrackColor: _outline.withOpacity(0.1),
-                  thumbColor: _focusColor(_focusScore),
-                  overlayColor: _focusColor(_focusScore).withOpacity(0.15),
-                  trackHeight: 7,
-                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 13)),
-                child: Slider(
-                  value: _focusScore.toDouble(),
-                  min: 1, max: 100,
-                  onChanged: (v) => setState(() => _focusScore = v.round()),
+            // Distraction-based focus cap: the more times the user got
+            // pulled away, the lower the ceiling they can claim. We compute
+            // it once per build so every control agrees on the same cap.
+            Builder(builder: (_) {
+              final maxFocus = _maxFocusForDistractions();
+              // If a previous build left `_focusScore` above the cap (e.g.
+              // distractions just landed from the server), clip it silently.
+              if (_focusScore > maxFocus) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (!mounted) return;
+                  setState(() => _focusScore = maxFocus);
+                });
+              }
+              final distractions = ref.watch(studySessionProvider).distractions;
+              return Column(mainAxisSize: MainAxisSize.min, children: [
+                Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [20, 40, 60, 80, 100].map((v) {
+                    final locked = v > maxFocus;
+                    final sel = !locked && (_focusScore - v).abs() < 10;
+                    return GestureDetector(
+                      onTap: locked
+                          ? () => _nudgeCapTooltip(maxFocus, distractions)
+                          : () => setState(() => _focusScore = v),
+                      child: Opacity(
+                        opacity: locked ? 0.35 : 1.0,
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 180),
+                          width: sel ? 54 : 44, height: sel ? 54 : 44,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: sel ? _focusColor(v).withOpacity(0.18)
+                                : Colors.transparent,
+                            border: sel ? Border.all(
+                              color: _focusColor(v), width: 1.8) : null),
+                          child: CustomPaint(painter: _FacePainter(
+                            score: v,
+                            color: sel ? _focusColor(v)
+                                : _brownLt.withOpacity(0.4),
+                            size: sel ? 54 : 44)),
+                        ),
+                      ),
+                    );
+                  }).toList()),
+                const SizedBox(height: 6),
+                SliderTheme(
+                  data: SliderThemeData(
+                    activeTrackColor: _focusColor(_focusScore),
+                    inactiveTrackColor: _outline.withOpacity(0.1),
+                    thumbColor: _focusColor(_focusScore),
+                    overlayColor: _focusColor(_focusScore).withOpacity(0.15),
+                    trackHeight: 7,
+                    thumbShape: const RoundSliderThumbShape(
+                        enabledThumbRadius: 13)),
+                  child: Slider(
+                    value: _focusScore.toDouble().clamp(1.0,
+                        maxFocus.toDouble()),
+                    min: 1, max: 100,
+                    // The slider's visual max is 100 so the track shows the
+                    // cap as an off-limits region rather than hiding it —
+                    // but any drag past the cap snaps back. We also fire a
+                    // tooltip the first time the user hits the wall so it
+                    // doesn't feel like a bug.
+                    onChanged: (v) {
+                      final rounded = v.round();
+                      if (rounded > maxFocus) {
+                        _nudgeCapTooltip(maxFocus, distractions);
+                        setState(() => _focusScore = maxFocus);
+                      } else {
+                        setState(() => _focusScore = rounded);
+                      }
+                    },
+                  ),
                 ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('Distracted', style: GoogleFonts.nunito(
-                      fontSize: 14, fontWeight: FontWeight.w600, color: _brownLt)),
-                    if (_focusScore >= 80)
-                      Row(mainAxisSize: MainAxisSize.min, children: [
-                        Icon(Icons.bolt_rounded, size: 16, color: _greenDk),
-                        const SizedBox(width: 5),
-                        Text('+25% XP bonus', style: GoogleFonts.nunito(
-                          fontSize: 14, fontWeight: FontWeight.w800, color: _greenDk)),
-                      ])
-                    else
-                      Text('Laser focus', style: GoogleFonts.nunito(
-                        fontSize: 14, fontWeight: FontWeight.w600, color: _brownLt)),
-                  ]),
-              ),
-            ]),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Distracted', style: GoogleFonts.nunito(
+                        fontSize: 14, fontWeight: FontWeight.w600,
+                        color: _brownLt)),
+                      if (_focusScore >= 80)
+                        Row(mainAxisSize: MainAxisSize.min, children: [
+                          Icon(Icons.bolt_rounded, size: 16, color: _greenDk),
+                          const SizedBox(width: 5),
+                          Text('+25% XP bonus', style: GoogleFonts.nunito(
+                            fontSize: 14, fontWeight: FontWeight.w800,
+                            color: _greenDk)),
+                        ])
+                      else
+                        Text('Laser focus', style: GoogleFonts.nunito(
+                          fontSize: 14, fontWeight: FontWeight.w600,
+                          color: _brownLt)),
+                    ]),
+                ),
+                // Cap hint — only renders when distractions > 0 so it
+                // doesn't clutter clean runs.
+                if (distractions > 0) ...[
+                  const SizedBox(height: 10),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 9),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFE8C9).withOpacity(0.7),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                          color: _outline.withOpacity(0.22), width: 1),
+                    ),
+                    child: Row(children: [
+                      Icon(Icons.info_outline_rounded, size: 15,
+                          color: _brownLt),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '$distractions distraction'
+                          '${distractions == 1 ? '' : 's'} — max focus '
+                          'capped at $maxFocus%',
+                          style: GoogleFonts.gaegu(
+                            fontSize: 13, fontWeight: FontWeight.w600,
+                            color: _brown),
+                        ),
+                      ),
+                    ]),
+                  ),
+                ],
+              ]);
+            }),
           ]),
       );
 
@@ -3624,8 +3976,63 @@ class _PastSessionsSheetState extends State<_PastSessionsSheet> {
   bool _selectMode = false;
   final Set<int> _selected = {};
 
+  // Why: this sheet is shown via `showModalBottomSheet`, whose `builder`
+  // captures the parent's state ONCE at the moment of show. Subsequent
+  // updates to the parent's `_pastSessions` after the fetch completes (or
+  // after an edit/delete) never reach the sheet, so it stays stuck on
+  // "No sessions yet" forever. The fix: the sheet keeps its own copy of
+  // the list and fetches it directly on initState. We still call
+  // `widget.onRefresh()` after a fetch so the parent's rhythm-card counts
+  // and downstream UI stay in sync with the same data.
+  late List<Map<String, dynamic>> _sessions;
+  late bool _loading;
+  String? _fetchError;
+
+  @override
+  void initState() {
+    super.initState();
+    // Seed from whatever the parent had — so if the parent already
+    // populated past sessions before opening the sheet, the user sees
+    // them immediately rather than a flash of spinner.
+    _sessions = List<Map<String, dynamic>>.from(widget.sessions);
+    _loading = widget.loading || widget.sessions.isEmpty;
+    // Always trigger a fresh fetch on open so the list reflects any
+    // sessions completed since the parent last fetched (e.g. the user
+    // just ended a session and immediately opened History).
+    _refresh();
+  }
+
+  /// Fetch a fresh list straight from the backend into our own state, then
+  /// nudge the parent so its session counters can update too.
+  Future<void> _refresh() async {
+    if (mounted) setState(() { _loading = true; _fetchError = null; });
+    try {
+      final resp = await widget.api.get(
+          '/study/sessions', queryParams: {'limit': '50'});
+      final data = resp?.data;
+      if (data is List) {
+        if (mounted) {
+          setState(() {
+            _sessions = List<Map<String, dynamic>>.from(data);
+          });
+        }
+      } else {
+        if (mounted) setState(() => _fetchError =
+            'Unexpected response shape (${data.runtimeType})');
+      }
+    } catch (e) {
+      if (mounted) setState(() => _fetchError = '$e');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+      // Best-effort parent sync — the parent's setState won't reach our
+      // captured `widget.sessions`, but other parts of the parent UI
+      // (e.g. the rhythm card's session tally) should still update.
+      try { widget.onRefresh(); } catch (_) {}
+    }
+  }
+
   List<Map<String, dynamic>> get _filtered {
-    var list = widget.sessions;
+    var list = _sessions;
     if (_filterType != 'all') {
       list = list.where((s) => s['session_type'] == _filterType).toList();
     }
@@ -3656,7 +4063,7 @@ class _PastSessionsSheetState extends State<_PastSessionsSheet> {
       if (title != null) body['title'] = title;
       if (topics != null) body['topics_covered'] = topics;
       await widget.api.put('/study/sessions/$sessionId', data: body);
-      widget.onRefresh();
+      await _refresh();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text('Session updated!', style: GoogleFonts.nunito(fontSize: 12)),
@@ -3708,7 +4115,7 @@ class _PastSessionsSheetState extends State<_PastSessionsSheet> {
 
     try {
       await widget.api.delete('/study/sessions/$sessionId');
-      widget.onRefresh();
+      await _refresh();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text('Session deleted', style: GoogleFonts.nunito(fontSize: 12)),
@@ -4180,229 +4587,299 @@ class _PastSessionsSheetState extends State<_PastSessionsSheet> {
       minChildSize: 0.3,
       maxChildSize: 0.9,
       expand: false,
-      builder: (_, scrollCtrl) => Column(children: [
-        // Handle + header
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-          child: Column(children: [
-            Container(width: 40, height: 4,
-              decoration: BoxDecoration(color: _outline.withOpacity(0.15),
-                borderRadius: BorderRadius.circular(2))),
-            const SizedBox(height: 16),
-            Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-              Expanded(child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min, children: [
-                  Text('Past Sessions', style: const TextStyle(
-                    fontFamily: 'Bitroad', fontSize: 24,
-                    color: _brown, height: 1.05)),
-                  const SizedBox(height: 3),
-                  Text('${filtered.length} of ${widget.sessions.length} in view',
-                    style: GoogleFonts.nunito(fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: _inkSoft, letterSpacing: 0.3)),
-                ])),
-              // Select mode toggle — quiet
-              GestureDetector(
-                onTap: () => setState(() {
-                  _selectMode = !_selectMode;
-                  if (!_selectMode) _selected.clear();
-                }),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 150),
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                  decoration: BoxDecoration(
-                    color: _selectMode
-                        ? _oliveBg : _cardFill.withOpacity(0.5),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: _selectMode
-                          ? _oliveDk.withOpacity(0.4) : _outline.withOpacity(0.16),
-                      width: 1)),
-                  child: Text(_selectMode ? 'Done' : 'Select',
-                    style: GoogleFonts.nunito(fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      color: _selectMode ? _oliveDk : _brownLt,
-                      letterSpacing: 0.3)),
-                ),
-              ),
-              const SizedBox(width: 7),
-              // Export all as PDF — quiet
-              GestureDetector(
-                onTap: () => _exportSessionsPdf(filtered),
+      // CRITICAL: previously the body was Column { header..., Expanded(ListView) }
+      // wrapped in a LayoutBuilder. On desktop/web, DSS occasionally passes
+      // unbounded constraints to its builder during initial layout, which made
+      // SizedBox(height: constraints.maxHeight) infinite — collapsing the
+      // Expanded child to zero height. Result: header read "50 of 50 in view"
+      // but the list was invisible.
+      //
+      // The canonical fix is to give DSS a single scrollable to attach
+      // scrollCtrl to. We use CustomScrollView with slivers — header / search /
+      // chips become SliverToBoxAdapters and the list becomes a SliverList.
+      // The selection action bar is overlayed as a Positioned widget so it
+      // stays pinned to the bottom of the sheet without breaking the scroll
+      // contract.
+      //
+      // IMPORTANT: the Stack's CustomScrollView is the *non-positioned* (anchor)
+      // child. A Stack whose only child is Positioned collapses to 0×0 under
+      // unbounded constraints (the failure mode DSS hits on first layout pass),
+      // which is what made the list render offscreen. Keeping the scrollview
+      // unpositioned lets it size the Stack.
+      builder: (_, scrollCtrl) => Stack(
+        fit: StackFit.expand,
+        children: [
+          CustomScrollView(
+            controller: scrollCtrl,
+            slivers: [
+              // Handle + header
+              SliverToBoxAdapter(child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                child: Column(children: [
+                  Container(width: 40, height: 4,
+                    decoration: BoxDecoration(color: _outline.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(2))),
+                  const SizedBox(height: 16),
+                  Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                    Expanded(child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min, children: [
+                        Text('Past Sessions', style: const TextStyle(
+                          fontFamily: 'Bitroad', fontSize: 24,
+                          color: _brown, height: 1.05)),
+                        const SizedBox(height: 3),
+                        Text('${filtered.length} of ${_sessions.length} in view',
+                          style: GoogleFonts.nunito(fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: _inkSoft, letterSpacing: 0.3)),
+                      ])),
+                    // Select mode toggle — quiet
+                    GestureDetector(
+                      onTap: () => setState(() {
+                        _selectMode = !_selectMode;
+                        if (!_selectMode) _selected.clear();
+                      }),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 150),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                        decoration: BoxDecoration(
+                          color: _selectMode
+                              ? _oliveBg : _cardFill.withOpacity(0.5),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: _selectMode
+                                ? _oliveDk.withOpacity(0.4) : _outline.withOpacity(0.16),
+                            width: 1)),
+                        child: Text(_selectMode ? 'Done' : 'Select',
+                          style: GoogleFonts.nunito(fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            color: _selectMode ? _oliveDk : _brownLt,
+                            letterSpacing: 0.3)),
+                      ),
+                    ),
+                    const SizedBox(width: 7),
+                    // Export all as PDF — quiet
+                    GestureDetector(
+                      onTap: () => _exportSessionsPdf(filtered),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                        decoration: BoxDecoration(
+                          color: _cardFill.withOpacity(0.5),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: _outline.withOpacity(0.16), width: 1)),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          Icon(Icons.picture_as_pdf_rounded,
+                            size: 12, color: _coralHdr.withOpacity(0.85)),
+                          const SizedBox(width: 5),
+                          Text('PDF', style: GoogleFonts.nunito(
+                            fontSize: 11, fontWeight: FontWeight.w800,
+                            color: _brown, letterSpacing: 0.3)),
+                        ]),
+                      ),
+                    ),
+                  ]),
+                ]),
+              )),
+              const SliverToBoxAdapter(child: SizedBox(height: 14)),
+
+              // Search bar — soft pill, no heavy borders
+              SliverToBoxAdapter(child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                   decoration: BoxDecoration(
-                    color: _cardFill.withOpacity(0.5),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: _outline.withOpacity(0.16), width: 1)),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(Icons.picture_as_pdf_rounded,
-                      size: 12, color: _coralHdr.withOpacity(0.85)),
-                    const SizedBox(width: 5),
-                    Text('PDF', style: GoogleFonts.nunito(
-                      fontSize: 11, fontWeight: FontWeight.w800,
-                      color: _brown, letterSpacing: 0.3)),
+                    color: _cardFill.withOpacity(0.55),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: _outline.withOpacity(0.14), width: 1)),
+                  child: TextField(
+                    controller: _searchCtrl,
+                    style: GoogleFonts.nunito(fontSize: 13, color: _brown),
+                    onChanged: (v) => setState(() => _query = v),
+                    decoration: InputDecoration(
+                      hintText: 'Search by title, notes, topic...',
+                      hintStyle: GoogleFonts.nunito(fontSize: 13,
+                        color: _brownLt.withOpacity(0.4)),
+                      prefixIcon: Icon(Icons.search_rounded, size: 17,
+                        color: _brownLt.withOpacity(0.45)),
+                      suffixIcon: _query.isNotEmpty ? GestureDetector(
+                        onTap: () { _searchCtrl.clear(); setState(() => _query = ''); },
+                        child: Icon(Icons.close_rounded, size: 15,
+                          color: _brownLt.withOpacity(0.5)),
+                      ) : null,
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 11)),
+                  ),
+                ),
+              )),
+              const SliverToBoxAdapter(child: SizedBox(height: 10)),
+
+              // Filter chips
+              SliverToBoxAdapter(child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(children: [
+                    _filterChip('all', 'All', Icons.list_rounded, _brownLt),
+                    const SizedBox(width: 6),
+                    _filterChip('focused', 'Focused', Icons.center_focus_strong_rounded, _pinkHdr),
+                    const SizedBox(width: 6),
+                    _filterChip('review', 'Review', Icons.replay_rounded, _skyHdr),
+                    const SizedBox(width: 6),
+                    _filterChip('practice', 'Practice', Icons.edit_note_rounded, _greenHdr),
+                    const SizedBox(width: 6),
+                    _filterChip('lecture', 'Lecture', Icons.headset_rounded, _purpleHdr),
+                    // Select all / deselect all when in select mode
+                    if (_selectMode) ...[
+                      const SizedBox(width: 10),
+                      GestureDetector(
+                        onTap: () => setState(() {
+                          if (_selected.length == filtered.length) {
+                            _selected.clear();
+                          } else {
+                            _selected.clear();
+                            for (int i = 0; i < filtered.length; i++) _selected.add(i);
+                          }
+                        }),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: _skyHdr.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: _skyHdr.withOpacity(0.25))),
+                          child: Text(
+                            _selected.length == filtered.length ? 'Deselect All' : 'Select All',
+                            style: GoogleFonts.nunito(fontSize: 11,
+                              fontWeight: FontWeight.w700, color: _skyHdr)),
+                        ),
+                      ),
+                    ],
                   ]),
                 ),
-              ),
-            ]),
-          ]),
-        ),
-        const SizedBox(height: 14),
+              )),
+              const SliverToBoxAdapter(child: SizedBox(height: 10)),
 
-        // Search bar — soft pill, no heavy borders
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Container(
-            decoration: BoxDecoration(
-              color: _cardFill.withOpacity(0.55),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: _outline.withOpacity(0.14), width: 1)),
-            child: TextField(
-              controller: _searchCtrl,
-              style: GoogleFonts.nunito(fontSize: 13, color: _brown),
-              onChanged: (v) => setState(() => _query = v),
-              decoration: InputDecoration(
-                hintText: 'Search by title, notes, topic...',
-                hintStyle: GoogleFonts.nunito(fontSize: 13,
-                  color: _brownLt.withOpacity(0.4)),
-                prefixIcon: Icon(Icons.search_rounded, size: 17,
-                  color: _brownLt.withOpacity(0.45)),
-                suffixIcon: _query.isNotEmpty ? GestureDetector(
-                  onTap: () { _searchCtrl.clear(); setState(() => _query = ''); },
-                  child: Icon(Icons.close_rounded, size: 15,
-                    color: _brownLt.withOpacity(0.5)),
-                ) : null,
-                border: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 12, vertical: 11)),
-            ),
+              // Sessions list (or loading / empty state)
+              if (_loading)
+                const SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(
+                    child: CircularProgressIndicator(strokeWidth: 2, color: _pinkHdr)),
+                )
+              else if (filtered.isEmpty)
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(_fetchError != null
+                            ? Icons.error_outline_rounded
+                            : Icons.search_off_rounded,
+                      size: 40,
+                      color: (_fetchError != null ? _coralHdr : _brownLt)
+                          .withOpacity(0.35)),
+                    const SizedBox(height: 8),
+                    Text(_fetchError != null
+                            ? "Couldn't load sessions"
+                            : (_query.isNotEmpty || _filterType != 'all'
+                                ? 'No matching sessions' : 'No sessions yet'),
+                      style: GoogleFonts.gaegu(fontSize: 18,
+                        fontWeight: FontWeight.w700, color: _brownLt)),
+                    if (_fetchError != null) ...[
+                      const SizedBox(height: 6),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 32),
+                        child: Text(_fetchError!,
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.nunito(
+                            fontSize: 12, color: _brownLt.withOpacity(0.8))),
+                      ),
+                      const SizedBox(height: 10),
+                      GestureDetector(
+                        onTap: _refresh,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 7),
+                          decoration: BoxDecoration(
+                            color: _skyHdr.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: _skyHdr.withOpacity(0.3))),
+                          child: Text('Try again', style: GoogleFonts.nunito(
+                            fontSize: 12, fontWeight: FontWeight.w800,
+                            color: _skyHdr)),
+                        ),
+                      ),
+                    ] else if (_query.isEmpty && _filterType == 'all')
+                      Text('Complete your first session!', style: GoogleFonts.nunito(
+                        fontSize: 13, color: _brownLt.withOpacity(0.6))),
+                  ])),
+                )
+              else
+                SliverPadding(
+                  padding: EdgeInsets.fromLTRB(16, 0, 16, hasSelection ? 80 : 16),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (_, i) => _sessionTile(filtered[i], i),
+                      childCount: filtered.length,
+                    ),
+                  ),
+                ),
+            ],
           ),
-        ),
-        const SizedBox(height: 10),
 
-        // Filter chips
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(children: [
-              _filterChip('all', 'All', Icons.list_rounded, _brownLt),
-              const SizedBox(width: 6),
-              _filterChip('focused', 'Focused', Icons.center_focus_strong_rounded, _pinkHdr),
-              const SizedBox(width: 6),
-              _filterChip('review', 'Review', Icons.replay_rounded, _skyHdr),
-              const SizedBox(width: 6),
-              _filterChip('practice', 'Practice', Icons.edit_note_rounded, _greenHdr),
-              const SizedBox(width: 6),
-              _filterChip('lecture', 'Lecture', Icons.headset_rounded, _purpleHdr),
-              // Select all / deselect all when in select mode
-              if (_selectMode) ...[
-                const SizedBox(width: 10),
+          if (hasSelection)
+            Positioned(
+              left: 0, right: 0, bottom: 0,
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                border: Border(top: BorderSide(color: _outline.withOpacity(0.08)))),
+              child: Row(children: [
+                Text('${selectedSessions.length} selected',
+                  style: GoogleFonts.nunito(fontSize: 12,
+                    fontWeight: FontWeight.w600, color: _brownLt)),
+                const Spacer(),
+                // Export combined
                 GestureDetector(
-                  onTap: () => setState(() {
-                    if (_selected.length == filtered.length) {
-                      _selected.clear();
-                    } else {
-                      _selected.clear();
-                      for (int i = 0; i < filtered.length; i++) _selected.add(i);
-                    }
-                  }),
+                  onTap: () => _exportSessionsPdf(selectedSessions,
+                    fileName: 'cerebro_selected_${selectedSessions.length}_sessions.pdf'),
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                     decoration: BoxDecoration(
-                      color: _skyHdr.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: _skyHdr.withOpacity(0.25))),
-                    child: Text(
-                      _selected.length == filtered.length ? 'Deselect All' : 'Select All',
-                      style: GoogleFonts.nunito(fontSize: 11,
-                        fontWeight: FontWeight.w700, color: _skyHdr)),
+                      gradient: LinearGradient(colors: [_coralHdr, _pinkHdr]),
+                      borderRadius: BorderRadius.circular(10),
+                      boxShadow: [BoxShadow(
+                        color: _coralHdr.withOpacity(0.2),
+                        blurRadius: 4, offset: const Offset(0, 2))]),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      const Icon(Icons.merge_type_rounded, size: 13, color: Colors.white),
+                      const SizedBox(width: 4),
+                      Text('Combined PDF', style: GoogleFonts.nunito(
+                        fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white)),
+                    ]),
                   ),
                 ),
-              ],
-            ]),
-          ),
-        ),
-        const SizedBox(height: 10),
-
-        // Sessions list
-        Expanded(child: widget.loading
-          ? Center(child: CircularProgressIndicator(strokeWidth: 2, color: _pinkHdr))
-          : filtered.isEmpty
-            ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Icon(Icons.search_off_rounded, size: 40,
-                  color: _brownLt.withOpacity(0.3)),
-                const SizedBox(height: 8),
-                Text(_query.isNotEmpty || _filterType != 'all'
-                    ? 'No matching sessions' : 'No sessions yet',
-                  style: GoogleFonts.gaegu(fontSize: 18,
-                    fontWeight: FontWeight.w700, color: _brownLt)),
-                if (_query.isEmpty && _filterType == 'all')
-                  Text('Complete your first session!', style: GoogleFonts.nunito(
-                    fontSize: 13, color: _brownLt.withOpacity(0.6))),
-              ]))
-            : ListView.builder(
-                controller: scrollCtrl,
-                padding: EdgeInsets.fromLTRB(16, 0, 16,
-                  hasSelection ? 70 : 16),
-                itemCount: filtered.length,
-                itemBuilder: (_, i) => _sessionTile(filtered[i], i))),
-
-        if (hasSelection)
-          Container(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              border: Border(top: BorderSide(color: _outline.withOpacity(0.08)))),
-            child: Row(children: [
-              Text('${selectedSessions.length} selected',
-                style: GoogleFonts.nunito(fontSize: 12,
-                  fontWeight: FontWeight.w600, color: _brownLt)),
-              const Spacer(),
-              // Export combined
-              GestureDetector(
-                onTap: () => _exportSessionsPdf(selectedSessions,
-                  fileName: 'cerebro_selected_${selectedSessions.length}_sessions.pdf'),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(colors: [_coralHdr, _pinkHdr]),
-                    borderRadius: BorderRadius.circular(10),
-                    boxShadow: [BoxShadow(
-                      color: _coralHdr.withOpacity(0.2),
-                      blurRadius: 4, offset: const Offset(0, 2))]),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    const Icon(Icons.merge_type_rounded, size: 13, color: Colors.white),
-                    const SizedBox(width: 4),
-                    Text('Combined PDF', style: GoogleFonts.nunito(
-                      fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white)),
-                  ]),
+                const SizedBox(width: 8),
+                // Export each separately
+                GestureDetector(
+                  onTap: () => _exportEachSessionPdf(selectedSessions),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(colors: [_skyHdr, _purpleHdr]),
+                      borderRadius: BorderRadius.circular(10),
+                      boxShadow: [BoxShadow(
+                        color: _skyHdr.withOpacity(0.2),
+                        blurRadius: 4, offset: const Offset(0, 2))]),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      const Icon(Icons.file_copy_rounded, size: 13, color: Colors.white),
+                      const SizedBox(width: 4),
+                      Text('Each as PDF', style: GoogleFonts.nunito(
+                        fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white)),
+                    ]),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              // Export each separately
-              GestureDetector(
-                onTap: () => _exportEachSessionPdf(selectedSessions),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(colors: [_skyHdr, _purpleHdr]),
-                    borderRadius: BorderRadius.circular(10),
-                    boxShadow: [BoxShadow(
-                      color: _skyHdr.withOpacity(0.2),
-                      blurRadius: 4, offset: const Offset(0, 2))]),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    const Icon(Icons.file_copy_rounded, size: 13, color: Colors.white),
-                    const SizedBox(width: 4),
-                    Text('Each as PDF', style: GoogleFonts.nunito(
-                      fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white)),
-                  ]),
-                ),
-              ),
-            ]),
+              ]),
+            ),
           ),
       ]),
     );
@@ -4478,30 +4955,40 @@ class _PastSessionsSheetState extends State<_PastSessionsSheet> {
           setState(() => _expandedIndex = isExpanded ? null : index);
         }
       },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
+      child: Container(
+        // Why uniform border + ClipRRect + Row(accent | content):
+        // The previous version used Border(left: 3-4px, top/right/bottom: 1px)
+        // combined with BorderRadius.circular(14). Flutter's Border.paint
+        // asserts that borderRadius MUST be null when border sides have
+        // different widths or colors. In debug this throws; in release the
+        // paint pipeline falls through and child rendering becomes unreliable
+        // — which is why every tile rendered as an empty white rectangle.
+        // Now: uniform Border.all + a 4px colored left accent as a sibling
+        // in a Row, all clipped to the rounded corners. Identical visual
+        // intent, but legal under Flutter's painter contract.
         margin: const EdgeInsets.only(bottom: 10),
         decoration: BoxDecoration(
-          color: isSelected
-              ? _oliveBg.withOpacity(0.6)
-              : _cardFill.withOpacity(0.6),
+          color: isSelected ? _oliveBg : Colors.white,
           borderRadius: BorderRadius.circular(14),
-          border: Border(
-            left: BorderSide(color: typeColor.withOpacity(0.65),
-              width: isExpanded ? 4 : 3),
-            top: BorderSide(
-              color: isSelected
-                  ? _oliveDk.withOpacity(0.4)
-                  : _outline.withOpacity(0.14), width: 1),
-            right: BorderSide(
-              color: isSelected
-                  ? _oliveDk.withOpacity(0.4)
-                  : _outline.withOpacity(0.14), width: 1),
-            bottom: BorderSide(
-              color: isSelected
-                  ? _oliveDk.withOpacity(0.4)
-                  : _outline.withOpacity(0.14), width: 1))),
-        child: Column(children: [
+          boxShadow: [BoxShadow(
+            color: _outline.withOpacity(0.06),
+            blurRadius: 6, offset: const Offset(0, 2))],
+          border: Border.all(
+            color: isSelected
+                ? _oliveDk.withOpacity(0.4)
+                : _outline.withOpacity(0.22),
+            width: 1)),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: IntrinsicHeight(child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Colored type accent (left strip)
+              Container(
+                width: isExpanded ? 4 : 3,
+                color: typeColor.withOpacity(0.75)),
+              // Content column
+              Expanded(child: Column(children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 12, 12, 4),
             child: Row(crossAxisAlignment: CrossAxisAlignment.center,
@@ -4677,8 +5164,10 @@ class _PastSessionsSheetState extends State<_PastSessionsSheet> {
               ],
             )),
           ],
-        ]),
-      ),
+        ])),
+              ])),
+            ),
+          ),
     );
   }
 

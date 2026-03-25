@@ -19,12 +19,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cerebro_app/config/constants.dart';
+import 'package:cerebro_app/config/router.dart';
 import 'package:cerebro_app/providers/auth_provider.dart';
 import 'package:cerebro_app/providers/dashboard_provider.dart';
 import 'package:cerebro_app/services/api_service.dart';
 import 'package:cerebro_app/models/avatar_config.dart';
 import 'package:cerebro_app/widgets/mood_sticker.dart';
 import 'package:cerebro_app/screens/home/home_screen.dart';
+import 'package:go_router/go_router.dart';
 
 const _ombre1   = Color(0xFFFFFBF7);
 const _ombre2   = Color(0xFFFFF8F3);
@@ -64,6 +66,58 @@ const _blueLtDk = Color(0xFF4A8FAD);   // deeper blue — text + accents on _blu
 const _pinkLt   = Color(0xFFFFD5F5);   // --pink-lt
 const _rosePink = Color(0xFFF7AEAE);   // Log Symptom popup fill
 const _rosePinkDk = Color(0xFFA85058); // deeper rose — text + accents on _rosePink
+
+// Mirrors symptom_screen.dart so the modal "Log a Symptom" dialog
+// shows the same tailored chip row. Keys are lowercased substrings
+// matched against the user's `medical_conditions` from /auth/me.
+const _conditionSuggestionsModal = <String, List<String>>{
+  'migraine': ['Aura', 'Photophobia', 'Phonophobia', 'Throbbing Pain', 'Nausea'],
+  'adhd': ['Restlessness', 'Brain Fog', 'Focus Crash', 'Irritability'],
+  'anxiety': ['Racing Heart', 'Chest Tightness', 'Restlessness', 'Shortness of Breath', 'Panic'],
+  'depression': ['Fatigue', 'Low Motivation', 'Brain Fog', 'Insomnia'],
+  'pcos': ['Cramps', 'Bloating', 'Acne Flare', 'Fatigue', 'Mood Swings'],
+  'asthma': ['Shortness of Breath', 'Wheezing', 'Chest Tightness', 'Cough'],
+  'diabetes': ['Low Blood Sugar', 'High Blood Sugar', 'Thirst', 'Blurred Vision', 'Fatigue'],
+  'ibs': ['Bloating', 'Cramps', 'Diarrhea', 'Constipation', 'Stomach Pain'],
+  'insomnia': ['Exhaustion', 'Brain Fog', 'Irritability', 'Headache'],
+  'hypertension': ['Headache', 'Dizziness', 'Chest Tightness'],
+  'dyslexia': ['Eye Strain', 'Focus Crash', 'Brain Fog'],
+  'eczema': ['Skin Itch', 'Skin Flare', 'Dry Skin'],
+};
+
+const _medicationSideEffectsModal = <String, List<String>>{
+  'adderall': ['Appetite Loss', 'Insomnia', 'Jitters', 'Dry Mouth'],
+  'ritalin': ['Appetite Loss', 'Insomnia', 'Jitters'],
+  'vyvanse': ['Appetite Loss', 'Insomnia', 'Jitters'],
+  'methylphenidate': ['Appetite Loss', 'Insomnia', 'Jitters'],
+  'concerta': ['Appetite Loss', 'Insomnia', 'Jitters'],
+  'sertraline': ['Nausea', 'Dry Mouth', 'Drowsiness'],
+  'zoloft': ['Nausea', 'Dry Mouth', 'Drowsiness'],
+  'fluoxetine': ['Nausea', 'Insomnia', 'Drowsiness'],
+  'prozac': ['Nausea', 'Insomnia', 'Drowsiness'],
+  'escitalopram': ['Nausea', 'Drowsiness', 'Dry Mouth'],
+  'lexapro': ['Nausea', 'Drowsiness', 'Dry Mouth'],
+  'ibuprofen': ['Stomach Pain', 'Heartburn', 'Nausea'],
+  'aspirin': ['Stomach Pain', 'Heartburn'],
+  'metformin': ['Nausea', 'Diarrhea', 'Stomach Pain'],
+  'birth control': ['Nausea', 'Headache', 'Mood Swings'],
+  'contraceptive': ['Nausea', 'Headache', 'Mood Swings'],
+  'cetirizine': ['Drowsiness', 'Dry Mouth'],
+  'loratadine': ['Drowsiness', 'Dry Mouth'],
+  'antihistamine': ['Drowsiness', 'Dry Mouth'],
+  'xanax': ['Drowsiness', 'Brain Fog'],
+  'lorazepam': ['Drowsiness', 'Brain Fog'],
+  'atorvastatin': ['Muscle Pain', 'Fatigue'],
+  'statin': ['Muscle Pain', 'Fatigue'],
+};
+
+const _conditionTriggersModal = <String, List<String>>{
+  'migraine': ['Bright light', 'Loud noise', 'Menstruation'],
+  'asthma': ['Pollen', 'Exercise', 'Cold air'],
+  'ibs': ['Specific foods', 'Anxiety'],
+  'anxiety': ['Deadlines', 'Exams', 'Social pressure'],
+  'adhd': ['Overstimulation', 'Boredom'],
+};
 
 //  HEALTH DATA MODEL + PROVIDER
 class HealthData {
@@ -591,11 +645,79 @@ class _HealthTabState extends ConsumerState<HealthTab>
   late AnimationController _enterCtrl;
   bool _insightsOpen = false;
 
+  // Loaded once in initState from /auth/me + /health/medications.
+  // The Log-a-Symptom modal reads these to surface tailored chips.
+  List<String> _userConditions = [];
+  List<String> _userMedications = [];
+  List<String> _suggestedSymptoms = [];
+  List<String> _extraTriggers = [];
+
   @override
   void initState() {
     super.initState();
     _enterCtrl = AnimationController(
       vsync: this, duration: const Duration(milliseconds: 1000))..forward();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadPersonalization());
+  }
+
+  /// Pull the user's medical conditions + medications and derive
+  /// the symptom / trigger suggestion lists. Best-effort — failures
+  /// just leave the lists empty so the modal falls back to defaults.
+  Future<void> _loadPersonalization() async {
+    try {
+      final api = ref.read(apiServiceProvider);
+      List<String> conds = [];
+      List<String> meds = [];
+      try {
+        final meRes = await api.get('/auth/me');
+        final me = Map<String, dynamic>.from(meRes.data ?? {});
+        conds = List<String>.from(me['medical_conditions'] ?? const []);
+      } catch (_) {}
+      try {
+        final medsRes = await api.get('/health/medications');
+        final list = List<dynamic>.from(medsRes.data ?? const []);
+        meds = list
+            .map((m) => (m['name'] ?? '').toString())
+            .where((s) => s.isNotEmpty)
+            .toList();
+      } catch (_) {}
+
+      final suggested = <String>[];
+      void addAll(Iterable<String> xs) {
+        for (final s in xs) { if (!suggested.contains(s)) suggested.add(s); }
+      }
+      for (final raw in conds) {
+        final key = raw.toLowerCase().trim();
+        _conditionSuggestionsModal.forEach((k, v) {
+          if (key.contains(k)) addAll(v);
+        });
+      }
+      for (final raw in meds) {
+        final key = raw.toLowerCase().trim();
+        _medicationSideEffectsModal.forEach((k, v) {
+          if (key.contains(k)) addAll(v);
+        });
+      }
+
+      final extraTrig = <String>[];
+      for (final raw in conds) {
+        final key = raw.toLowerCase().trim();
+        _conditionTriggersModal.forEach((k, v) {
+          if (key.contains(k)) {
+            for (final t in v) { if (!extraTrig.contains(t)) extraTrig.add(t); }
+          }
+        });
+      }
+
+      if (mounted) {
+        setState(() {
+          _userConditions = conds;
+          _userMedications = meds;
+          _suggestedSymptoms = suggested.length > 8 ? suggested.sublist(0, 8) : suggested;
+          _extraTriggers = extraTrig;
+        });
+      }
+    } catch (_) {/* silent — personalisation is optional */}
   }
 
   int? _prevTab;
@@ -1973,8 +2095,18 @@ class _HealthTabState extends ConsumerState<HealthTab>
               const Text('Health Insights', style: TextStyle(
                 fontFamily: 'Bitroad', fontSize: 18, color: _brown)),
               const Spacer(),
-              Text('AI →', style: GoogleFonts.nunito(
-                fontSize: 11, fontWeight: FontWeight.w700, color: _pinkDk)),
+              // Arrow now navigates to the cross-domain Insights screen so
+              // users can drill into correlations across study + health.
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => context.push(Routes.insights),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 4, vertical: 2),
+                  child: Text('See all →', style: GoogleFonts.nunito(
+                    fontSize: 11, fontWeight: FontWeight.w700, color: _pinkDk)),
+                ),
+              ),
             ]),
           ),
           Divider(height: 1, color: _outline.withOpacity(0.08)),
@@ -3225,10 +3357,22 @@ class _HealthTabState extends ConsumerState<HealthTab>
     int intensity = 5;
     final selectedTriggers = <String>[];
     final customCtrl = TextEditingController();
-    final types = ['Headache', 'Fatigue', 'Back Pain', 'Eye Strain',
-      'Nausea', 'Dizziness', 'Stomach Pain', 'Other'];
-    final triggers = ['Studying', 'Lack of sleep', 'Stress', 'Caffeine',
+    // Prepend any condition-/medication-derived suggestions so they
+    // appear first in the picker. 'Other' always stays last.
+    final baseTypes = ['Headache', 'Fatigue', 'Back Pain', 'Eye Strain',
+      'Nausea', 'Dizziness', 'Stomach Pain'];
+    final types = <String>[
+      ..._suggestedSymptoms,
+      ...baseTypes.where((t) => !_suggestedSymptoms.contains(t)),
+      'Other',
+    ];
+    // Merge condition-specific triggers ahead of the generic set.
+    final baseTriggers = ['Studying', 'Lack of sleep', 'Stress', 'Caffeine',
       'Dehydration', 'Screen time', 'Poor posture', 'Skipped meals'];
+    final triggers = <String>[
+      ..._extraTriggers,
+      ...baseTriggers.where((t) => !_extraTriggers.contains(t)),
+    ];
 
     // Gamified sticker-stamp treatment, sage palette — same
     // family as Add Med + Log Sleep so all three core logging
@@ -3252,15 +3396,27 @@ class _HealthTabState extends ConsumerState<HealthTab>
             opacity: anim.value.clamp(0.0, 1.0),
             child: Transform.scale(
               scale: 0.85 + curved.value * 0.15,
+              // Height-bounded ConstrainedBox so the ScrollView scrolls
+              // internally instead of letting Center overflow the
+              // viewport on short screens.
+              //
+              // Width: widen to 720 when we have condition-aware
+              // suggested chips so they spread horizontally instead of
+              // forcing the user to scroll a tall column. When there are
+              // no suggestions, keep the default narrow 560 so the card
+              // stays compact and doesn't feel empty.
               child: Center(
-                child: SingleChildScrollView(
-                  child: Padding(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: _suggestedSymptoms.isNotEmpty ? 720 : 560,
+                    maxHeight: MediaQuery.of(ctx).size.height -
+                        MediaQuery.of(ctx).viewInsets.bottom - 48,
+                  ),
+                  child: SingleChildScrollView(
                     padding: EdgeInsets.fromLTRB(20, 24, 20,
                       MediaQuery.of(ctx).viewInsets.bottom + 24),
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 560),
-                      child: StatefulBuilder(
-                        builder: (sCtx, setSheetState) => _buildSymptomDialog(
+                    child: StatefulBuilder(
+                      builder: (sCtx, setSheetState) => _buildSymptomDialog(
                           ctx: ctx,
                           type: type,
                           isCustom: isCustom,
@@ -3281,8 +3437,7 @@ class _HealthTabState extends ConsumerState<HealthTab>
                 ),
               ),
             ),
-          ),
-        );
+          );
       },
     );
   }
@@ -3394,6 +3549,45 @@ class _HealthTabState extends ConsumerState<HealthTab>
             ),
           ]),
           const SizedBox(height: 22),
+
+          // Only rendered when the user has at least one matched
+          // condition/medication. Purple tint so they're obviously
+          // distinct from the generic choices below.
+          if (_suggestedSymptoms.isNotEmpty) ...[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Padding(
+                padding: const EdgeInsets.only(left: 2, bottom: 8),
+                child: Row(children: [
+                  const Icon(Icons.auto_awesome_rounded,
+                    size: 16, color: _purpleHdr),
+                  const SizedBox(width: 6),
+                  Text('suggested for you',
+                    style: GoogleFonts.gaegu(
+                      fontSize: 15, fontWeight: FontWeight.w700,
+                      color: _brown, letterSpacing: 0.3)),
+                ]),
+              ),
+            ),
+            Wrap(spacing: 8, runSpacing: 10,
+              children: _suggestedSymptoms.map((t) {
+                final on = type == t && !isCustom;
+                return _stickerPickChip(
+                  label: t,
+                  selected: on,
+                  // Purple fill on selection so these visually
+                  // separate from the rose-pink "generic" chips.
+                  selectedColor: _purpleLt,
+                  selectedTextColor: _brown,
+                  onTap: () => setSheetState(() {
+                    isCustom = false; type = t;
+                    onTypeChange(t, false);
+                  }),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 16),
+          ],
 
           Align(
             alignment: Alignment.centerLeft,

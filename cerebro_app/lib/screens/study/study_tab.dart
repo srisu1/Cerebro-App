@@ -23,6 +23,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cerebro_app/config/router.dart';
 import 'package:cerebro_app/providers/auth_provider.dart';
 import 'package:cerebro_app/providers/dashboard_provider.dart';
+import 'package:cerebro_app/providers/study_session_provider.dart';
 import 'package:cerebro_app/services/api_service.dart';
 import 'package:cerebro_app/screens/home/home_screen.dart';
 
@@ -118,6 +119,22 @@ class StudyData {
   );
 }
 
+/// Defensive numeric coercion.
+///
+/// Backend serializes SQLAlchemy `Decimal` columns (current_proficiency,
+/// target_proficiency, quiz `score_achieved`, etc.) as JSON *strings*
+/// ("80.0"), not floats. Calling `.toDouble()` on a String throws
+/// `NoSuchMethodError`, and because the per-endpoint blocks below are
+/// wrapped in `try { ... } catch (_) {}`, a single bad row used to
+/// silently empty the whole subjects list (→ "0 subjects") and zero out
+/// avgQuizScore (→ "0% avg"). This helper accepts num *or* String.
+double _asDoubleAny(dynamic v, [double fallback = 0.0]) {
+  if (v == null) return fallback;
+  if (v is num) return v.toDouble();
+  if (v is String) return double.tryParse(v) ?? fallback;
+  return fallback;
+}
+
 class StudyNotifier extends StateNotifier<StudyData> {
   final ApiService _api;
   StudyNotifier(this._api) : super(const StudyData()) { loadAll(); }
@@ -145,8 +162,14 @@ class StudyNotifier extends StateNotifier<StudyData> {
       final now = DateTime.now();
       final weekAgo = now.subtract(const Duration(days: 7));
 
-      final sessRes = await _api.get('/study/sessions');
-      final sessions = sessRes.data is List ? sessRes.data as List : [];
+      // Isolate the sessions fetch so a network / parse failure here
+      // can't short-circuit the subjects + quizzes + flashcards loads
+      // and strand the dashboard showing "0 subjects · 0% avg".
+      List<dynamic> sessions = const [];
+      try {
+        final sessRes = await _api.get('/study/sessions');
+        sessions = sessRes.data is List ? sessRes.data as List : const [];
+      } catch (_) {}
       int todayMin = 0, todayN = 0, focusS = 0, focusN = 0;
       int weekMin = 0, weekN = 0, totalXp = 0;
       final List<int> wk = [0, 0, 0, 0, 0, 0, 0];
@@ -178,12 +201,22 @@ class StudyNotifier extends StateNotifier<StudyData> {
       try {
         final r = await _api.get('/study/subjects');
         for (final s in (r.data is List ? r.data as List : [])) {
+          // current_proficiency / target_proficiency arrive as Decimal
+          // strings — use the tolerant helper so one row can't blow up
+          // the whole subjects list and strand the dashboard at "0".
           subs.add({
             'id': s['id'], 'name': s['name'] ?? 'Untitled',
             'code': s['code'] ?? '', 'color': s['color'] ?? '#9DD4F0',
             'icon': s['icon'] ?? 'book',
-            'proficiency': (s['current_proficiency'] ?? 0.0).toDouble(),
-            'target': (s['target_proficiency'] ?? 100.0).toDouble(),
+            'proficiency': _asDoubleAny(s['current_proficiency'], 0.0),
+            'target': _asDoubleAny(s['target_proficiency'], 100.0),
+            // Derived topic counts from the enriched /study/subjects response.
+            'topics_total': (s['topics_total'] is int)
+                ? s['topics_total'] as int
+                : int.tryParse(s['topics_total']?.toString() ?? '') ?? 0,
+            'topics_mastered': (s['topics_mastered'] is int)
+                ? s['topics_mastered'] as int
+                : int.tryParse(s['topics_mastered']?.toString() ?? '') ?? 0,
           });
         }
       } catch (_) {}
@@ -212,8 +245,11 @@ class StudyNotifier extends StateNotifier<StudyData> {
         final quizzes = qRes.data is List ? qRes.data as List : [];
         quizCount = quizzes.length;
         for (final q in quizzes) {
-          final sc = (q['score_achieved'] ?? 0).toDouble();
-          final mx = (q['max_score'] ?? 100).toDouble();
+          // Quiz scores are Decimal on the backend → JSON string. Use
+          // the tolerant coercion so a single row can't drop the
+          // average to 0% for the whole dashboard.
+          final sc = _asDoubleAny(q['score_achieved'], 0);
+          final mx = _asDoubleAny(q['max_score'], 100);
           final pct = mx > 0 ? sc / mx * 100 : 0.0;
           scoreSum += pct;
           final weak = q['weak_topics'];
@@ -502,33 +538,67 @@ class _StudyTabState extends ConsumerState<StudyTab>
     ]);
   }
 
-  //  TIMER CENTER — floating, label + big time + avg focus + 3 btns
+  //  TIMER CENTER — floating, label + big time + status + 3 btns
   //  Used in BOTH desktop hero (centered) and narrow stacked layout
+  //
+  //  Reactive to studySessionProvider:
+  //    • idle    → shows today's totals + Play (start) Pause Stop (disabled)
+  //    • running → shows live elapsed (HH:MM:SS) + Pause + Stop active
+  //    • paused  → shows live elapsed (frozen) + Resume + Stop active
+  //
+  //  Pause is the same button as Resume — its icon swaps based on phase.
   Widget _buildTimerCenter(StudyData s) {
+    // Watch the global session — every tick of the provider's 1Hz ticker
+    // rebuilds this subtree so the elapsed display advances live.
+    final session = ref.watch(studySessionProvider);
+    final notifier = ref.read(studySessionProvider.notifier);
+    final live = session.isLive;
+
+    // Display string switches between "12m" (today's totals) and the live
+    // session timer (MM:SS for under an hour, H:MM:SS otherwise) so the
+    // hero feels like a real stopwatch when a session is running.
+    final timeLabel = live
+        ? _formatLiveTime(session.elapsedSeconds)
+        : _fmt(s.todayMinutes);
+
+    // Subtitle reflects current session state, falling back to the
+    // average focus / "ready to study" prompts when idle.
+    final subtitle = live
+        ? (session.phase == SessionPhase.paused
+            ? 'Paused — ${session.distractions} distraction${session.distractions == 1 ? '' : 's'}'
+            : (session.subjectName ?? session.title ?? 'Focus session'))
+        : (s.avgFocus > 0
+            ? '${s.avgFocus}% average focus'
+            : 'Ready to start studying?');
+
+    final isPaused = session.phase == SessionPhase.paused;
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // .tc-label: Nunito 11px uppercase letter-spaced, ink-soft
+        // .tc-label — when live, label flips to "LIVE SESSION" so the user
+        // can tell at a glance the timer is real-time, not a daily total.
         Text(
-          "TODAY'S FOCUS",
+          live ? 'LIVE SESSION' : "TODAY'S FOCUS",
           style: GoogleFonts.nunito(
             fontSize: 11, fontWeight: FontWeight.w700,
-            letterSpacing: 1.0, color: _inkSoft),
+            letterSpacing: 1.0,
+            color: live ? _oliveDk : _inkSoft),
         ),
         const SizedBox(height: 2),
-        // .tc-time: Gaegu 4.6rem (~74px) — big bold time
+        // .tc-time: Gaegu 4.6rem (~74px) — big bold time. Shrinks slightly
+        // when displaying the live HH:MM:SS so it never overflows the hero.
         Text(
-          _fmt(s.todayMinutes),
+          timeLabel,
           style: GoogleFonts.gaegu(
-            fontSize: 74, fontWeight: FontWeight.w700,
+            fontSize: live ? 60 : 74,
+            fontWeight: FontWeight.w700,
             color: _brown, height: 0.85),
         ),
         const SizedBox(height: 6),
         // .tc-sub
         Text(
-          s.avgFocus > 0
-            ? '${s.avgFocus}% average focus'
-            : 'Ready to start studying?',
+          subtitle,
           style: GoogleFonts.gaegu(
             fontSize: 16, fontWeight: FontWeight.w700,
             color: _inkSoft),
@@ -539,6 +609,9 @@ class _StudyTabState extends ConsumerState<StudyTab>
         //       box-shadow:0 4px 0 rgba(110,88,72,.5)} — UNIFORM brown border+shadow
         // Inner SVG: width:18px;height:18px (play triangle a bit larger visually)
         Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          // PLAY button — always routes into the full session screen.
+          // If a live session exists, the screen reads the provider and
+          // renders running state; otherwise it shows the setup picker.
           _CircleBtn(
             gradTop: _olive, gradBot: _oliveDk,
             borderColor: _outline, shadowColor: _outline,
@@ -546,22 +619,75 @@ class _StudyTabState extends ConsumerState<StudyTab>
             onTap: () => context.push(Routes.studySession),
           ),
           const SizedBox(width: 14),
+          // PAUSE / RESUME — same physical button, swaps icon based on
+          // phase. Disabled (greyed) when idle.
           _CircleBtn(
-            gradTop: const Color(0xFFE4BC83), gradBot: const Color(0xFFC8A060),
+            gradTop: live
+                ? const Color(0xFFE4BC83)
+                : const Color(0xFFE4BC83).withOpacity(0.35),
+            gradBot: live
+                ? const Color(0xFFC8A060)
+                : const Color(0xFFC8A060).withOpacity(0.35),
             borderColor: _outline, shadowColor: _outline,
-            icon: Icons.pause_rounded, size: 48, iconSize: 18,
-            onTap: () => _comingSoon('Pause/resume'),
+            icon: isPaused
+                ? Icons.play_arrow_rounded
+                : Icons.pause_rounded,
+            size: 48, iconSize: 18,
+            onTap: live
+                ? () {
+                    if (isPaused) {
+                      notifier.resume();
+                    } else {
+                      notifier.pause();
+                    }
+                  }
+                : () => _comingSoon('Start a session first'),
           ),
           const SizedBox(width: 14),
+          // STOP — opens the End Session bottom sheet (Save / Discard /
+          // Cancel). Disabled (greyed) when idle.
           _CircleBtn(
-            gradTop: const Color(0xFFF7AEAE), gradBot: const Color(0xFFE890B8),
+            gradTop: live
+                ? const Color(0xFFF7AEAE)
+                : const Color(0xFFF7AEAE).withOpacity(0.35),
+            gradBot: live
+                ? const Color(0xFFE890B8)
+                : const Color(0xFFE890B8).withOpacity(0.35),
             borderColor: _outline, shadowColor: _outline,
             icon: Icons.stop_rounded, size: 48, iconSize: 18,
-            onTap: () => _comingSoon('Stop session'),
+            onTap: live
+                ? () => _requestWrapUp()
+                : () => _comingSoon('Start a session first'),
           ),
         ]),
       ],
     );
+  }
+
+  /// Format elapsed seconds for the live hero timer.
+  ///   < 1h  →  MM:SS
+  ///   ≥ 1h  →  H:MM:SS
+  String _formatLiveTime(int sec) {
+    final h = sec ~/ 3600;
+    final m = (sec % 3600) ~/ 60;
+    final s = sec % 60;
+    String two(int n) => n.toString().padLeft(2, '0');
+    if (h > 0) return '$h:${two(m)}:${two(s)}';
+    return '${two(m)}:${two(s)}';
+  }
+
+  /// Send the user to the full Wrapped rating screen when they tap Stop.
+  ///
+  /// Ending a session is no longer a one-tap-and-done action — we want
+  /// users to consciously rate focus, add notes, and pick topics before
+  /// the row is finalized. We:
+  ///   1) Flip the provider's `endRequested` flag + pause the clock.
+  ///   2) Push the full session screen. Its adoption logic picks up the
+  ///      flag and jumps straight to its completion / rating phase.
+  Future<void> _requestWrapUp() async {
+    ref.read(studySessionProvider.notifier).requestEnd();
+    if (!mounted) return;
+    await context.push(Routes.studySession);
   }
 
   //  LEFT COLUMN (desktop) — Quick Actions + Overview
@@ -690,8 +816,18 @@ class _StudyTabState extends ConsumerState<StudyTab>
             onTap: () => context.push(Routes.flashcards),
           )),
           const SizedBox(width: 8),
-          // Empty 3rd slot — matches HTML <div style="flex:1"></div>
-          const Expanded(child: SizedBox.shrink()),
+          // History — opens the Past Sessions sheet. Previously the only
+          // path to past sessions was the setup phase of the session
+          // screen, which becomes unreachable once a session is live.
+          // This cell surfaces it as a first-class Hub affordance.
+          Expanded(child: _GameBtn(
+            icon: Icons.history_rounded, label: 'History',
+            gradTop: const Color(0xFFDDF6FF).withOpacity(0.42),
+            gradBot: const Color(0xFFDDF6FF).withOpacity(0.42),
+            border: _outline.withOpacity(0.22),
+            contentColor: _brown,
+            onTap: () => context.push(Routes.pastSessions),
+          )),
         ]),
       ],
     );
@@ -1215,6 +1351,117 @@ class _GameBtnState extends State<_GameBtn> {
           Text(widget.label, style: GoogleFonts.gaegu(fontSize: 14,
             fontWeight: FontWeight.w700, color: widget.contentColor),
             overflow: TextOverflow.ellipsis),
+        ]),
+      ),
+    );
+  }
+}
+
+//  END SESSION BOTTOM SHEET
+//  Shown when the user taps Stop on the hero (or triggers the
+//  cross-tab guard). Presents three clear choices:
+//     • Save    — focus_score slider + notes → PUT /sessions/{id}/end
+//     • Discard — marks the session as discarded (focus_score=1)
+//     • Cancel  — dismiss, session stays live
+class _EndSessionSheet extends ConsumerStatefulWidget {
+  final VoidCallback onSave;
+  final VoidCallback onDiscard;
+  const _EndSessionSheet({required this.onSave, required this.onDiscard});
+
+  @override
+  ConsumerState<_EndSessionSheet> createState() => _EndSessionSheetState();
+}
+
+class _EndSessionSheetState extends ConsumerState<_EndSessionSheet> {
+  @override
+  Widget build(BuildContext context) {
+    // Pull current session stats so the sheet can show the user what they
+    // actually did — "5m focused · 0 distractions" is far more useful than
+    // a generic "end session?" confirm.
+    final s = ref.watch(studySessionProvider);
+    final mins = (s.elapsedSeconds / 60).floor();
+    final secs = s.elapsedSeconds % 60;
+    final elapsed = mins > 0 ? '${mins}m ${secs}s' : '${secs}s';
+
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 20, right: 20, top: 20,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Drag handle
+          Center(
+            child: Container(
+              width: 48, height: 4,
+              decoration: BoxDecoration(
+                color: _outline.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text('End this session?',
+              style: GoogleFonts.gaegu(
+                  fontSize: 22, fontWeight: FontWeight.w700, color: _brown)),
+          const SizedBox(height: 6),
+          Text(
+            'You focused for $elapsed with ${s.distractions} '
+            'distraction${s.distractions == 1 ? '' : 's'}.',
+            style: GoogleFonts.gaegu(fontSize: 15, color: _inkSoft),
+          ),
+          const SizedBox(height: 20),
+          // Save button — primary, olive fill
+          _sheetBtn(
+            label: 'Save session',
+            bg: _olive, fg: Colors.white,
+            icon: Icons.check_rounded,
+            onTap: widget.onSave,
+          ),
+          const SizedBox(height: 10),
+          // Discard — muted, warns the user the session won't be counted
+          _sheetBtn(
+            label: 'Discard',
+            bg: const Color(0xFFF7AEAE), fg: _brown,
+            icon: Icons.delete_outline_rounded,
+            onTap: widget.onDiscard,
+          ),
+          const SizedBox(height: 10),
+          // Cancel — neutral
+          _sheetBtn(
+            label: 'Keep studying',
+            bg: _cardFill, fg: _brown,
+            icon: Icons.arrow_back_rounded,
+            onTap: () => Navigator.of(context).pop(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sheetBtn({
+    required String label,
+    required Color bg, required Color fg,
+    required IconData icon, required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        height: 52,
+        padding: const EdgeInsets.symmetric(horizontal: 18),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: _outline.withOpacity(0.4), width: 1.5),
+        ),
+        child: Row(children: [
+          Icon(icon, color: fg, size: 20),
+          const SizedBox(width: 10),
+          Text(label, style: GoogleFonts.gaegu(
+              fontSize: 16, fontWeight: FontWeight.w700, color: fg)),
         ]),
       ),
     );

@@ -688,7 +688,19 @@ class _WaterScreenState extends ConsumerState<WaterScreen>
 
     final weekGoalsMet =
         _history.where((g) => g >= _goal).length;
-    final bestStreak = 14; // Placeholder
+    // Compute longest consecutive run of goal-met days from actual
+    // history instead of a hardcoded 14 — nothing in this app should
+    // be static. Returns 0 when there's no history yet.
+    int bestStreak = 0;
+    int running = 0;
+    for (final g in _history) {
+      if (g >= _goal) {
+        running++;
+        if (running > bestStreak) bestStreak = running;
+      } else {
+        running = 0;
+      }
+    }
     final avgDaily = _history.isEmpty
         ? 0.0
         : _history.reduce((a, b) => a + b) / _history.length;
