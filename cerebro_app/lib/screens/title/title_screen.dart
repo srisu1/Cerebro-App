@@ -133,18 +133,32 @@ class _TitleScreenState extends ConsumerState<TitleScreen>
   Future<void> _go() async {
     final pr = await SharedPreferences.getInstance();
     if (!mounted) return;
-    final on = pr.getBool(AppConstants.onboardingCompleteKey) ?? false;
+    // The onboarding carousel and setup wizard are skipped for now.
+    // We mark both as "complete" so any downstream guards (HomeScreen,
+    // setup-flow redirects, avatar gate) don't bounce the user back in.
+    // Users get straight to login (if logged-out) or home (if logged-in).
+    // To re-enable the wizard, delete this block and restore the gated
+    // routing below.
+    await pr.setBool(AppConstants.onboardingCompleteKey, true);
+    await pr.setBool(AppConstants.setupCompleteKey, true);
+    await pr.setBool(AppConstants.avatarCreatedKey, true);
     final tk = pr.getString(AppConstants.accessTokenKey);
     final hasTk = tk != null && tk.isNotEmpty;
+    if (!mounted) return;
+    context.go(hasTk ? '/home' : '/login');
+    return;
+    // Original gated routing — restore by removing the override above:
+    // ignore: dead_code
+    final on = pr.getBool(AppConstants.onboardingCompleteKey) ?? false;
+    final tk2 = pr.getString(AppConstants.accessTokenKey);
+    final hasTk2 = tk2 != null && tk2.isNotEmpty;
     final su = pr.getBool(AppConstants.setupCompleteKey) ?? false;
     final av = pr.getBool(AppConstants.avatarCreatedKey) ?? false;
     if (!mounted) return;
-    // TODO: remove this line — skip to home for dashboard testing
-    context.go('/home'); return;
-    if (!on)    { context.go('/onboarding'); return; }
-    if (!hasTk) { context.go('/login'); return; }
-    if (!su)    { context.go('/setup'); return; }
-    if (!av)    { context.go('/avatar-setup'); return; }
+    if (!on)     { context.go('/onboarding'); return; }
+    if (!hasTk2) { context.go('/login'); return; }
+    if (!su)     { context.go('/setup'); return; }
+    if (!av)     { context.go('/avatar-setup'); return; }
     context.go('/home');
   }
 

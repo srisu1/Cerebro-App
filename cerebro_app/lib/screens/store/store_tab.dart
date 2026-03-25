@@ -16,6 +16,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:go_router/go_router.dart';
+import 'package:cerebro_app/config/constants.dart';
 import 'package:cerebro_app/screens/home/home_screen.dart';
 import 'package:cerebro_app/providers/auth_provider.dart';
 import 'package:cerebro_app/providers/dashboard_provider.dart';
@@ -132,33 +133,66 @@ class _StoreTabState extends ConsumerState<StoreTab>
     _loadOwnedItems();
   }
 
-  /// Load owned items from backend inventory + local cache
-  Future<void> _loadOwnedItems() async {
-    // Load from local cache first (instant UI)
+  /// Resolve a user-scoped storage key. Different accounts on the
+  /// same device MUST NOT share store inventory in local cache,
+  /// otherwise newly signed-up users see items pre-owned that they
+  /// never bought.
+  Future<String> _ownedKey() async {
     final prefs = await SharedPreferences.getInstance();
-    final cached = prefs.getStringList('store_owned') ?? [];
+    var userId = prefs.getString(AppConstants.userIdKey);
+    if (userId == null || userId.isEmpty) {
+      try {
+        final api = ref.read(apiServiceProvider);
+        final res = await api.get('/auth/me');
+        final m = Map<String, dynamic>.from(res.data ?? {});
+        userId = (m['id'] ?? m['email'] ?? '').toString();
+        if (userId.isNotEmpty) {
+          await prefs.setString(AppConstants.userIdKey, userId);
+        }
+      } catch (_) {}
+    }
+    return (userId == null || userId.isEmpty)
+        ? 'store_owned'
+        : 'store_owned__$userId';
+  }
+
+  /// Load owned items from backend inventory + local cache.
+  /// Backend is the source of truth; local cache is used only to
+  /// avoid a blank-UI flicker while the network call is in flight.
+  Future<void> _loadOwnedItems() async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = await _ownedKey();
+
+    // Load from user-scoped local cache first (instant UI)
+    final cached = prefs.getStringList(key) ?? <String>[];
     if (cached.isNotEmpty) {
       setState(() => _owned.addAll(cached));
     }
 
-    // Then sync from backend
+    // Then sync from backend. Backend is authoritative — we RESET
+    // the local set so a previous account's items can't linger.
     try {
       final api = ref.read(apiServiceProvider);
       final res = await api.get('/gamification/store/inventory');
       if (res.statusCode == 200) {
         final items = (res.data['items'] as List?) ?? [];
+        final fresh = <String>{};
         for (final item in items) {
           final id = item['id'] as String? ?? '';
-          if (id.isNotEmpty) {
-            _owned.add(id);
-            _ownedBackendIds.add(id);
-          }
+          if (id.isNotEmpty) fresh.add(id);
         }
-        setState(() {});
-        await prefs.setStringList('store_owned', _owned.toList());
+        setState(() {
+          _owned
+            ..clear()
+            ..addAll(fresh);
+          _ownedBackendIds
+            ..clear()
+            ..addAll(fresh);
+        });
+        await prefs.setStringList(key, _owned.toList());
       }
     } catch (_) {
-      // Offline — local cache is fine
+      // Offline — local (scoped) cache is fine
     }
   }
 
@@ -217,6 +251,45 @@ class _StoreTabState extends ConsumerState<StoreTab>
 
   @override
   Widget build(BuildContext context) {
+    // Re-fetch the store inventory any time the auth state flips
+    // (login, logout, token refresh that upgrades to authenticated).
+    // Without this, `_loadOwnedItems` only runs in initState — which
+    // means if User A stays on the Store tab instance after User B
+    // logs in, the set of owned items is still User A's.
+    //
+    // Scenarios covered:
+    //   · unauthenticated → authenticated (fresh login) — refetch
+    //   · authenticated   → authenticated with different userId — refetch
+    //     (authProvider doesn't carry userId, but the prefs wipe in
+    //     refreshUserScope has already cleared the scoped cache, so
+    //     _loadOwnedItems pulls cleanly from the backend)
+    //   · authenticated   → unauthenticated (logout) — clear in-memory
+    //     owned set so the next account doesn't see stale items while
+    //     the network call is in flight
+    ref.listen(authProvider, (prev, next) {
+      final wasAuth = prev?.status == AuthStatus.authenticated;
+      final isAuth  = next.status == AuthStatus.authenticated;
+      if (!wasAuth && isAuth) {
+        // Just logged in. Clear stale in-memory set, then refetch.
+        if (mounted) {
+          setState(() {
+            _owned.clear();
+            _ownedBackendIds.clear();
+          });
+        }
+        _loadOwnedItems();
+      } else if (wasAuth && !isAuth) {
+        // Logged out — wipe in-memory state so a subsequent
+        // re-mount doesn't flash previous items.
+        if (mounted) {
+          setState(() {
+            _owned.clear();
+            _ownedBackendIds.clear();
+          });
+        }
+      }
+    });
+
     final cat = _cats[_sel];
     return Stack(children: [
       Positioned.fill(child: Container(
@@ -532,7 +605,7 @@ class _StoreTabState extends ConsumerState<StoreTab>
       _owned.add(random.id);
       _ownedBackendIds.add(random.id);
     });
-    await prefs.setStringList('store_owned', _owned.toList());
+    await prefs.setStringList(await _ownedKey(), _owned.toList());
 
     _showPurchasePopup(random.n, random.a,
         'Surprise! You got ${random.n}!', itemId: random.id);
@@ -549,9 +622,10 @@ class _StoreTabState extends ConsumerState<StoreTab>
         _ownedBackendIds.add(item.id);
       });
 
-      // Persist to local cache
-      SharedPreferences.getInstance().then((prefs) {
-        prefs.setStringList('store_owned', _owned.toList());
+      // Persist to user-scoped local cache
+      _ownedKey().then((key) async {
+        final prefs = await SharedPreferences.getInstance();
+        prefs.setStringList(key, _owned.toList());
       });
 
       // Check achievements after purchase

@@ -40,6 +40,43 @@ const _symptomIcons = {
   'Dizziness': '💫',
   'Stomach Pain': '🤮',
   'Other': '🩹',
+  // Condition-specific
+  'Aura': '✨',
+  'Photophobia': '🌞',
+  'Phonophobia': '🔊',
+  'Throbbing Pain': '💥',
+  'Brain Fog': '🌫',
+  'Restlessness': '🌀',
+  'Focus Crash': '📉',
+  'Appetite Loss': '🍽',
+  'Insomnia': '🌙',
+  'Racing Heart': '❤',
+  'Chest Tightness': '🫁',
+  'Shortness of Breath': '💨',
+  'Panic': '😰',
+  'Low Motivation': '🥀',
+  'Cramps': '⚡',
+  'Bloating': '🎈',
+  'Acne Flare': '🔴',
+  'Wheezing': '🌬',
+  'Cough': '🤧',
+  'Low Blood Sugar': '🍯',
+  'High Blood Sugar': '🩸',
+  'Thirst': '💧',
+  'Blurred Vision': '👓',
+  'Diarrhea': '💩',
+  'Constipation': '⏳',
+  'Exhaustion': '🔋',
+  'Irritability': '😤',
+  'Skin Itch': '🦟',
+  'Skin Flare': '🌺',
+  'Dry Skin': '🏜',
+  'Jitters': '⚡',
+  'Dry Mouth': '🌵',
+  'Drowsiness': '😪',
+  'Heartburn': '🔥',
+  'Mood Swings': '🎭',
+  'Muscle Pain': '💪',
 };
 
 const _symptomTypes = [
@@ -53,6 +90,53 @@ const _symptomTypes = [
   'Other',
 ];
 
+// Seeded from common clinical presentations. Used to build a
+// "Suggested for you" chip row above the symptom picker so users
+// with known conditions get relevant one-taps instead of having to
+// pick "Other" + type a note.
+const _conditionSuggestions = <String, List<String>>{
+  'migraine': ['Aura', 'Photophobia', 'Phonophobia', 'Throbbing Pain', 'Nausea'],
+  'adhd': ['Restlessness', 'Brain Fog', 'Focus Crash', 'Irritability'],
+  'anxiety': ['Racing Heart', 'Chest Tightness', 'Restlessness', 'Shortness of Breath', 'Panic'],
+  'depression': ['Fatigue', 'Low Motivation', 'Brain Fog', 'Insomnia'],
+  'pcos': ['Cramps', 'Bloating', 'Acne Flare', 'Fatigue', 'Mood Swings'],
+  'asthma': ['Shortness of Breath', 'Wheezing', 'Chest Tightness', 'Cough'],
+  'diabetes': ['Low Blood Sugar', 'High Blood Sugar', 'Thirst', 'Blurred Vision', 'Fatigue'],
+  'ibs': ['Bloating', 'Cramps', 'Diarrhea', 'Constipation', 'Stomach Pain'],
+  'insomnia': ['Exhaustion', 'Brain Fog', 'Irritability', 'Headache'],
+  'hypertension': ['Headache', 'Dizziness', 'Chest Tightness'],
+  'dyslexia': ['Eye Strain', 'Focus Crash', 'Brain Fog'],
+  'eczema': ['Skin Itch', 'Skin Flare', 'Dry Skin'],
+};
+
+// Fragments are lowercased and matched by `contains()` so brand +
+// generic names both fire (e.g. "adderall", "methylphenidate").
+const _medicationSideEffects = <String, List<String>>{
+  'adderall': ['Appetite Loss', 'Insomnia', 'Jitters', 'Dry Mouth'],
+  'ritalin': ['Appetite Loss', 'Insomnia', 'Jitters'],
+  'vyvanse': ['Appetite Loss', 'Insomnia', 'Jitters'],
+  'methylphenidate': ['Appetite Loss', 'Insomnia', 'Jitters'],
+  'concerta': ['Appetite Loss', 'Insomnia', 'Jitters'],
+  'sertraline': ['Nausea', 'Dry Mouth', 'Drowsiness'],
+  'zoloft': ['Nausea', 'Dry Mouth', 'Drowsiness'],
+  'fluoxetine': ['Nausea', 'Insomnia', 'Drowsiness'],
+  'prozac': ['Nausea', 'Insomnia', 'Drowsiness'],
+  'escitalopram': ['Nausea', 'Drowsiness', 'Dry Mouth'],
+  'lexapro': ['Nausea', 'Drowsiness', 'Dry Mouth'],
+  'ibuprofen': ['Stomach Pain', 'Heartburn', 'Nausea'],
+  'aspirin': ['Stomach Pain', 'Heartburn'],
+  'metformin': ['Nausea', 'Diarrhea', 'Stomach Pain'],
+  'birth control': ['Nausea', 'Headache', 'Mood Swings'],
+  'contraceptive': ['Nausea', 'Headache', 'Mood Swings'],
+  'cetirizine': ['Drowsiness', 'Dry Mouth'],
+  'loratadine': ['Drowsiness', 'Dry Mouth'],
+  'antihistamine': ['Drowsiness', 'Dry Mouth'],
+  'xanax': ['Drowsiness', 'Brain Fog'],
+  'lorazepam': ['Drowsiness', 'Brain Fog'],
+  'atorvastatin': ['Muscle Pain', 'Fatigue'],
+  'statin': ['Muscle Pain', 'Fatigue'],
+};
+
 const _triggerOptions = [
   'Studying',
   'Lack of sleep',
@@ -64,6 +148,17 @@ const _triggerOptions = [
   'Skipped meals',
 ];
 
+// Condition-specific trigger chips that get merged in when the user
+// has a matching condition. Keeps the base list short for everyone
+// else.
+const _conditionTriggers = <String, List<String>>{
+  'migraine': ['Bright light', 'Loud noise', 'Menstruation'],
+  'asthma': ['Pollen', 'Exercise', 'Cold air'],
+  'ibs': ['Specific foods', 'Anxiety'],
+  'anxiety': ['Deadlines', 'Exams', 'Social pressure'],
+  'adhd': ['Overstimulation', 'Boredom'],
+};
+
 const _reliefOptions = [
   'Rest',
   'Medication',
@@ -74,6 +169,13 @@ const _reliefOptions = [
   'Sleep',
   'Food',
 ];
+
+const _conditionRelief = <String, List<String>>{
+  'migraine': ['Dark room', 'Cold compress'],
+  'anxiety': ['Breathing exercise', 'Grounding'],
+  'adhd': ['Movement break', 'Body doubling'],
+  'asthma': ['Inhaler'],
+};
 
 class SymptomScreen extends ConsumerStatefulWidget {
   const SymptomScreen({Key? key}) : super(key: key);
@@ -90,6 +192,14 @@ class _SymptomScreenState extends ConsumerState<SymptomScreen>
   bool _isLoading = false;
   List<dynamic> _symptoms = [];
   Map<String, dynamic> _patterns = {};
+
+  List<String> _userConditions = [];
+  List<String> _userMedications = [];
+  // Ordered, de-duped list of symptoms suggested for this user.
+  List<String> _suggestedSymptoms = [];
+  // Extra triggers/relief mapped from user's conditions.
+  List<String> _extraTriggers = [];
+  List<String> _extraRelief = [];
 
   String? _selectedType;
   int _intensity = 5;
@@ -120,10 +230,32 @@ class _SymptomScreenState extends ConsumerState<SymptomScreen>
       final historyRes = await api.get('/health/symptoms', queryParams: {'limit': '30'});
       final patternsRes = await api.get('/health/symptoms/patterns');
 
+      List<String> conds = [];
+      List<String> meds = [];
+      try {
+        final meRes = await api.get('/auth/me');
+        final me = Map<String, dynamic>.from(meRes.data ?? {});
+        conds = List<String>.from(me['medical_conditions'] ?? const []);
+      } catch (_) {}
+      try {
+        final medsRes = await api.get('/health/medications');
+        final list = List<dynamic>.from(medsRes.data ?? const []);
+        meds = list.map((m) => (m['name'] ?? '').toString()).where((s) => s.isNotEmpty).toList();
+      } catch (_) {}
+
+      final suggestions = _buildPersonalSuggestions(conds, meds);
+      final extraTriggers = _buildPersonalExtras(conds, _conditionTriggers);
+      final extraRelief = _buildPersonalExtras(conds, _conditionRelief);
+
       if (mounted) {
         setState(() {
           _symptoms = List<Map<String, dynamic>>.from(historyRes.data ?? []);
           _patterns = Map<String, dynamic>.from(patternsRes.data ?? {});
+          _userConditions = conds;
+          _userMedications = meds;
+          _suggestedSymptoms = suggestions;
+          _extraTriggers = extraTriggers;
+          _extraRelief = extraRelief;
           _isLoading = false;
         });
         _animController.forward();
@@ -134,6 +266,49 @@ class _SymptomScreenState extends ConsumerState<SymptomScreen>
         SnackBar(content: Text('Failed to load symptoms: $e')),
       );
     }
+  }
+
+  // Merge condition + medication suggestions into a single ordered,
+  // de-duped list. Conditions come first (more relevant), then
+  // med side effects, capped at 8 chips to keep the UI clean.
+  List<String> _buildPersonalSuggestions(List<String> conditions, List<String> meds) {
+    final out = <String>[];
+    void add(Iterable<String> items) {
+      for (final s in items) {
+        if (!out.contains(s)) out.add(s);
+      }
+    }
+
+    for (final raw in conditions) {
+      final key = raw.toLowerCase().trim();
+      _conditionSuggestions.forEach((k, v) {
+        if (key.contains(k)) add(v);
+      });
+    }
+    for (final raw in meds) {
+      final key = raw.toLowerCase().trim();
+      _medicationSideEffects.forEach((k, v) {
+        if (key.contains(k)) add(v);
+      });
+    }
+
+    if (out.length > 8) return out.sublist(0, 8);
+    return out;
+  }
+
+  List<String> _buildPersonalExtras(List<String> conditions, Map<String, List<String>> map) {
+    final out = <String>[];
+    for (final raw in conditions) {
+      final key = raw.toLowerCase().trim();
+      map.forEach((k, v) {
+        if (key.contains(k)) {
+          for (final item in v) {
+            if (!out.contains(item)) out.add(item);
+          }
+        }
+      });
+    }
+    return out;
   }
 
   Future<void> _logSymptom() async {
@@ -187,6 +362,57 @@ class _SymptomScreenState extends ConsumerState<SymptomScreen>
     if (intensity <= 6) return _goldHdr;
     if (intensity <= 8) return _coralHdr;
     return _redHdr;
+  }
+
+  // Dropdown = suggested symptoms (personalized, top) + standard types,
+  // de-duped. Lets users still reach "Other" while surfacing tailored ones.
+  List<String> get _dropdownTypes {
+    final out = <String>[];
+    for (final s in _suggestedSymptoms) {
+      if (!out.contains(s)) out.add(s);
+    }
+    for (final s in _symptomTypes) {
+      if (!out.contains(s)) out.add(s);
+    }
+    return out;
+  }
+
+  List<String> get _effectiveTriggers {
+    final out = <String>[];
+    for (final t in _extraTriggers) {
+      if (!out.contains(t)) out.add(t);
+    }
+    for (final t in _triggerOptions) {
+      if (!out.contains(t)) out.add(t);
+    }
+    return out;
+  }
+
+  List<String> get _effectiveRelief {
+    final out = <String>[];
+    for (final r in _extraRelief) {
+      if (!out.contains(r)) out.add(r);
+    }
+    for (final r in _reliefOptions) {
+      if (!out.contains(r)) out.add(r);
+    }
+    return out;
+  }
+
+  String _suggestionSubtitle() {
+    final bits = <String>[];
+    if (_userConditions.isNotEmpty) {
+      bits.add(_userConditions.length == 1
+          ? _userConditions.first
+          : '${_userConditions.length} conditions');
+    }
+    if (_userMedications.isNotEmpty) {
+      bits.add(_userMedications.length == 1
+          ? _userMedications.first
+          : '${_userMedications.length} medications');
+    }
+    if (bits.isEmpty) return 'Based on your profile.';
+    return 'Based on: ${bits.join(' • ')}';
   }
 
   @override
@@ -308,6 +534,53 @@ class _SymptomScreenState extends ConsumerState<SymptomScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  if (_suggestedSymptoms.isNotEmpty) ...[
+                    Row(
+                      children: [
+                        Icon(Icons.auto_awesome, size: 16, color: _purpleHdr),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Suggested for you',
+                          style: GoogleFonts.gaegu(fontSize: 15, fontWeight: FontWeight.w700, color: _brown),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _suggestionSubtitle(),
+                      style: GoogleFonts.nunito(fontSize: 11, color: _brownLt),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: _suggestedSymptoms.map((type) {
+                        final isSelected = _selectedType == type;
+                        return FilterChip(
+                          selected: isSelected,
+                          label: Text(
+                            '${_symptomIcons[type] ?? '✨'} $type',
+                            style: GoogleFonts.nunito(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: isSelected ? Colors.white : _brown,
+                            ),
+                          ),
+                          backgroundColor: _purpleLt.withOpacity(0.25),
+                          selectedColor: _purpleHdr,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                            side: BorderSide(
+                              color: isSelected ? _purpleHdr : _purpleHdr.withOpacity(0.45),
+                              width: 1.5,
+                            ),
+                          ),
+                          onSelected: (_) => setState(() => _selectedType = isSelected ? null : type),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
                   Text(
                     'Symptom Type',
                     style: GoogleFonts.gaegu(fontSize: 16, fontWeight: FontWeight.w700, color: _brown),
@@ -319,16 +592,25 @@ class _SymptomScreenState extends ConsumerState<SymptomScreen>
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: DropdownButton<String>(
-                      value: _selectedType,
+                      value: _dropdownTypes.contains(_selectedType) ? _selectedType : null,
+                      hint: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: Text(
+                          _selectedType != null
+                              ? '${_symptomIcons[_selectedType!] ?? '✨'} ${_selectedType!}'
+                              : 'Pick a symptom…',
+                          style: GoogleFonts.nunito(fontSize: 14, color: _brown),
+                        ),
+                      ),
                       isExpanded: true,
                       underline: const SizedBox.shrink(),
-                      items: _symptomTypes.map((type) {
+                      items: _dropdownTypes.map((type) {
                         return DropdownMenuItem(
                           value: type,
                           child: Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 12),
                             child: Text(
-                              '${_symptomIcons[type]} $type',
+                              '${_symptomIcons[type] ?? '✨'} $type',
                               style: GoogleFonts.nunito(fontSize: 14, color: _brown),
                             ),
                           ),
@@ -402,10 +684,16 @@ class _SymptomScreenState extends ConsumerState<SymptomScreen>
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
-                    children: _triggerOptions.map((trigger) {
+                    children: _effectiveTriggers.map((trigger) {
                       final isSelected = _selectedTriggers.contains(trigger);
+                      final isPersonal = _extraTriggers.contains(trigger);
                       return FilterChip(
                         selected: isSelected,
+                        avatar: isPersonal
+                            ? Icon(Icons.auto_awesome,
+                                size: 14,
+                                color: isSelected ? Colors.white : _purpleHdr)
+                            : null,
                         label: Text(
                           trigger,
                           style: GoogleFonts.nunito(
@@ -419,7 +707,9 @@ class _SymptomScreenState extends ConsumerState<SymptomScreen>
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(20),
                           side: BorderSide(
-                            color: isSelected ? _coralHdr : _outline.withOpacity(0.25),
+                            color: isSelected
+                                ? _coralHdr
+                                : (isPersonal ? _purpleHdr.withOpacity(0.5) : _outline.withOpacity(0.25)),
                             width: 1.5,
                           ),
                         ),
@@ -444,10 +734,16 @@ class _SymptomScreenState extends ConsumerState<SymptomScreen>
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
-                    children: _reliefOptions.map((relief) {
+                    children: _effectiveRelief.map((relief) {
                       final isSelected = _selectedRelief.contains(relief);
+                      final isPersonal = _extraRelief.contains(relief);
                       return FilterChip(
                         selected: isSelected,
+                        avatar: isPersonal
+                            ? Icon(Icons.auto_awesome,
+                                size: 14,
+                                color: isSelected ? Colors.white : _purpleHdr)
+                            : null,
                         label: Text(
                           relief,
                           style: GoogleFonts.nunito(
@@ -461,7 +757,9 @@ class _SymptomScreenState extends ConsumerState<SymptomScreen>
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(20),
                           side: BorderSide(
-                            color: isSelected ? _sageHdr : _outline.withOpacity(0.25),
+                            color: isSelected
+                                ? _sageHdr
+                                : (isPersonal ? _purpleHdr.withOpacity(0.5) : _outline.withOpacity(0.25)),
                             width: 1.5,
                           ),
                         ),

@@ -5,12 +5,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cerebro_app/config/theme.dart';
+import 'package:cerebro_app/providers/study_session_provider.dart';
 import 'package:cerebro_app/screens/home/dashboard_tab.dart';
 import 'package:cerebro_app/screens/daily/daily_tab.dart';
 import 'package:cerebro_app/screens/study/study_tab.dart';
 import 'package:cerebro_app/screens/store/store_tab.dart';
 import 'package:cerebro_app/screens/health/health_tab.dart';
 import 'package:cerebro_app/screens/profile/profile_tab.dart';
+import 'package:cerebro_app/widgets/mini_session_bar.dart';
 
 const _olive   = Color(0xFF98A869);
 const _oliveDk = Color(0xFF58772F);
@@ -44,6 +46,8 @@ class HomeScreen extends ConsumerWidget {
     ];
 
     final isStoreOpen = selectedTab == 3;
+    final sessionLive = ref.watch(isSessionLiveProvider);
+    final isStudyTab = selectedTab == 2;
 
     return Scaffold(
       backgroundColor: CerebroTheme.cream,
@@ -53,16 +57,81 @@ class HomeScreen extends ConsumerWidget {
           if (!isStoreOpen)
             Positioned(
               left: 0, right: 0, bottom: 0,
-              child: _OliveNavBar(
-                items: tabItems,
-                selected: selectedTab,
-                onTap: (i) => ref.read(selectedTabProvider.notifier).state = i,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Mini session bar — floats above the olive nav bar
+                  // whenever a session is live. Hidden on the Study tab
+                  // itself because the Study Hub already renders a full
+                  // timer+controls hero (showing both would be noisy).
+                  if (sessionLive && !isStudyTab) const MiniSessionBar(),
+                  _OliveNavBar(
+                    items: tabItems,
+                    selected: selectedTab,
+                    // Tab switches route through a guard that pops up the
+                    // End Session sheet when a session is live and the
+                    // user tries to leave the Study tab. Guard implemented
+                    // in a later pass — for now, a direct assignment.
+                    onTap: (i) => _handleTabTap(context, ref,
+                        fromTab: selectedTab, toTab: i),
+                  ),
+                ],
               ),
             ),
         ],
       ),
     );
   }
+
+  /// Route tab taps through the "attention drift" counter.
+  ///
+  /// UX contract (per product decision):
+  ///   • Navigating *within* the Study tab counts as studying — no flag.
+  ///   • Leaving the Study tab while a session is live is allowed freely,
+  ///     but each trip out counts as one distraction. The session keeps
+  ///     running, the mini-player remains visible, and the Wrapped screen
+  ///     uses the final distraction count to clamp the max focus score
+  ///     the user can claim.
+  ///   • A brief snackbar surfaces the bump so the user understands their
+  ///     focus score will be affected — no blocking sheet, no friction.
+  ///
+  /// Implemented here (the HomeScreen) because only the shell sees every
+  /// tab switch — each tab widget would need its own route observer
+  /// otherwise.
+  void _handleTabTap(BuildContext context, WidgetRef ref,
+      {required int fromTab, required int toTab}) {
+    final live = ref.read(isSessionLiveProvider);
+    final leavingStudy = fromTab == 2 && toTab != 2;
+
+    // Switch tabs immediately — navigation always feels instant.
+    ref.read(selectedTabProvider.notifier).state = toTab;
+
+    // If a session is live and the user just wandered away from Study,
+    // log it as a distraction and nudge them with a friendly reminder.
+    // The mini-player and the distraction counter do the rest.
+    if (live && leavingStudy) {
+      // ignore: discarded_futures
+      ref.read(studySessionProvider.notifier).addDistraction();
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+          content: Text(
+            "Distraction noted — your session's still running.",
+            style: GoogleFonts.gaegu(
+                fontSize: 14, fontWeight: FontWeight.w600, color: _brown),
+          ),
+          backgroundColor: const Color(0xFFFFE8C9),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(milliseconds: 1800),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12)),
+        ));
+    }
+  }
+
+  // _showLeaveStudyGuard / _guardBtn were removed when the "blocking sheet
+  // on tab-leave" UX was replaced with the silent distraction counter above.
+  // See the comment on _handleTabTap.
 }
 
 //  OLIVE NAV BAR — matches .bnav-bar in dashboard-v9.html

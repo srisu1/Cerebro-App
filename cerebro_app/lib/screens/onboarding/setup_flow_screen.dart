@@ -4,7 +4,9 @@
 ///   • Horizontal split: left illustration panel (44%) + right form panel
 ///   • Left: SVG building illustration + brand block ("Setup Wizard")
 ///   • Right: progress strip (segments) + step content + footer (Back/Next)
-///   • 7 steps: University, Year, Subjects, Goals+Study, Sleep, Habits, Mood
+///   • 8 steps: About You, Institution, Subjects, Study Time, Sleep,
+///     Daily Goals, Medical Conditions, Mood
+///   • Medications stays out of the wizard — managed from the Health tab.
 ///   • All existing functionality preserved (API calls, SharedPreferences, etc.)
 
 import 'package:flutter/material.dart';
@@ -28,14 +30,27 @@ class _StepInfo {
   const _StepInfo(this.title, this.subtitle);
 }
 
+// Each step feeds a concrete Cerebro system — nothing here is "vibes-only".
+// See _submitSetup() for the exact fields each step writes to the backend.
+// NOTE: Daily Goals lives in the wizard so a brand-new user lands on a
+// dashboard with real quests from minute one. Medications stays OUT of the
+// wizard — users can add/remove meds from the Health tab with dosage,
+// schedule, and notes, which is far more flexibility than a setup flow.
+// Settings (profile_tab.dart) intentionally omits Daily Goals and Medications
+// too; both are edited in-app near the features that use them.
+// If the user skips the wizard or finishes without picking any habits, the
+// backend seeds four sensible defaults (see daily.py::_FALLBACK_DEFAULT_HABITS)
+// and _submitSetup() pre-populates the local prefs cache so the dashboard
+// never renders an empty quest list.
 const _stepInfos = [
-  _StepInfo('About You', "What kind of student are you?"),
-  _StepInfo('Your Institution', 'Where do you study?'),
-  _StepInfo('Your Subjects', 'Pick or add your subjects'),
-  _StepInfo('Goals & Study Time', 'Set your targets'),
-  _StepInfo('Sleep Schedule', 'Good rest = good grades'),
-  _StepInfo('Daily Habits', 'Build streaks, earn XP'),
-  _StepInfo('How Are You Feeling?', 'Set your starting mood'),
+  _StepInfo('About You',          "What kind of student are you?"),        // institution_type
+  _StepInfo('Your Institution',   'Where do you study?'),                   // name / course / year
+  _StepInfo('Your Subjects',      'Pick or add your subjects'),             // /study/subjects
+  _StepInfo('Study Time',         'How many hours a day?'),                 // daily_study_hours
+  _StepInfo('Sleep Schedule',     'Good rest = good grades'),               // bedtime / wake_time
+  _StepInfo('Daily Goals',        "Pick today's quests"),                   // /daily/habits seed
+  _StepInfo('Medical Conditions', 'Cerebro keeps these in mind'),           // medical_conditions
+  _StepInfo('How Are You Feeling?','Set your starting mood'),               // initial_mood
 ];
 
 // Institution type definitions
@@ -64,8 +79,13 @@ class SetupFlowScreen extends ConsumerStatefulWidget {
 class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
     with TickerProviderStateMixin {
   int _currentStep = 0;
-  final int _totalSteps = 7;
+  final int _totalSteps = 8;
   bool _isSubmitting = false;
+  // Max items the user can pick as starting Daily Goals in the wizard.
+  // Enforced visually via the counter pill + "at cap" chip disabled state
+  // in _step6DailyGoals(), and respected by _submitSetup() when it posts
+  // the habit list to /daily/habits.
+  static const int _maxDailyGoals = 4;
 
   // Card pop-in animation
   late final AnimationController _cardAc;
@@ -105,32 +125,72 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
   Timer? _instSearchDebounce;
   Timer? _subjectSearchDebounce;
 
-  final Set<String> _selectedGoals = {};
+  // The old "pick a goal" chips (Improve GPA / Stay Organized / ...) were
+  // removed because they didn't map to any concrete Cerebro feature.
+  // We keep only the daily-hours target, which IS wired into the smart
+  // scheduler + AI coach recommendations.
   double _dailyStudyHours = 3.0;
   bool _studyHoursPersonalised = false;
 
   TimeOfDay _bedtime = const TimeOfDay(hour: 23, minute: 0);
   TimeOfDay _wakeTime = const TimeOfDay(hour: 7, minute: 30);
 
+  // Selection is capped at _maxDailyGoals. These items are promoted to
+  // today's quests on first login (see _submitSetup — SharedPreferences
+  // 'quest_definitions' + 'daily_habits').
   final Set<String> _selectedHabits = {};
+
+  // Stored on users.medical_conditions. Used to personalise the symptom
+  // chip picker in the Health tab and to flavour Insights correlations.
+  final Set<String> _selectedConditions = {};
+  final _conditionInputController = TextEditingController();
+  // Live query: as the user types in the "Add another" field, preset
+  // chips filter + an autocomplete suggestions list surfaces any
+  // extended presets that match. Empty string = show everything.
+  String _conditionQuery = '';
+
+  // Creates real rows in the medications table on submit so reminders +
+  // adherence tracking work from day one.
+  final List<_MedicationEntry> _medications = [];
 
   int _selectedMood = -1;
 
-  static const _goalLabels = [
-    'Improve GPA', 'Stay Organized', 'Better Sleep', 'Build Habits',
-    'Reduce Stress', 'Exam Prep', 'Time Management', 'Stay Motivated',
+  static const _habitItems = [
+    _HabitDef('Drink Water',      Color(0xFFDDF6FF)),
+    _HabitDef('Exercise',         Color(0xFFF7AEAE)),
+    _HabitDef('Read',             Color(0xFFFFD5F5)),
+    _HabitDef('Meditate',         Color(0xFF98A869)),
+    _HabitDef('No Junk Food',     Color(0xFFFEA9D3)),
+    _HabitDef('Walk 10k Steps',   Color(0xFF58772F)),
+    _HabitDef('No Social Media',  Color(0xFFEF6262)),
+    _HabitDef('Study 2+ Hours',   Color(0xFFDDF6FF)),
+    _HabitDef('Sleep Before 12',  Color(0xFFE4BC83)),
   ];
 
-  static const _habitItems = [
-    _HabitDef('Drink Water', Color(0xFFDDF6FF)),
-    _HabitDef('Exercise', Color(0xFFF7AEAE)),
-    _HabitDef('Read', Color(0xFFFFD5F5)),
-    _HabitDef('Meditate', Color(0xFF98A869)),
-    _HabitDef('No Junk Food', Color(0xFFFEA9D3)),
-    _HabitDef('Walk 10k Steps', Color(0xFF58772F)),
-    _HabitDef('No Social Media', Color(0xFFEF6262)),
-    _HabitDef('Study 2+ Hours', Color(0xFFDDF6FF)),
-    _HabitDef('Sleep Before 12', Color(0xFFE4BC83)),
+  // Common conditions — user can toggle preset chips AND add custom ones.
+  // Intentionally broad so almost any student sees at least one relevant
+  // option. Custom conditions get normalised (title-case, trimmed) before
+  // being added to the set.
+  static const _conditionPresets = [
+    'Migraine', 'ADHD', 'Anxiety', 'Depression', 'PCOS', 'Asthma',
+    'Diabetes', 'IBS', 'Insomnia', 'Hypertension', 'Dyslexia', 'Eczema',
+  ];
+
+  // Extended catalog — never shown as chips up-front (keeps the chip
+  // grid tight) but surfaces via the type-ahead suggestions row when
+  // the user starts typing in the custom input.
+  static const _conditionAutocomplete = [
+    'Migraine', 'ADHD', 'Anxiety', 'Depression', 'PCOS', 'Asthma',
+    'Diabetes', 'IBS', 'Insomnia', 'Hypertension', 'Dyslexia', 'Eczema',
+    'Acid Reflux', 'Acne', 'Allergies', 'Anemia', 'Arthritis',
+    'Autism', 'Bipolar', 'Celiac', 'Chronic Fatigue', 'Chronic Pain',
+    'Concussion', 'Crohn\'s', 'Endometriosis', 'Epilepsy', 'Fibromyalgia',
+    'GERD', 'Hypothyroidism', 'Hyperthyroidism', 'Lupus',
+    'Lyme Disease', 'Migraine with Aura', 'Narcolepsy', 'OCD',
+    'Osteoporosis', 'POTS', 'PMDD', 'PTSD', 'Psoriasis',
+    'Rheumatoid Arthritis', 'Sciatica', 'Scoliosis', 'Seasonal Allergies',
+    'Sinusitis', 'Sleep Apnea', 'Tinnitus', 'TMJ', 'Tourette\'s',
+    'Ulcerative Colitis',
   ];
 
   static const _moodItems = [
@@ -169,6 +229,7 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
     _institutionNameController.dispose();
     _courseController.dispose();
     _subjectNameController.dispose();
+    _conditionInputController.dispose();
     _instSearchDebounce?.cancel();
     _subjectSearchDebounce?.cancel();
     super.dispose();
@@ -357,12 +418,15 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
           if (_selectedAffiliation != null && _selectedAffiliation!.isNotEmpty)
             'affiliation': _selectedAffiliation,
           'daily_study_hours': _dailyStudyHours,
-          'study_goals': _selectedGoals.toList(),
+          // study_goals intentionally omitted — the vague chips step was
+          // removed. The `Daily Goals` step now feeds initial_habits, which
+          // is what the quest system actually reads.
           'bedtime': _fmtTime(_bedtime),
           'wake_time': _fmtTime(_wakeTime),
           'sleep_hours_target': _sleepHoursTarget,
           if (_moodName != null) 'initial_mood': _moodName,
           'initial_habits': _selectedHabits.toList(),
+          'medical_conditions': _selectedConditions.toList(),
         });
       } catch (_) {}
 
@@ -377,19 +441,89 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
         } catch (_) {}
       }
 
+      // Medications are no longer collected in the wizard — users add them
+      // from the Health tab's Medications screen, which is more flexible
+      // (reminder schedules, days-of-week picker, etc.). This loop still
+      // runs defensively in case `_medications` is populated by a future
+      // re-introduction of the step.
+      for (final med in _medications) {
+        try {
+          await api.post('/health/medications', data: {
+            'name': med.name,
+            'dosage': med.dosage,
+            'frequency': med.frequency,
+            if (med.frequency == 'daily')
+              'times_of_day': ['${_fmtTime(med.time)}'],
+            'days_of_week': [1, 2, 3, 4, 5, 6, 7],
+            'reminder_enabled': true,
+          });
+        } catch (_) {}
+      }
+
+      // The Daily Goals step was pulled from the wizard; _selectedHabits
+      // will normally be empty. When it IS empty we ALWAYS call the
+      // backend's seed-defaults endpoint so the user lands on Today's
+      // Quests with 4 fallback habits already populated — no empty state.
+      // If the step is ever re-introduced and picks exist, we wipe the
+      // existing rows first so the quest card reflects the fresh picks.
+      if (_selectedHabits.isNotEmpty) {
+        try {
+          final listRes = await api.get('/daily/habits');
+          if (listRes.statusCode == 200) {
+            final existing = (listRes.data as List?) ?? [];
+            for (final h in existing) {
+              final hid = h['id'];
+              if (hid == null) continue;
+              try {
+                await api.delete('/daily/habits/$hid');
+              } catch (_) {}
+            }
+          }
+        } catch (_) {}
+        for (final habitName in _selectedHabits) {
+          try {
+            await api.post('/daily/habits', data: {
+              'name': habitName,
+              'icon': habitIconMap[habitName] ?? 'check',
+            });
+          } catch (_) {}
+        }
+      } else {
+        // User didn't pick any quests (either the Daily Goals step was
+        // pulled or they skipped everything) — explicitly seed the 4
+        // fallback defaults on the backend. Safe to call: the endpoint
+        // is a no-op when the user already has habits, so it only ever
+        // creates rows on an empty slate.
+        try {
+          await api.post('/daily/habits/seed-defaults');
+        } catch (_) {}
+      }
+
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt('cerebro_bedtime_hour', _bedtime.hour);
       await prefs.setInt('cerebro_bedtime_min', _bedtime.minute);
       await prefs.setInt('cerebro_wake_hour', _wakeTime.hour);
       await prefs.setInt('cerebro_wake_min', _wakeTime.minute);
-      await prefs.setStringList('cerebro_goals', _selectedGoals.toList());
       await prefs.setDouble('cerebro_daily_study_hours', _dailyStudyHours);
       await prefs.setStringList('cerebro_initial_habits', _selectedHabits.toList());
+      await prefs.setStringList('cerebro_medical_conditions', _selectedConditions.toList());
 
-      final questDefs = _selectedHabits.map((name) {
+      // Compute quest defs from wizard picks. When the wizard has no picks
+      // (Daily Goals step was pulled from the flow), mirror the backend's
+      // _FALLBACK_DEFAULT_HABITS so the dashboard has 4 real quests to show
+      // before /daily/habits returns from the backend.
+      final wizardQuestDefs = _selectedHabits.map((name) {
         final icon = habitIconMap[name] ?? 'check';
         return {'name': name, 'icon': icon};
       }).toList();
+      final questDefs = wizardQuestDefs.isNotEmpty
+          ? wizardQuestDefs
+          : const [
+              {'name': 'Drink Water',    'icon': 'water'},
+              {'name': 'Read 15 min',    'icon': 'book'},
+              {'name': 'Walk 10k Steps', 'icon': 'walk'},
+              {'name': 'Stretch',        'icon': 'fitness'},
+            ];
       final habitsWithDone = questDefs.map((q) => {...q, 'done': false}).toList();
       await prefs.setString('quest_definitions', jsonEncode(questDefs));
       await prefs.setString('daily_habits', jsonEncode(habitsWithDone));
@@ -683,14 +817,17 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
   }
 
   Widget _buildStepBody() {
+    // Step order matches _stepInfos. Medications stays out of the wizard —
+    // it's edited from the Health tab where dosage/schedule live.
     switch (_currentStep) {
       case 0: return _step1InstitutionType();
       case 1: return _step2InstitutionDetails();
       case 2: return _step3Subjects();
-      case 3: return _step4Goals();
+      case 3: return _step4StudyTime();
       case 4: return _step5Sleep();
-      case 5: return _step6Habits();
-      case 6: return _step7Mood();
+      case 5: return _step6DailyGoals();
+      case 6: return _step7Conditions();
+      case 7: return _step9Mood();
       default: return const SizedBox();
     }
   }
@@ -705,20 +842,38 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
         border: Border(top: BorderSide(color: CerebroTheme.text1, width: 3)),
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Back button
-          _currentStep > 0
-              ? _GameBtn(
-                  label: 'Back',
-                  icon: Icons.chevron_left_rounded,
-                  iconFirst: true,
-                  color: Colors.white,
-                  textColor: CerebroTheme.text1,
-                  shadowColor: CerebroTheme.text1,
-                  onTap: _back,
-                )
-              : const SizedBox(width: 80),
+          // Leading slot: Back on steps 2+, empty spacer on step 1.
+          if (_currentStep > 0)
+            _GameBtn(
+              label: 'Back',
+              icon: Icons.chevron_left_rounded,
+              iconFirst: true,
+              color: Colors.white,
+              textColor: CerebroTheme.text1,
+              shadowColor: CerebroTheme.text1,
+              onTap: _back,
+            )
+          else
+            const SizedBox(width: 80),
+          const Spacer(),
+          // Skip slot: visible on EVERY step (including the last), and
+          // always exits the entire wizard straight to /home rather than
+          // just advancing to the next step. We also stamp the setup/
+          // avatar/onboarding completion flags so downstream guards don't
+          // bounce the user right back here on the next app launch.
+          if (!isLast)
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: _GameBtn(
+                label: 'Skip',
+                icon: Icons.keyboard_double_arrow_right_rounded,
+                color: Colors.white,
+                textColor: CerebroTheme.text3,
+                shadowColor: CerebroTheme.text1,
+                onTap: _isSubmitting ? null : _skip,
+              ),
+            ),
           // Next / Finish button
           _GameBtn(
             label: isLast ? 'Finish' : 'Next',
@@ -732,6 +887,21 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
         ],
       ),
     );
+  }
+
+  /// Skip the entire wizard — stamp every completion flag as done and
+  /// jump to /home. The user can still edit any of these fields later
+  /// from Profile → Settings. Keeping the button destructive of the
+  /// wizard (rather than just advancing one step) makes the "for now
+  /// the wizard is off" escape hatch easy to find: one button, one tap,
+  /// every step.
+  Future<void> _skip() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(AppConstants.onboardingCompleteKey, true);
+    await prefs.setBool(AppConstants.setupCompleteKey, true);
+    await prefs.setBool(AppConstants.avatarCreatedKey, true);
+    if (!mounted) return;
+    context.go('/home');
   }
 
   //  STEP 1: Institution Type
@@ -1366,36 +1536,10 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
     }
   }
 
-  Widget _step4Goals() {
+  Widget _step4StudyTime() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('What do you wanna achieve?',
-          style: GoogleFonts.gaegu(
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-            color: CerebroTheme.text2,
-          ),
-        ),
-        const SizedBox(height: 10),
-        // Chips
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: _goalLabels.map((label) {
-            final sel = _selectedGoals.contains(label);
-            return _chip(
-              label: label,
-              selected: sel,
-              onTap: () => setState(() {
-                if (sel) _selectedGoals.remove(label);
-                else _selectedGoals.add(label);
-              }),
-            );
-          }).toList(),
-        ),
-        const SizedBox(height: 16),
-
         Text('Daily study target',
           style: GoogleFonts.gaegu(
             fontSize: 18,
@@ -1554,24 +1698,52 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
     return '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
   }
 
-  //  STEP 6: Habits
-  Widget _step6Habits() {
+  //  STEP 6: Daily Goals — picks seed today's quests
+  //  (Selection capped at _maxDailyGoals; already-full taps show a snack)
+  Widget _step6DailyGoals() {
+    final atCap = _selectedHabits.length >= _maxDailyGoals;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        Row(
+          children: [
+            Text('${_selectedHabits.length} / $_maxDailyGoals picked',
+              style: GoogleFonts.nunito(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: atCap ? CerebroTheme.olive : CerebroTheme.text3,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
         Wrap(
           spacing: 8,
           runSpacing: 8,
           children: _habitItems.map((h) {
             final sel = _selectedHabits.contains(h.label);
-            return _chip(
-              label: h.label,
-              selected: sel,
-              accentColor: h.color,
-              onTap: () => setState(() {
-                if (sel) _selectedHabits.remove(h.label);
-                else _selectedHabits.add(h.label);
-              }),
+            final disabled = !sel && atCap;
+            return Opacity(
+              opacity: disabled ? 0.5 : 1.0,
+              child: _chip(
+                label: h.label,
+                selected: sel,
+                accentColor: h.color,
+                onTap: () {
+                  if (sel) {
+                    setState(() => _selectedHabits.remove(h.label));
+                  } else if (!atCap) {
+                    setState(() => _selectedHabits.add(h.label));
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: Text('You can pick up to $_maxDailyGoals daily goals~',
+                        style: GoogleFonts.nunito(fontWeight: FontWeight.w700)),
+                      backgroundColor: CerebroTheme.olive,
+                      duration: const Duration(seconds: 1),
+                    ));
+                  }
+                },
+              ),
             );
           }).toList(),
         ),
@@ -1585,7 +1757,7 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
             border: Border.all(color: CerebroTheme.dividerGreen, width: 2),
           ),
           child: Text(
-            'Each habit earns you 10 XP daily!',
+            'Your picks become today\'s quests — each checked off earns 10 XP.',
             textAlign: TextAlign.center,
             style: GoogleFonts.gaegu(
               fontSize: 17,
@@ -1598,8 +1770,410 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
     );
   }
 
-  //  STEP 7: Mood
-  Widget _step7Mood() {
+  //  STEP 7: Medical Conditions — populates users.medical_conditions.
+  //  Symptom screen + Insights both read these back.
+  Widget _step7Conditions() {
+    // Empty query = show all presets in the top chip grid, no suggestions.
+    // Non-empty query = filter chips to matches + show autocomplete
+    // row with unselected extended presets that match the query.
+    final q = _conditionQuery.trim().toLowerCase();
+    final visiblePresets = q.isEmpty
+        ? _conditionPresets
+        : _conditionPresets.where((c) => c.toLowerCase().contains(q)).toList();
+    final autocompleteMatches = q.isEmpty
+        ? const <String>[]
+        : _conditionAutocomplete
+            .where((c) =>
+                c.toLowerCase().contains(q) &&
+                !_selectedConditions.contains(c) &&
+                !_conditionPresets.contains(c))
+            .take(8)
+            .toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Tap any that apply, or add your own',
+          style: GoogleFonts.gaegu(
+            fontSize: 17,
+            fontWeight: FontWeight.w700,
+            color: CerebroTheme.text3,
+          ),
+        ),
+        const SizedBox(height: 10),
+        // Preset chips (filtered when query active)
+        if (visiblePresets.isNotEmpty)
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: visiblePresets.map((c) {
+              final sel = _selectedConditions.contains(c);
+              return _chip(
+                label: c,
+                selected: sel,
+                onTap: () => setState(() {
+                  if (sel) _selectedConditions.remove(c);
+                  else _selectedConditions.add(c);
+                }),
+              );
+            }).toList(),
+          )
+        else
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Text('No presets match "$_conditionQuery" — add a custom one below.',
+              style: GoogleFonts.nunito(
+                fontSize: 13, fontWeight: FontWeight.w600,
+                color: CerebroTheme.text3,
+              ),
+            ),
+          ),
+        const SizedBox(height: 14),
+        // Custom condition input
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Expanded(
+              child: _formInput(
+                _conditionInputController,
+                'Add another (e.g. "Chronic fatigue")',
+                onSubmit: (_) => _addCustomCondition(),
+                onChanged: (v) => setState(() => _conditionQuery = v),
+              ),
+            ),
+            const SizedBox(width: 10),
+            _GameBtn(
+              label: 'ADD',
+              color: CerebroTheme.pinkAccent,
+              onTap: _addCustomCondition,
+            ),
+          ],
+        ),
+        // Renders as soon as the user types — taps add directly to the
+        // selected set without them having to hit ADD. Purely additive:
+        // the free-form input still works for truly custom entries.
+        if (autocompleteMatches.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Text('Did you mean…',
+            style: GoogleFonts.nunito(
+              fontSize: 12, fontWeight: FontWeight.w700,
+              color: CerebroTheme.text3, letterSpacing: 0.6,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 8, runSpacing: 8,
+            children: autocompleteMatches.map((c) {
+              return GestureDetector(
+                onTap: () => setState(() {
+                  _selectedConditions.add(c);
+                  _conditionInputController.clear();
+                  _conditionQuery = '';
+                }),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: CerebroTheme.creamWarm,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: CerebroTheme.text1, width: 2),
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(Icons.add_rounded, size: 14, color: CerebroTheme.text1),
+                    const SizedBox(width: 4),
+                    Text(c, style: GoogleFonts.gaegu(
+                      fontSize: 15, fontWeight: FontWeight.w700, color: CerebroTheme.text1)),
+                  ]),
+                ),
+              );
+            }).toList(),
+          ),
+        ],
+        // Chosen custom conditions row (anything not in presets)
+        if (_selectedConditions.any((c) => !_conditionPresets.contains(c))) ...[
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8, runSpacing: 8,
+            children: _selectedConditions
+              .where((c) => !_conditionPresets.contains(c))
+              .map((c) => GestureDetector(
+                onTap: () => setState(() => _selectedConditions.remove(c)),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: CerebroTheme.pinkLight,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: CerebroTheme.text1, width: 2),
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Text(c, style: GoogleFonts.gaegu(
+                      fontSize: 15, fontWeight: FontWeight.w700, color: CerebroTheme.text1)),
+                    const SizedBox(width: 6),
+                    const Icon(Icons.close_rounded, size: 14, color: CerebroTheme.text1),
+                  ]),
+                ),
+              ))
+              .toList(),
+          ),
+        ],
+        const SizedBox(height: 12),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: CerebroTheme.greenPale,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: CerebroTheme.dividerGreen, width: 2),
+          ),
+          child: Text(
+            'Cerebro uses these to personalise your symptom picker & insights — never shared.',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.gaegu(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: CerebroTheme.text2,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _addCustomCondition() {
+    final raw = _conditionInputController.text.trim();
+    if (raw.isEmpty) return;
+    // Title-case each word so "migraine" / "MIGRAINE" dedupe against "Migraine"
+    final norm = raw.split(RegExp(r'\s+'))
+        .where((s) => s.isNotEmpty)
+        .map((w) => w[0].toUpperCase() + w.substring(1).toLowerCase())
+        .join(' ');
+    setState(() {
+      _selectedConditions.add(norm);
+      _conditionInputController.clear();
+      _conditionQuery = '';
+    });
+  }
+
+  //  STEP 8: Medications — each row becomes a real medications table row.
+  Widget _step8Medications() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Add any medications you take regularly — skip if none',
+          style: GoogleFonts.gaegu(
+            fontSize: 17,
+            fontWeight: FontWeight.w700,
+            color: CerebroTheme.text3,
+          ),
+        ),
+        const SizedBox(height: 12),
+        // Existing medication rows
+        if (_medications.isNotEmpty) ...[
+          ..._medications.asMap().entries.map((e) {
+            final i = e.key;
+            final m = e.value;
+            return Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEFDFB),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: CerebroTheme.text1, width: 2),
+              ),
+              child: Row(children: [
+                Container(
+                  width: 34, height: 34,
+                  decoration: BoxDecoration(
+                    color: CerebroTheme.pinkLight,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: CerebroTheme.text1, width: 1.5),
+                  ),
+                  child: const Icon(Icons.medication_rounded, size: 18, color: CerebroTheme.text1),
+                ),
+                const SizedBox(width: 10),
+                Expanded(child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(m.name, style: GoogleFonts.gaegu(
+                      fontSize: 16, fontWeight: FontWeight.w700, color: CerebroTheme.text1)),
+                    Text('${m.dosage.isEmpty ? 'Dosage not set' : m.dosage} • ${m.frequency}${m.frequency == 'daily' ? ' @ ${_formatTime24(m.time)}' : ''}',
+                      style: GoogleFonts.nunito(
+                        fontSize: 12, fontWeight: FontWeight.w600, color: CerebroTheme.text3)),
+                  ],
+                )),
+                IconButton(
+                  icon: const Icon(Icons.close_rounded, size: 18, color: CerebroTheme.text3),
+                  onPressed: () => setState(() => _medications.removeAt(i)),
+                ),
+              ]),
+            );
+          }),
+          const SizedBox(height: 4),
+        ],
+        // + Add button
+        GestureDetector(
+          onTap: _showAddMedicationSheet,
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            decoration: BoxDecoration(
+              color: CerebroTheme.creamWarm,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: CerebroTheme.text1, width: 2, style: BorderStyle.solid),
+            ),
+            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              const Icon(Icons.add_rounded, size: 20, color: CerebroTheme.text1),
+              const SizedBox(width: 6),
+              Text(_medications.isEmpty ? 'Add a medication' : 'Add another',
+                style: const TextStyle(
+                  fontFamily: 'Bitroad', fontSize: 16, color: CerebroTheme.text1)),
+            ]),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _showAddMedicationSheet() async {
+    final nameCtrl = TextEditingController();
+    final doseCtrl = TextEditingController();
+    String freq = 'daily';
+    TimeOfDay time = const TimeOfDay(hour: 9, minute: 0);
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setSheet) {
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(ctx).viewInsets.bottom,
+          ),
+          child: Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+              border: Border(
+                top: BorderSide(color: CerebroTheme.text1, width: 3),
+                left: BorderSide(color: CerebroTheme.text1, width: 3),
+                right: BorderSide(color: CerebroTheme.text1, width: 3),
+              ),
+            ),
+            padding: const EdgeInsets.fromLTRB(22, 18, 22, 22),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(child: Container(
+                  width: 40, height: 4,
+                  decoration: BoxDecoration(
+                    color: CerebroTheme.text3.withOpacity(0.25),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                )),
+                const SizedBox(height: 14),
+                const Text('Add Medication',
+                  style: TextStyle(
+                    fontFamily: 'Bitroad', fontSize: 22, color: CerebroTheme.text1)),
+                const SizedBox(height: 12),
+                _formLabel('Name'),
+                const SizedBox(height: 6),
+                _formInput(nameCtrl, 'e.g. Sertraline, Ibuprofen'),
+                const SizedBox(height: 12),
+                _formLabel('Dosage (optional)'),
+                const SizedBox(height: 6),
+                _formInput(doseCtrl, "e.g. 50mg — leave blank if you're not sure"),
+                const SizedBox(height: 12),
+                _formLabel('Frequency'),
+                const SizedBox(height: 6),
+                Row(children: [
+                  for (final f in ['daily', 'weekly', 'as_needed']) ...[
+                    Expanded(child: GestureDetector(
+                      onTap: () => setSheet(() => freq = f),
+                      child: Container(
+                        margin: const EdgeInsets.only(right: 8),
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        decoration: BoxDecoration(
+                          color: freq == f ? CerebroTheme.pinkLight : const Color(0xFFFEFDFB),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: CerebroTheme.text1, width: 2),
+                        ),
+                        child: Text(
+                          f == 'as_needed' ? 'As needed' : f[0].toUpperCase() + f.substring(1),
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.gaegu(
+                            fontSize: 15, fontWeight: FontWeight.w700,
+                            color: CerebroTheme.text1),
+                        ),
+                      ),
+                    )),
+                  ],
+                ]),
+                if (freq == 'daily') ...[
+                  const SizedBox(height: 12),
+                  _formLabel('Reminder time'),
+                  const SizedBox(height: 6),
+                  GestureDetector(
+                    onTap: () async {
+                      final picked = await showTimePicker(
+                        context: ctx, initialTime: time);
+                      if (picked != null) setSheet(() => time = picked);
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFEFDFB),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: CerebroTheme.text1, width: 2),
+                      ),
+                      child: Row(children: [
+                        const Icon(Icons.access_time_rounded, size: 18, color: CerebroTheme.text1),
+                        const SizedBox(width: 10),
+                        Text(_formatTime24(time),
+                          style: const TextStyle(
+                            fontFamily: 'Bitroad', fontSize: 18, color: CerebroTheme.text1)),
+                      ]),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 18),
+                Row(children: [
+                  Expanded(child: _GameBtn(
+                    label: 'CANCEL',
+                    color: Colors.white,
+                    textColor: CerebroTheme.text1,
+                    onTap: () => Navigator.pop(ctx),
+                  )),
+                  const SizedBox(width: 10),
+                  Expanded(child: _GameBtn(
+                    label: 'SAVE',
+                    color: CerebroTheme.olive,
+                    onTap: () {
+                      final n = nameCtrl.text.trim();
+                      final d = doseCtrl.text.trim();
+                      // Dosage is optional — many users take meds without
+                      // remembering the exact mg. Only the name is required.
+                      if (n.isEmpty) return;
+                      setState(() => _medications.add(_MedicationEntry(
+                        name: n,
+                        dosage: d,
+                        frequency: freq,
+                        time: time,
+                      )));
+                      Navigator.pop(ctx);
+                    },
+                  )),
+                ]),
+              ],
+            ),
+          ),
+        );
+      }),
+    );
+  }
+
+  //  STEP 9: Mood
+  Widget _step9Mood() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1995,4 +2569,20 @@ class _SubjectSearchResult {
   final String name;
   final String? code;
   _SubjectSearchResult({required this.name, this.code});
+}
+
+// Wizard-level medication draft. On submit we POST one of these per row to
+// /health/medications, which converts it into a real Medication table row
+// (days_of_week defaults to all 7, reminder_enabled stays on).
+class _MedicationEntry {
+  final String name;
+  final String dosage;
+  final String frequency; // daily, weekly, as_needed
+  final TimeOfDay time;
+  _MedicationEntry({
+    required this.name,
+    required this.dosage,
+    required this.frequency,
+    required this.time,
+  });
 }

@@ -239,14 +239,68 @@ class _AvatarCustomizationScreenState
     super.dispose();
   }
 
+  /// Resolve a per-user storage scope so avatar/store/etc don't leak
+  /// across accounts on the same device. Tries `cerebro_user_id` from
+  /// prefs first (set by the API service after a successful /auth/me)
+  /// then falls back to a one-shot /auth/me fetch + cache.
+  Future<String?> _currentUserScope() async {
+    final prefs = await SharedPreferences.getInstance();
+    final cached = prefs.getString(AppConstants.userIdKey);
+    if (cached != null && cached.isNotEmpty) return cached;
+    try {
+      final api = ref.read(apiServiceProvider);
+      final res = await api.get('/auth/me');
+      final m = Map<String, dynamic>.from(res.data ?? {});
+      final id = (m['id'] ?? m['email'] ?? '').toString();
+      if (id.isNotEmpty) {
+        await prefs.setString(AppConstants.userIdKey, id);
+        return id;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// Suffix a base SharedPreferences key with the current user's id so
+  /// data scoped to a particular account doesn't bleed into another
+  /// account on the same device.
+  String _scopedKey(String base, String? userId) {
+    if (userId == null || userId.isEmpty) return base;
+    return '${base}__$userId';
+  }
+
+  /// Pre-fill the name field from /auth/me so the avatar page matches
+  /// whatever the user currently considers their display name. Falls
+  /// back silently when offline.
+  Future<void> _hydrateNameFromMe() async {
+    try {
+      final api = ref.read(apiServiceProvider);
+      final res = await api.get('/auth/me');
+      final m = Map<String, dynamic>.from(res.data ?? {});
+      final name = (m['display_name'] ?? '').toString();
+      if (mounted && name.isNotEmpty && _nameCtrl.text.trim().isEmpty) {
+        _nameCtrl.text = name;
+      }
+    } catch (_) {}
+  }
+
   Future<void> _loadSaved() async {
     final prefs = await SharedPreferences.getInstance();
+    final userId = await _currentUserScope();
 
-    // Load store-owned items
-    final owned = prefs.getStringList('store_owned') ?? [];
+    // Load store-owned items — scoped per-user so a fresh account
+    // doesn't see items unlocked under a different account.
+    final ownedKey = _scopedKey('store_owned', userId);
+    final owned = prefs.getStringList(ownedKey) ?? <String>[];
     setState(() => _ownedStoreItems = owned.toSet());
 
-    final json = prefs.getString(AppConstants.avatarConfigKey);
+    // Pre-fill name field from server display_name (best-effort).
+    await _hydrateNameFromMe();
+
+    // Avatar config — scoped per-user. We intentionally do NOT fall
+    // back to the legacy unscoped key, otherwise the previously
+    // signed-in account's avatar would show on a brand-new sign-up.
+    final cfgKey = _scopedKey(AppConstants.avatarConfigKey, userId);
+    final json = prefs.getString(cfgKey);
     if (json != null) {
       final config = AvatarConfig.fromJson(jsonDecode(json));
       setState(() {
@@ -298,11 +352,40 @@ class _AvatarCustomizationScreenState
   Future<void> _saveAvatar() async {
     final config = _buildConfig();
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(AppConstants.avatarConfigKey, jsonEncode(config.toJson()));
-    await prefs.setBool(AppConstants.avatarCreatedKey, true);
+    final userId = await _currentUserScope();
+
+    // Scope BOTH the config + created flag by user id so signing in
+    // as a different account on the same device doesn't show this
+    // account's avatar.
+    final cfgKey = _scopedKey(AppConstants.avatarConfigKey, userId);
+    final createdKey = _scopedKey(AppConstants.avatarCreatedKey, userId);
+    await prefs.setString(cfgKey, jsonEncode(config.toJson()));
+    await prefs.setBool(createdKey, true);
 
     // Notify all providers so avatar updates everywhere instantly
     ref.read(dashboardProvider.notifier).updateAvatarConfig(config);
+
+    // Registration sets a default display_name, but this field on
+    // the avatar page is the authoritative one for the user — if
+    // they entered a value, push it up so dashboard / greeting /
+    // leaderboards use it everywhere.
+    final typedName = _nameCtrl.text.trim();
+    if (typedName.isNotEmpty) {
+      try {
+        final api = ref.read(apiServiceProvider);
+        await api.put('/auth/me', data: {'display_name': typedName});
+      } catch (_) {/* non-fatal */}
+    }
+
+    // Force the dashboard provider to re-read its cache. The wizard
+    // just wrote fresh `quest_definitions` + `daily_habits` etc. If
+    // the dashboard notifier was instantiated earlier in the session
+    // (e.g. by a previous account's /home render) its in-memory
+    // state is stale and the Today's Quest card would show the
+    // wrong habits. `loadAll` clears that by re-hydrating from prefs.
+    try {
+      await ref.read(dashboardProvider.notifier).loadAll();
+    } catch (_) {/* non-fatal */}
 
     // Sync avatar config to backend
     try {
