@@ -1285,6 +1285,14 @@ class _MaterialsTabState extends ConsumerState<_MaterialsTab> {
 
 
 //  TAB 3: QUIZ SCHEDULE
+//  QUIZ SCHEDULE TAB
+//
+//  Narrow scope: configure automatic quiz generation — frequency,
+//  day-of-week, question count, enabled switch, and a "Generate Now"
+//  escape hatch. The broader "universal smart scheduler" (which plans
+//  focus sessions + flashcards + quizzes + light review across the
+//  week) lives under the Study Calendar screen now, where it belongs
+//  alongside the day/month grid it populates.
 class _ScheduleTab extends StatefulWidget {
   final Map<String, dynamic>? schedule;
   final List<Map<String, dynamic>> subjects;
@@ -1302,187 +1310,85 @@ class _ScheduleTab extends StatefulWidget {
 }
 
 class _ScheduleTabState extends State<_ScheduleTab> {
-  late String _frequency;
-  late int _dayOfWeek;
-  late int _questionCount;
-  late bool _enabled;
-  bool _saving = false;
+  String _frequency = 'weekly';    // 'weekly' | 'biweekly' | 'monthly'
+  int _dayOfWeek    = 0;           // 0 = Mon … 6 = Sun
+  int _questionCount = 10;         // 5..25
+  bool _enabled      = true;
+
+  bool _saving     = false;
   bool _generating = false;
+
+  // The Calendar screen's Smart Scheduler can also place quiz blocks on the
+  // week. When it's enabled + scheduling quizzes, we surface a banner so the
+  // user understands the two schedulers are coordinating rather than fighting.
+  Map<String, dynamic>? _smartCfg;
+
+  static const _dayLabels = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  static const _freqOptions = [
+    ('weekly',   'Weekly'),
+    ('biweekly', 'Biweekly'),
+    ('monthly',  'Monthly'),
+  ];
 
   @override
   void initState() {
     super.initState();
-    final s = widget.schedule;
-    _frequency = s?['frequency'] ?? 'weekly';
-    _dayOfWeek = s?['day_of_week'] ?? 0;
-    _questionCount = s?['question_count'] ?? 10;
-    _enabled = s?['enabled'] ?? true;
+    _hydrate(widget.schedule);
+    _loadSmartCfg();
   }
 
-  final _days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  Future<void> _loadSmartCfg() async {
+    try {
+      final resp = await widget.api.get('/study/smart-schedule/config');
+      if (!mounted) return;
+      final data = resp?.data;
+      if (data is Map) {
+        setState(() => _smartCfg = Map<String, dynamic>.from(data));
+      }
+    } catch (_) {
+      // Non-fatal — the schedule tab just won't show the smart-scheduler
+      // banner. Either the endpoint is unreachable or the user has no config.
+    }
+  }
+
+  bool get _smartActiveForQuizzes =>
+      _smartCfg != null &&
+      (_smartCfg!['enabled'] ?? false) == true &&
+      (_smartCfg!['enable_quizzes'] ?? false) == true;
 
   @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(children: [
-        // Schedule card
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: _cardFill,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: _outline.withOpacity(0.08))),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              const Icon(Icons.schedule_rounded, size: 20, color: _purpleHdr),
-              const SizedBox(width: 8),
-              Text('Smart Quiz Schedule', style: GoogleFonts.gaegu(
-                fontSize: 20, fontWeight: FontWeight.w700, color: _brown)),
-              const Spacer(),
-              Switch(
-                value: _enabled,
-                activeColor: _greenHdr,
-                onChanged: (v) => setState(() => _enabled = v),
-              ),
-            ]),
-            const SizedBox(height: 4),
-            Text('Automatically generates quizzes targeting your weakest topics',
-              style: GoogleFonts.nunito(fontSize: 12, color: _brownLt)),
-            const SizedBox(height: 16),
-            // Frequency
-            Text('Frequency', style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w700, color: _brownLt)),
-            const SizedBox(height: 6),
-            Row(children: ['weekly', 'biweekly', 'monthly'].map((f) =>
-              Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: GestureDetector(
-                  onTap: () => setState(() => _frequency = f),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: _frequency == f ? _purpleHdr : Colors.white,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: _frequency == f ? _purpleHdr : _outline.withOpacity(0.12))),
-                    child: Text(f[0].toUpperCase() + f.substring(1),
-                      style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w700,
-                        color: _frequency == f ? Colors.white : _brownLt)),
-                  ),
-                ),
-              )).toList()),
-            const SizedBox(height: 14),
-            // Day
-            Text('Day of Week', style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w700, color: _brownLt)),
-            const SizedBox(height: 6),
-            SizedBox(
-              height: 32,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                itemCount: 7,
-                itemBuilder: (_, i) => Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: GestureDetector(
-                    onTap: () => setState(() => _dayOfWeek = i),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: _dayOfWeek == i ? _purpleHdr : Colors.white,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: _dayOfWeek == i ? _purpleHdr : _outline.withOpacity(0.12))),
-                      child: Text(_days[i].substring(0, 3),
-                        style: GoogleFonts.nunito(fontSize: 11, fontWeight: FontWeight.w700,
-                          color: _dayOfWeek == i ? Colors.white : _brownLt)),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 14),
-            // Question count
-            Row(children: [
-              Text('Questions: ', style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w700, color: _brownLt)),
-              Text('$_questionCount', style: GoogleFonts.nunito(fontSize: 14, fontWeight: FontWeight.w800, color: _purpleHdr)),
-            ]),
-            Slider(
-              value: _questionCount.toDouble(), min: 5, max: 25, divisions: 4,
-              label: '$_questionCount',
-              activeColor: _purpleHdr,
-              onChanged: (v) => setState(() => _questionCount = v.toInt()),
-            ),
-            const SizedBox(height: 12),
-            // Save button
-            SizedBox(width: double.infinity, child: GestureDetector(
-              onTap: _saving ? null : _saveSchedule,
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(colors: [_purpleLt, _purpleHdr]),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: _purpleHdr.withOpacity(0.4))),
-                child: Center(child: _saving
-                  ? const SizedBox(width: 18, height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : Text('Save Schedule', style: GoogleFonts.gaegu(
-                      fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white))),
-              ),
-            )),
-          ]),
-        ),
-        const SizedBox(height: 12),
-        // Next quiz info
-        if (widget.schedule?['next_due_at'] != null)
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: _goldLt.withOpacity(0.3),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: _goldHdr.withOpacity(0.3))),
-            child: Row(children: [
-              const Icon(Icons.event_rounded, size: 20, color: _goldHdr),
-              const SizedBox(width: 10),
-              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Next Quiz', style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w700, color: _brown)),
-                Text(_formatNextDue(widget.schedule!['next_due_at']),
-                  style: GoogleFonts.nunito(fontSize: 12, color: _brownLt)),
-              ])),
-            ]),
-          ),
-        const SizedBox(height: 12),
-        // Generate now button
-        SizedBox(width: double.infinity, child: GestureDetector(
-          onTap: _generating ? null : () async {
-            setState(() => _generating = true);
-            await widget.onGenerateNow();
-            if (mounted) setState(() => _generating = false);
-          },
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(colors: [_greenLt, _greenHdr]),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: _greenDk.withOpacity(0.4), width: 2),
-              boxShadow: [BoxShadow(color: _greenDk.withOpacity(0.25),
-                offset: const Offset(0, 3), blurRadius: 0)]),
-            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              _generating
-                ? const SizedBox(width: 20, height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 20),
-              const SizedBox(width: 8),
-              Text('Generate Smart Quiz Now',
-                style: GoogleFonts.gaegu(fontSize: 20, fontWeight: FontWeight.w700, color: Colors.white)),
-            ]),
-          ),
-        )),
-        const SizedBox(height: 6),
-        Text('Targets your weakest topics from knowledge gap analysis',
-          style: GoogleFonts.nunito(fontSize: 11, color: _brownLt.withOpacity(0.6)),
-          textAlign: TextAlign.center),
-      ]),
-    );
+  void didUpdateWidget(covariant _ScheduleTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.schedule != widget.schedule) {
+      _hydrate(widget.schedule);
+    }
+  }
+
+  void _hydrate(Map<String, dynamic>? s) {
+    if (s == null) return;
+    _frequency     = (s['frequency'] ?? 'weekly').toString();
+    _dayOfWeek     = (s['day_of_week'] is int) ? s['day_of_week'] : 0;
+    _questionCount = (s['question_count'] is int) ? s['question_count'] : 10;
+    _enabled       = s['enabled'] ?? true;
+  }
+
+  String _formatNextDue() {
+    final n = widget.schedule?['next_due_at'];
+    if (n == null) return 'Not scheduled yet';
+    try {
+      final dt = DateTime.parse(n.toString()).toLocal();
+      final diff = dt.difference(DateTime.now());
+      if (diff.isNegative) return 'Due now';
+      final days = diff.inDays;
+      if (days == 0) return 'Later today';
+      if (days == 1) return 'Tomorrow';
+      if (days < 7) return 'In $days days';
+      return DateFormat('EEE, MMM d').format(dt);
+    } catch (_) { return 'Scheduled'; }
   }
 
   Future<void> _saveSchedule() async {
+    if (_saving) return;
     setState(() => _saving = true);
     try {
       await widget.api.post('/study/quiz-schedule', data: {
@@ -1492,30 +1398,339 @@ class _ScheduleTabState extends State<_ScheduleTab> {
         'question_types': ['mcq', 'true_false', 'fill_blank'],
         'enabled': _enabled,
       });
-      widget.onRefresh();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Schedule saved!', style: GoogleFonts.nunito(fontWeight: FontWeight.w600)),
+          content: Text('Schedule saved',
+            style: GoogleFonts.nunito(fontWeight: FontWeight.w600)),
           backgroundColor: _greenHdr));
       }
+      widget.onRefresh();
     } catch (e) {
-      debugPrint('Save schedule error: $e');
+      debugPrint('Quiz schedule save error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Couldn\'t save schedule', style: GoogleFonts.nunito()),
+          backgroundColor: _coralDk));
+      }
     }
     if (mounted) setState(() => _saving = false);
   }
 
-  String _formatNextDue(String? iso) {
-    if (iso == null) return 'Not scheduled';
+  Future<void> _generateNow() async {
+    if (_generating) return;
+    setState(() => _generating = true);
     try {
-      final dt = DateTime.parse(iso);
-      final now = DateTime.now();
-      final diff = dt.difference(now).inDays;
-      if (diff <= 0) return 'Today';
-      if (diff == 1) return 'Tomorrow';
-      return DateFormat('EEEE, MMM d').format(dt);
-    } catch (_) {
-      return iso;
+      await widget.onGenerateNow();
+    } finally {
+      if (mounted) setState(() => _generating = false);
     }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        _hero(),
+        const SizedBox(height: 14),
+        if (_smartActiveForQuizzes) ...[
+          _smartBanner(),
+          const SizedBox(height: 12),
+        ],
+        _frequencyCard(),
+        const SizedBox(height: 12),
+        _dayCard(),
+        const SizedBox(height: 12),
+        _countCard(),
+        const SizedBox(height: 16),
+        _saveButton(),
+        const SizedBox(height: 10),
+        _generateNowButton(),
+        const SizedBox(height: 18),
+        _footnote(),
+      ]),
+    );
+  }
+
+  Widget _hero() {
+    final due = _formatNextDue();
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 14, 14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft, end: Alignment.bottomRight,
+          colors: [_goldLt.withOpacity(0.55), _coralLt.withOpacity(0.45)],
+        ),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _goldHdr.withOpacity(0.35), width: 1.5),
+      ),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.85),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: _outline.withOpacity(0.18))),
+          child: const Icon(Icons.quiz_rounded, size: 22, color: _coralDk),
+        ),
+        const SizedBox(width: 12),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Smart Quiz Schedule',
+            style: GoogleFonts.gaegu(fontSize: 22, fontWeight: FontWeight.w800, color: _brown)),
+          const SizedBox(height: 2),
+          Text(
+            'Auto-generates a fresh quiz from your weakest topics on a '
+            'cadence you pick. Next: $due',
+            style: GoogleFonts.nunito(fontSize: 12, color: _brownLt, height: 1.35)),
+        ])),
+        const SizedBox(width: 8),
+        Switch(
+          value: _enabled,
+          activeColor: _greenDk,
+          onChanged: (v) => setState(() => _enabled = v),
+        ),
+      ]),
+    );
+  }
+
+  Widget _frequencyCard() {
+    return _settingsCard(
+      icon: Icons.repeat_rounded, iconColor: _greenDk,
+      title: 'Frequency',
+      subtitle: 'How often should we generate a new quiz?',
+      child: Row(children: [
+        for (int i = 0; i < _freqOptions.length; i++) ...[
+          if (i > 0) const SizedBox(width: 8),
+          Expanded(child: _freqChip(_freqOptions[i].$1, _freqOptions[i].$2)),
+        ],
+      ]),
+    );
+  }
+
+  Widget _freqChip(String value, String label) {
+    final selected = _frequency == value;
+    return GestureDetector(
+      onTap: () => setState(() => _frequency = value),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: selected ? _greenHdr.withOpacity(0.55) : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: selected ? _greenDk.withOpacity(0.55) : _outline.withOpacity(0.18),
+            width: selected ? 1.6 : 1.0),
+        ),
+        child: Text(label,
+          style: GoogleFonts.nunito(
+            fontSize: 13, fontWeight: FontWeight.w800,
+            color: selected ? _brown : _brownLt)),
+      ),
+    );
+  }
+
+  Widget _dayCard() {
+    return _settingsCard(
+      icon: Icons.calendar_today_rounded, iconColor: _coralDk,
+      title: 'Day of week',
+      subtitle: _frequency == 'monthly'
+          ? 'We\'ll pick the first ${_dayLabels[_dayOfWeek]} of each month'
+          : 'Which day should quizzes land on?',
+      child: Row(children: [
+        for (int i = 0; i < _dayLabels.length; i++) ...[
+          if (i > 0) const SizedBox(width: 5),
+          Expanded(child: _dayChip(i)),
+        ],
+      ]),
+    );
+  }
+
+  Widget _dayChip(int index) {
+    final selected = _dayOfWeek == index;
+    return GestureDetector(
+      onTap: () => setState(() => _dayOfWeek = index),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: selected ? _coralHdr.withOpacity(0.6) : Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: selected ? _coralDk.withOpacity(0.6) : _outline.withOpacity(0.15),
+            width: selected ? 1.6 : 1.0),
+        ),
+        child: Text(_dayLabels[index],
+          style: GoogleFonts.nunito(
+            fontSize: 11.5, fontWeight: FontWeight.w800,
+            color: selected ? _brown : _brownLt)),
+      ),
+    );
+  }
+
+  Widget _countCard() {
+    return _settingsCard(
+      icon: Icons.format_list_numbered_rounded, iconColor: _purpleHdr,
+      title: 'Questions per quiz',
+      subtitle: 'How many questions should each generated quiz contain?',
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Text('$_questionCount',
+            style: GoogleFonts.gaegu(
+              fontSize: 26, fontWeight: FontWeight.w800, color: _brown)),
+          const SizedBox(width: 6),
+          Text('questions',
+            style: GoogleFonts.nunito(
+              fontSize: 13, fontWeight: FontWeight.w700, color: _brownLt)),
+        ]),
+        SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+            activeTrackColor: _purpleHdr,
+            inactiveTrackColor: _purpleLt.withOpacity(0.5),
+            thumbColor: _purpleHdr,
+            overlayColor: _purpleHdr.withOpacity(0.15),
+            valueIndicatorColor: _purpleHdr,
+            trackHeight: 5,
+          ),
+          child: Slider(
+            min: 5, max: 25, divisions: 20,
+            value: _questionCount.toDouble(),
+            label: '$_questionCount',
+            onChanged: (v) => setState(() => _questionCount = v.round()),
+          ),
+        ),
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          Text('5', style: GoogleFonts.nunito(fontSize: 11, color: _brownLt)),
+          Text('25', style: GoogleFonts.nunito(fontSize: 11, color: _brownLt)),
+        ]),
+      ]),
+    );
+  }
+
+  Widget _settingsCard({
+    required IconData icon, required Color iconColor,
+    required String title, required String subtitle,
+    required Widget child,
+  }) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+      decoration: BoxDecoration(
+        color: _cardFill,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _outline.withOpacity(0.10)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(icon, size: 18, color: iconColor),
+          const SizedBox(width: 8),
+          Text(title, style: GoogleFonts.gaegu(
+            fontSize: 18, fontWeight: FontWeight.w700, color: _brown)),
+        ]),
+        const SizedBox(height: 2),
+        Text(subtitle,
+          style: GoogleFonts.nunito(fontSize: 11, color: _brownLt)),
+        const SizedBox(height: 10),
+        child,
+      ]),
+    );
+  }
+
+  Widget _saveButton() {
+    return GestureDetector(
+      onTap: _saving ? null : _saveSchedule,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(colors: _saving
+              ? [Colors.grey.shade300, Colors.grey.shade400]
+              : [_greenLt, _greenHdr]),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: _greenDk.withOpacity(0.45), width: 2),
+          boxShadow: _saving ? null : [BoxShadow(
+            color: _greenDk.withOpacity(0.25),
+            offset: const Offset(0, 3), blurRadius: 0)],
+        ),
+        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          if (_saving)
+            const SizedBox(width: 20, height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+          else
+            const Icon(Icons.save_rounded, color: Colors.white, size: 20),
+          const SizedBox(width: 10),
+          Text(_saving ? 'Saving…' : 'Save schedule',
+            style: GoogleFonts.gaegu(
+              fontSize: 19, fontWeight: FontWeight.w800, color: Colors.white)),
+        ]),
+      ),
+    );
+  }
+
+  Widget _generateNowButton() {
+    return GestureDetector(
+      onTap: _generating ? null : _generateNow,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          color: _cardFill,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: _coralDk.withOpacity(0.45), width: 1.6),
+        ),
+        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          if (_generating)
+            const SizedBox(width: 16, height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2, color: _coralDk))
+          else
+            const Icon(Icons.bolt_rounded, color: _coralDk, size: 18),
+          const SizedBox(width: 8),
+          Text(_generating ? 'Generating…' : 'Generate a smart quiz now',
+            style: GoogleFonts.nunito(
+              fontSize: 13, fontWeight: FontWeight.w800, color: _coralDk)),
+        ]),
+      ),
+    );
+  }
+
+  Widget _footnote() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Text(
+        'Tip: the broader week-wide planner — focus sessions, flashcards, light review '
+        'and quizzes slotted around your calendar — lives on the Study Calendar screen.',
+        style: GoogleFonts.nunito(fontSize: 11, color: _brownLt.withOpacity(0.7), height: 1.4),
+        textAlign: TextAlign.center),
+    );
+  }
+
+  // two schedulers aren't treated as independent systems by the user. ──
+  Widget _smartBanner() {
+    final cfg = _smartCfg ?? const {};
+    final perWeek = (cfg['quiz_per_week'] is int) ? cfg['quiz_per_week'] : 1;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 11, 14, 11),
+      decoration: BoxDecoration(
+        color: _purpleHdr.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _purpleHdr.withOpacity(0.35), width: 1.2),
+      ),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(
+          padding: const EdgeInsets.all(7),
+          decoration: BoxDecoration(
+            color: _purpleHdr.withOpacity(0.18),
+            borderRadius: BorderRadius.circular(10)),
+          child: Icon(Icons.auto_awesome_rounded, size: 15, color: _brown),
+        ),
+        const SizedBox(width: 10),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Smart Scheduler is also planning quizzes',
+            style: GoogleFonts.gaegu(fontSize: 14, fontWeight: FontWeight.w800, color: _brown)),
+          const SizedBox(height: 2),
+          Text(
+            '$perWeek quiz block${perWeek == 1 ? '' : 's'}/week are placed by the week-wide '
+            'planner in Calendar → Smart Scheduler. This cadence above runs alongside them.',
+            style: GoogleFonts.nunito(fontSize: 11, color: _brownLt, height: 1.35)),
+        ])),
+      ]),
+    );
   }
 }
 

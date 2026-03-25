@@ -1,10 +1,19 @@
 /// Study Tab look: cream/terra-cotta ombre + paw-prints,
 /// Bitroad for headings/values, Gaegu for body, hard-offset shadows,
 /// pill chips, and a Health-Tab-style detail modal.
+///
+/// DATA SOURCE: `GET /study/recommendations` (cached 6h server-side).
+/// The backend correlates the user's quiz/flashcard/subject performance
+/// into weak areas, runs them through an AI provider to draft resource
+/// suggestions, then resolves real URLs via YouTube / Wikipedia / Khan
+/// Academy. We do NOT keep any mock data here — if the user has no quiz
+/// history yet, the empty state nudges them to take a quiz.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:cerebro_app/providers/auth_provider.dart';
 
 const _ombre1 = Color(0xFFFFFBF7);
 const _ombre2 = Color(0xFFFFF8F3);
@@ -45,18 +54,33 @@ TextStyle _gaegu({double size = 14, FontWeight weight = FontWeight.w600, Color c
     GoogleFonts.gaegu(fontSize: size, fontWeight: weight, color: color, height: h);
 const _bitroad = 'Bitroad';
 
+// Mapped from the `/study/recommendations` payload. `technique` maps
+// onto the `practice` chip since the user-facing UI only exposes a
+// handful of kinds — we keep the original enum so the palette/icons
+// keep working without a wider refactor.
 enum _ResKind { video, article, pdf, flashcards, podcast, practice }
 
 class _Resource {
   final String id;
   final String title;
   final String source;
-  final String subject;
+  final String subject;       // topic or subject name surfaced in the chip
   final _ResKind kind;
   final int minutes;
-  final double rating; // 0..5
+  final double rating;        // AI doesn't rate — we synthesize from difficulty
   final bool bookmarked;
-  final String summary;
+  final String summary;       // description
+  /// Why this came back for *this* user ("your thermodynamics score is 35%").
+  /// Shown in the detail modal as the AI's justification line.
+  final String whyRecommended;
+  /// Real URL resolved server-side (YouTube watch URL, Wikipedia article,
+  /// Khan Academy exercise, Google fallback). null if the AI call failed
+  /// and we're showing a search fallback.
+  final String? url;
+  /// Human label for the primary CTA, e.g. "Watch on YouTube".
+  final String urlLabel;
+  /// beginner / intermediate / advanced
+  final String difficulty;
   _Resource({
     required this.id,
     required this.title,
@@ -66,8 +90,50 @@ class _Resource {
     required this.minutes,
     required this.rating,
     required this.summary,
+    required this.whyRecommended,
+    required this.url,
+    required this.urlLabel,
+    required this.difficulty,
     this.bookmarked = false,
   });
+
+  /// Parse one entry from the backend recommendations payload.
+  /// Defensive — the AI occasionally drops fields, so every read has a
+  /// sensible default rather than crashing the list.
+  factory _Resource.fromJson(Map<String, dynamic> j, int index) {
+    final rawType = (j['resource_type'] as String?)?.toLowerCase() ?? 'article';
+    final kind = switch (rawType) {
+      'video' => _ResKind.video,
+      'article' || 'textbook' || 'reading' => _ResKind.article,
+      'practice' || 'exercise' || 'problems' => _ResKind.practice,
+      'technique' || 'strategy' || 'tip' => _ResKind.practice,
+      'flashcards' => _ResKind.flashcards,
+      'podcast' => _ResKind.podcast,
+      _ => _ResKind.article,
+    };
+    final diff = ((j['difficulty'] as String?) ?? 'intermediate').toLowerCase();
+    // Translate difficulty into a "rating" pill so the old UI fields
+    // still mean something — beginner = 4.2, intermediate = 4.5, advanced = 4.8.
+    final rating = diff == 'advanced'
+        ? 4.8
+        : diff == 'beginner' ? 4.2 : 4.5;
+    return _Resource(
+      id: 'rec-$index',
+      title: (j['title'] as String?) ?? 'Recommended resource',
+      source: (j['source'] as String?) ?? 'AI-picked',
+      subject: (j['topic'] as String?) ?? 'General',
+      kind: kind,
+      minutes: (j['estimated_minutes'] is int)
+          ? j['estimated_minutes'] as int
+          : int.tryParse(j['estimated_minutes']?.toString() ?? '') ?? 15,
+      rating: rating,
+      summary: (j['description'] as String?) ?? '',
+      whyRecommended: (j['why_recommended'] as String?) ?? '',
+      url: j['url'] as String?,
+      urlLabel: (j['url_label'] as String?) ?? 'Open',
+      difficulty: diff,
+    );
+  }
 }
 
 Color _kindColor(_ResKind k) => switch (k) {
@@ -95,34 +161,10 @@ String _kindLabel(_ResKind k) => switch (k) {
       _ResKind.practice   => 'Practice',
     };
 
-final _demoResources = <_Resource>[
-  _Resource(id: '1', title: 'Photosynthesis — Crash Course', source: 'CrashCourse',
-      subject: 'Biology', kind: _ResKind.video, minutes: 14, rating: 4.8,
-      summary: 'Whiteboard-style explainer covering light & dark reactions with nice visuals.',
-      bookmarked: true),
-  _Resource(id: '2', title: 'A Short Guide to Derivatives', source: 'BetterExplained',
-      subject: 'Math', kind: _ResKind.article, minutes: 9, rating: 4.6,
-      summary: 'Intuitive write-up using slopes and small changes. Good for clearing fog.'),
-  _Resource(id: '3', title: 'Periodic Table Reference', source: 'KhanAcademy',
-      subject: 'Chemistry', kind: _ResKind.pdf, minutes: 5, rating: 4.4,
-      summary: 'Printable cheat sheet — keep one by your desk for quick lookups.'),
-  _Resource(id: '4', title: 'Newton\'s Laws Deck', source: 'Anki Community',
-      subject: 'Physics', kind: _ResKind.flashcards, minutes: 20, rating: 4.9,
-      summary: '120 spaced-repetition cards covering all three laws with example problems.',
-      bookmarked: true),
-  _Resource(id: '5', title: 'Shakespeare in 30 Minutes', source: 'BBC Sounds',
-      subject: 'English Lit', kind: _ResKind.podcast, minutes: 32, rating: 4.5,
-      summary: 'Overview of themes, structure, and exam-relevant quotes.'),
-  _Resource(id: '6', title: 'Big-O Practice — 25 Questions', source: 'LeetBasics',
-      subject: 'Computer Sci', kind: _ResKind.practice, minutes: 45, rating: 4.7,
-      summary: 'Ramp-up problem set with hints and worked solutions.'),
-  _Resource(id: '7', title: 'Cell Biology — Deep Dive', source: 'MIT OCW',
-      subject: 'Biology', kind: _ResKind.video, minutes: 52, rating: 4.9,
-      summary: 'Full lecture on organelle function — dense but superb.'),
-  _Resource(id: '8', title: 'Essay Structure Toolkit', source: 'OxfordRoyale',
-      subject: 'English Lit', kind: _ResKind.article, minutes: 12, rating: 4.3,
-      summary: 'PEEL / TEAL paragraphs, signposts, intros and conclusions.'),
-];
+// NOTE: The mock `_demoResources` list that used to live here has been
+// removed. Resources are now fetched from `/study/recommendations` — a
+// real AI endpoint driven by the user's actual quiz/flashcard history
+// (see cerebro_backend/app/routers/study.py::get_resource_recommendations).
 
 //  RESOURCE SCREEN
 class ResourceScreen extends ConsumerStatefulWidget {
@@ -138,13 +180,23 @@ class _ResourceScreenState extends ConsumerState<ResourceScreen>
   String _query = '';
   bool _onlyBookmarks = false;
   late final AnimationController _enter;
-  late final Set<String> _bookmarks;
+  final Set<String> _bookmarks = {};
+
+  // `_resources` is the full list returned by the AI recommendations
+  // endpoint. `_loading` gates the skeleton. `_refreshing` is a lighter
+  // indicator used by the "refresh" pill so users know a bypass-cache
+  // call is in flight without losing the current list.
+  List<_Resource> _resources = const [];
+  bool _loading = true;
+  bool _refreshing = false;
+  String? _error;
+  String? _emptyMessage; // set when API returns [] with a friendly hint
 
   @override
   void initState() {
     super.initState();
-    _bookmarks = {for (final r in _demoResources) if (r.bookmarked) r.id};
-    _enter = AnimationController(vsync: this, duration: const Duration(milliseconds: 800))..forward();
+    _enter = AnimationController(vsync: this, duration: const Duration(milliseconds: 800));
+    _loadRecommendations();
   }
 
   @override
@@ -153,10 +205,62 @@ class _ResourceScreenState extends ConsumerState<ResourceScreen>
     super.dispose();
   }
 
-  List<String> get _subjects => {for (final r in _demoResources) r.subject}.toList()..sort();
+  /// Fetch AI recommendations from the backend. Default is cached-OK;
+  /// pass `force=true` to hit `/study/recommendations/refresh`.
+  Future<void> _loadRecommendations({bool force = false}) async {
+    if (!mounted) return;
+    setState(() {
+      if (force) {
+        _refreshing = true;
+      } else {
+        _loading = true;
+      }
+      _error = null;
+    });
+    try {
+      final api = ref.read(apiServiceProvider);
+      final res = force
+          ? await api.post('/study/recommendations/refresh')
+          : await api.get('/study/recommendations');
+      final data = (res.data is Map<String, dynamic>)
+          ? res.data as Map<String, dynamic>
+          : <String, dynamic>{};
+      final raw = (data['recommendations'] as List?) ?? const [];
+      final parsed = <_Resource>[];
+      for (var i = 0; i < raw.length; i++) {
+        final item = raw[i];
+        if (item is Map<String, dynamic>) {
+          parsed.add(_Resource.fromJson(item, i));
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        _resources = parsed;
+        _loading = false;
+        _refreshing = false;
+        _emptyMessage = parsed.isEmpty
+            ? (data['message'] as String?) ??
+                'No recommendations yet — complete a quiz or review flashcards so we can spot what to suggest.'
+            : null;
+      });
+      _enter
+        ..reset()
+        ..forward();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _refreshing = false;
+        _error = 'Could not load recommendations. '
+            'Check the backend is running and an AI key is set.';
+      });
+    }
+  }
+
+  List<String> get _subjects => {for (final r in _resources) r.subject}.toList()..sort();
 
   List<_Resource> get _filtered {
-    Iterable<_Resource> it = _demoResources;
+    Iterable<_Resource> it = _resources;
     if (_kindFilter != null) it = it.where((r) => r.kind == _kindFilter);
     if (_subjectFilter != null) it = it.where((r) => r.subject == _subjectFilter);
     if (_onlyBookmarks) it = it.where((r) => _bookmarks.contains(r.id));
@@ -168,6 +272,15 @@ class _ResourceScreenState extends ConsumerState<ResourceScreen>
           r.subject.toLowerCase().contains(q));
     }
     return it.toList();
+  }
+
+  Future<void> _openExternalUrl(String? url) async {
+    if (url == null || url.isEmpty) return;
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+    // Using platformDefault keeps the app alive on desktop (opens in
+    // the system browser) and behaves correctly on mobile too.
+    await launchUrl(uri, mode: LaunchMode.platformDefault);
   }
 
   void _toggleBookmark(_Resource r) {
@@ -185,6 +298,7 @@ class _ResourceScreenState extends ConsumerState<ResourceScreen>
         resource: r,
         bookmarked: _bookmarks.contains(r.id),
         onToggleBookmark: () => _toggleBookmark(r),
+        onOpen: () => _openExternalUrl(r.url),
       ),
     );
   }
@@ -215,20 +329,33 @@ class _ResourceScreenState extends ConsumerState<ResourceScreen>
                 const SizedBox(height: 16),
                 _stagger(0.00, _header()),
                 const SizedBox(height: 14),
-                _stagger(0.06, _searchBar()),
-                const SizedBox(height: 10),
-                _stagger(0.08, _kindPills()),
-                const SizedBox(height: 10),
-                _stagger(0.10, _subjectChips()),
-                const SizedBox(height: 18),
-                _stagger(0.14, _featuredCard()),
-                const SizedBox(height: 18),
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.only(bottom: 110),
-                    child: _stagger(0.18, _grid(crossAxis)),
+                if (_loading)
+                  Expanded(child: _loadingState())
+                else if (_error != null)
+                  Expanded(child: _errorState())
+                else if (_resources.isEmpty)
+                  Expanded(child: _noDataState())
+                else ...[
+                  _stagger(0.06, _searchBar()),
+                  const SizedBox(height: 10),
+                  _stagger(0.08, _kindPills()),
+                  const SizedBox(height: 10),
+                  _stagger(0.10, _subjectChips()),
+                  const SizedBox(height: 18),
+                  _stagger(0.14, _featuredCard()),
+                  const SizedBox(height: 18),
+                  Expanded(
+                    child: RefreshIndicator(
+                      color: _oliveDk,
+                      onRefresh: () => _loadRecommendations(force: true),
+                      child: SingleChildScrollView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.only(bottom: 110),
+                        child: _stagger(0.18, _grid(crossAxis)),
+                      ),
+                    ),
                   ),
-                ),
+                ],
               ]),
             ),
           ),
@@ -237,6 +364,79 @@ class _ResourceScreenState extends ConsumerState<ResourceScreen>
       ),
     );
   }
+
+  Widget _loadingState() => Center(
+    child: Column(mainAxisSize: MainAxisSize.min, children: [
+      const CircularProgressIndicator(color: _oliveDk, strokeWidth: 2.6),
+      const SizedBox(height: 14),
+      Text('Reading your study history…',
+        style: _gaegu(size: 15, color: _brownLt, weight: FontWeight.w600)),
+      const SizedBox(height: 4),
+      Text('The AI is picking videos, articles, and practice for your weak areas.',
+        textAlign: TextAlign.center,
+        style: _gaegu(size: 12, color: _brownSoft)),
+    ]),
+  );
+
+  Widget _errorState() => Padding(
+    padding: const EdgeInsets.all(24),
+    child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+      Container(
+        width: 74, height: 74,
+        decoration: BoxDecoration(
+          color: _mBlush, shape: BoxShape.circle,
+          border: Border.all(color: _outline.withOpacity(0.3), width: 2),
+          boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
+              offset: const Offset(3, 3), blurRadius: 0)],
+        ),
+        child: const Icon(Icons.cloud_off_rounded, size: 32, color: _brown),
+      ),
+      const SizedBox(height: 12),
+      const Text('Recommendations unavailable',
+        style: TextStyle(fontFamily: _bitroad, fontSize: 19, color: _brown)),
+      const SizedBox(height: 6),
+      Text(_error ?? 'Please try again.',
+        textAlign: TextAlign.center,
+        style: _gaegu(size: 13, color: _brownSoft, weight: FontWeight.w600)),
+      const SizedBox(height: 16),
+      _SoftButton(
+        label: 'retry', icon: Icons.refresh_rounded,
+        fill: _olive, textColor: Colors.white,
+        onTap: () => _loadRecommendations(force: true),
+      ),
+    ])),
+  );
+
+  Widget _noDataState() => Padding(
+    padding: const EdgeInsets.all(24),
+    child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+      Container(
+        width: 74, height: 74,
+        decoration: BoxDecoration(
+          color: _mLav, shape: BoxShape.circle,
+          border: Border.all(color: _outline.withOpacity(0.3), width: 2),
+          boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
+              offset: const Offset(3, 3), blurRadius: 0)],
+        ),
+        child: const Icon(Icons.auto_awesome_rounded, size: 32, color: Colors.white),
+      ),
+      const SizedBox(height: 12),
+      const Text('No recommendations yet',
+        style: TextStyle(fontFamily: _bitroad, fontSize: 19, color: _brown)),
+      const SizedBox(height: 6),
+      Text(
+        _emptyMessage ??
+            'Take a quiz or review some flashcards — once we know your weak areas we can suggest videos, articles, and practice problems tailored to you.',
+        textAlign: TextAlign.center,
+        style: _gaegu(size: 13, color: _brownSoft, weight: FontWeight.w600, h: 1.4)),
+      const SizedBox(height: 16),
+      _SoftButton(
+        label: 'refresh', icon: Icons.refresh_rounded,
+        fill: _olive, textColor: Colors.white,
+        onTap: () => _loadRecommendations(force: true),
+      ),
+    ])),
+  );
 
   Widget _header() => Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
     GestureDetector(
@@ -256,16 +456,29 @@ class _ResourceScreenState extends ConsumerState<ResourceScreen>
     const SizedBox(width: 12),
     Expanded(
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Text('Resources',
+        const Text('AI Recommendations',
           style: TextStyle(fontFamily: _bitroad, fontSize: 26, color: _brown, height: 1.15)),
         const SizedBox(height: 2),
-        Text('Hand-picked study picks — tap a card to dig in~',
+        Text(
+          _loading
+            ? 'Reading your study history…'
+            : _resources.isEmpty
+                ? 'Complete a quiz so we can suggest something!'
+                : 'Picked for your weak areas — tap a card to dig in~',
           style: _gaegu(size: 15, color: _brownSoft, h: 1.3)),
       ]),
     ),
     Wrap(spacing: 7, runSpacing: 7, children: [
-      _Pill(icon: Icons.library_books_rounded,
-          label: '${_demoResources.length} resources', color: _mSlate.withOpacity(0.55)),
+      GestureDetector(
+        onTap: _refreshing ? null : () => _loadRecommendations(force: true),
+        child: _Pill(
+          icon: _refreshing ? Icons.hourglass_empty_rounded : Icons.refresh_rounded,
+          label: _refreshing ? 'refreshing…' : 'refresh',
+          color: _mSlate.withOpacity(0.55)),
+      ),
+      if (_resources.isNotEmpty)
+        _Pill(icon: Icons.auto_awesome_rounded,
+            label: '${_resources.length} picks', color: _mLav.withOpacity(0.55)),
       GestureDetector(
         onTap: () => setState(() => _onlyBookmarks = !_onlyBookmarks),
         child: _Pill(
@@ -600,8 +813,12 @@ class _ResourceDetailModal extends StatelessWidget {
   final _Resource resource;
   final bool bookmarked;
   final VoidCallback onToggleBookmark;
+  /// Launches the real resource URL resolved by the backend — if we
+  /// couldn't resolve one (unlikely), the call is a no-op.
+  final Future<void> Function() onOpen;
   const _ResourceDetailModal({
-    required this.resource, required this.bookmarked, required this.onToggleBookmark});
+    required this.resource, required this.bookmarked,
+    required this.onToggleBookmark, required this.onOpen});
 
   @override
   Widget build(BuildContext context) {
@@ -714,12 +931,43 @@ class _ResourceDetailModal extends StatelessWidget {
                           style: _gaegu(size: 11, weight: FontWeight.w700, color: _oliveDk)
                               .copyWith(letterSpacing: 0.7)),
                         const SizedBox(height: 2),
-                        Text(resource.summary,
+                        Text(resource.summary.isEmpty
+                            ? 'A resource tailored to your current weak area.'
+                            : resource.summary,
                           style: const TextStyle(fontFamily: _bitroad, fontSize: 14, color: _brown, height: 1.4)),
                       ],
                     )),
                   ]),
                 ),
+                // "Why recommended" — the AI's actual justification line,
+                // tied to the user's own performance numbers. This is the
+                // feature that makes the page feel personalised instead
+                // of mock.
+                if (resource.whyRecommended.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(14, 12, 16, 14),
+                    decoration: BoxDecoration(
+                      color: _mLav.withOpacity(0.35),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: _outline.withOpacity(0.25), width: 1.5),
+                    ),
+                    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      const Icon(Icons.auto_awesome_rounded, size: 18, color: _brown),
+                      const SizedBox(width: 10),
+                      Expanded(child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text('WHY THIS RESOURCE',
+                            style: _gaegu(size: 11, weight: FontWeight.w700, color: _brown)
+                                .copyWith(letterSpacing: 0.7)),
+                          const SizedBox(height: 2),
+                          Text(resource.whyRecommended,
+                            style: _gaegu(size: 13, weight: FontWeight.w600, color: _brown, h: 1.4)),
+                        ],
+                      )),
+                    ]),
+                  ),
+                ],
                 const SizedBox(height: 22),
 
                 Row(children: [
@@ -734,9 +982,13 @@ class _ResourceDetailModal extends StatelessWidget {
                   ),
                   const SizedBox(width: 10),
                   Expanded(flex: 2, child: _SoftButton(
-                    label: 'open resource', icon: Icons.open_in_new_rounded,
+                    label: resource.url == null ? 'search online' : resource.urlLabel.toLowerCase(),
+                    icon: Icons.open_in_new_rounded,
                     fill: _olive, textColor: Colors.white,
-                    onTap: () => Navigator.of(context).pop(),
+                    onTap: () {
+                      onOpen();
+                      Navigator.of(context).pop();
+                    },
                   )),
                 ]),
               ]),
