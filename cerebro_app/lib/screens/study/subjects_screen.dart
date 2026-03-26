@@ -1,11 +1,4 @@
-/// Matches the Study Tab design language:
-///   • Cream/terra-cotta ombre background + paw-print overlay
-///   • Bitroad for headings/values, Gaegu for body text
-///   • Hard-offset shadows, thick brown outlines, pill chips
-///   • Modals styled like the Health Tab (gradient header bar + close pill)
-///
-/// UI-only: provider names are kept in comments; wire up to your
-/// existing subjectsProvider once dropped in.
+// Subjects list and management screen
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';

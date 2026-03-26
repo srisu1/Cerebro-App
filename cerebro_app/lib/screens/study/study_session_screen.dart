@@ -1,15 +1,4 @@
-/// Rich Pomodoro timer with REAL ambient audio (just_audio),
-/// clean modern notes, distraction counter, searchable past sessions,
-/// milestone celebrations, XP animations, and breathing ring.
-///
-/// v3 changes from v2:
-///  • Real audio playback via just_audio (rain, lofi, café, ocean, fire, birds)
-///  • Completely redesigned notes section — clean, always-visible during timer
-///  • Past sessions: search bar, type filter chips, expandable details
-///  • Distraction counter button during focus sessions
-///  • Streak tracker for consecutive focus blocks
-///  • Session mood tag (optional emoji mood at completion)
-///  • Compact layout — no chunky oversized elements
+// Pomodoro study session screen with ambient audio, notes, and past sessions
 
 import 'dart:async';
 import 'dart:io';
@@ -1422,19 +1411,9 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
           ]));
 
       if (desktop) {
-        //   Goal: a structured control panel that breathes. Cards
-        //   should be sized to their CONTENT, not stretched to
-        //   identical rectangles.
-        //
-        //   ┌─────────────────────┬───────────────────┐
-        //   │                     │  Details (small)  │
-        //   │   HERO              │                   │
-        //   │   Session Type      ├───────────────────┤
-        //   │   Focus Length      │                   │
-        //   │   [Begin →]         │  Rhythm (small)   │
-        //   │                     │                   │
-        //   └─────────────────────┴───────────────────┘
-        //   "quote text — loose"             [Past sessions →]
+        // Layout: left column = hero card (session type, focus length, begin button)
+        // right column = details card (top) + rhythm card (bottom)
+        // quote text + past sessions link below
 
         // Right column — Details on top (compact), Rhythm below.
         //   Both shrink-wrap their content. No Expanded forcing

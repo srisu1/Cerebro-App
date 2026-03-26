@@ -1,5 +1,4 @@
-/// Matches login v5: clean split layout, branded panel,
-/// sage green gradient, styled logo badge.
+// Register screen with split layout matching the login screen style.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';

@@ -1,13 +1,4 @@
-/// Study Tab look: cream/terra-cotta ombre + paw-prints,
-/// Bitroad for headings/values, Gaegu for body, hard-offset shadows,
-/// pill chips, and a Health-Tab-style detail modal.
-///
-/// DATA SOURCE: `GET /study/recommendations` (cached 6h server-side).
-/// The backend correlates the user's quiz/flashcard/subject performance
-/// into weak areas, runs them through an AI provider to draft resource
-/// suggestions, then resolves real URLs via YouTube / Wikipedia / Khan
-/// Academy. We do NOT keep any mock data here — if the user has no quiz
-/// history yet, the empty state nudges them to take a quiz.
+// Study resources screen with filtering and bookmarks
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';

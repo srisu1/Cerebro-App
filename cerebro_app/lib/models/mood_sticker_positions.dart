@@ -1,10 +1,4 @@
-/// Positions for rendering personalized mood stickers using
-/// the user's avatar head (justheadbase) + expression overlays.
-/// HEAD-ONLY stickers — no body, just face + hair.
-///
-/// IMPORTANT: These values are directly ported from MoodStickerPositions.cs.
-/// Nose scale = 0.10, Mouth scale = 0.12 — do NOT change these to 0.30.
-/// The expression images are scaled differently for stickers vs full avatar.
+// Layer positions for head-only mood stickers (scaled differently from full avatar)
 
 import 'package:cerebro_app/models/avatar_positions.dart';
 

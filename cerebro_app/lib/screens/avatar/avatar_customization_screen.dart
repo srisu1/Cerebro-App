@@ -1,5 +1,4 @@
-/// EXACT 1:1 port of .NET Avatar.razor + Avatar.css
-/// Avatar: OverflowBox + Transform.scale on native image sizes (matches CSS)
+// Avatar customization screen
 
 import 'dart:convert';
 import 'dart:math';

@@ -1,13 +1,5 @@
-/// Pixel-matched to ui-prototype/setup.html:
-///   • Cream (#fdefdb) background with diamond pattern
-///   • White "setup-card" with thick dark border + hard box-shadow
-///   • Horizontal split: left illustration panel (44%) + right form panel
-///   • Left: SVG building illustration + brand block ("Setup Wizard")
-///   • Right: progress strip (segments) + step content + footer (Back/Next)
-///   • 8 steps: About You, Institution, Subjects, Study Time, Sleep,
-///     Daily Goals, Medical Conditions, Mood
-///   • Medications stays out of the wizard — managed from the Health tab.
-///   • All existing functionality preserved (API calls, SharedPreferences, etc.)
+// Post-onboarding setup wizard — 8 steps collecting user profile,
+// institution, subjects, study/sleep preferences, daily goals, and mood.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';

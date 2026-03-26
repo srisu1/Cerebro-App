@@ -1,4 +1,4 @@
-/// Cute warm aesthetic with thick borders, 3D shadows, cream backgrounds.
+// App theme — warm cream palette with thick borders and 3D shadows
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
