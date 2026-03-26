@@ -1,18 +1,4 @@
-/// Matches study_refined.html prototype exactly (desktop layout).
-///
-/// Desktop layout (maxWidth > 900):
-///  HERO     — fixed 32% viewport / min 240px
-///             • back btn + title absolutely positioned top-left
-///             • pills absolutely positioned top-right
-///             • timer CENTERED within hero region
-///  CONTENT  — fills remaining viewport, no scroll
-///             LEFT  45% — Quick Actions + Overview peek grid (stretches)
-///             RIGHT 55% — Weekly Activity card (bars stretch vertical)
-///                         + Resources + Calendar teasers + Tip
-///
-/// Narrow layout (<= 900): stacked scrollable fallback (mobile).
-///
-/// All data/model/provider code is unchanged.
+// Study hub main tab — quick actions, weekly activity, and session overview
 
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
@@ -381,7 +367,7 @@ class _StudyTabState extends ConsumerState<StudyTab>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // HERO ── Stack: back+title (top-left), pills (top-right), timer (centered)
+        // Hero section: back+title (top-left), pills (top-right), timer (centered)
         SizedBox(
           height: heroH,
           child: Stack(
@@ -410,7 +396,7 @@ class _StudyTabState extends ConsumerState<StudyTab>
             ],
           ),
         ),
-        // CONTENT ── fills remaining viewport, no scroll
+        // Content area fills remaining viewport
         Expanded(
           child: Padding(
             padding: EdgeInsets.fromLTRB(hPad, 16, hPad, 14),

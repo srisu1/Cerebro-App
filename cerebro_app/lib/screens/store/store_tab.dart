@@ -1,14 +1,4 @@
-/// Fixes from v8 feedback:
-///  1. Removed nav arrows
-///  2. Close button matches warm theme (not grey)
-///  3. Scallop tabs flush from top, alternating colors
-///  4. Tab icons redesigned: shirt, scissors, glasses, hat, sparkle, bolt
-///  5. Added eye-color items to Extras category
-///  6. Hand illustration PNG replaces emoji on FREE button
-///  7. Card item images smaller, tilted ~15°, 3D feel
-///  8. Green color matches avatar page cutesy green (#A8D5A3)
-///  9. Pawprint ombré background (not diamond checkerboard)
-/// 10. Kept: dark-brown outlines (#6E5848) + Gaegu fonts
+// In-app store with tabbed categories for avatar items.
 
 import 'dart:math' as math;
 import 'package:flutter/material.dart';

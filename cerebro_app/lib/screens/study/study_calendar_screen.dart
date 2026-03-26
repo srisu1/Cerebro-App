@@ -1,6 +1,4 @@
-/// Study Tab look & feel: ombre background + paw prints, Bitroad for
-/// headings/day-numbers, Gaegu for body, hard-offset shadows, pill chips.
-/// Add-event modal mirrors the Health Tab modal (gradient header + close).
+// Study calendar with event scheduling
 
 import 'dart:async';
 import 'dart:convert';

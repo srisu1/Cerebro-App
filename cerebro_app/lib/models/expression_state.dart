@@ -1,11 +1,6 @@
-/// Maps avatar emotional/contextual states to expression overlay assets.
-/// Each expression = eyes.png + nose.png + mouth.png in assets/avatar/expressions/{name}/
-///
-/// 13 expressions total:
-///   Existing (8): angry, anxious, calm, excited, grateful, happy, sad, tired
-///   New (5):      blink, focused, playful, sleepy, surprised
+// Avatar expression states mapped to overlay assets
 
-/// All possible expression states the avatar can show.
+// All possible expression states the avatar can show.
 enum ExpressionState {
   /// User's chosen eyes/mouth/nose from avatar config — no overlay.
   neutral,

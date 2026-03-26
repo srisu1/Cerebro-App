@@ -1,10 +1,4 @@
-/// Pixel-matched to ui-prototype/title.html:
-///   • Olive (#98a869) background with diamond checkerboard pattern
-///   • White "game-card" with thick dark border + hard box-shadow
-///   • Top: SVG rocket illustration with gradient background
-///   • Bottom: "Cerebro." title, greeting, tag, animated loader bar, "Let's Go!" button
-///   • Time-of-day greetings preserved · Auto-navigation after load completes
-///   • Button appears only after loader finishes (matches HTML's animation delay)
+// Title/splash screen with time-of-day greeting and animated loader.
 
 import 'dart:async';
 import 'package:flutter/material.dart';

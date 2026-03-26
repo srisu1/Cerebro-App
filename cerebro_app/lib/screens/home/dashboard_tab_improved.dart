@@ -1,4 +1,4 @@
-// Home dashboard — hero section with avatar, XP bar, and two-column content layout.
+// Improved dashboard tab with updated typography and card layout.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -46,10 +46,6 @@ const _greenLt   = Color(0xFFC2E8BC);
 const _greenDk   = Color(0xFF88B883);
 const _goldGlow  = Color(0xFFF8E080);
 const _purpleHdr = Color(0xFFCDA8D8);
-// Soft sage tint — used as the cash-pill background so the
-// sage dollar-bill sticker reads as part of the pill instead
-// of clashing with a warm gold/tan fill.
-const _cashTint  = Color(0xFFDCE8C9);
 const _skyHdr    = Color(0xFF9DD4F0);
 
 class DashboardTab extends ConsumerStatefulWidget {
@@ -236,9 +232,13 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
                   child: const Icon(Icons.star_rounded, size: 48, color: Color(0xFF8B6914)),
                 ),
                 const SizedBox(height: 16),
-                Text('LEVEL UP!', style: GoogleFonts.gaegu(
-                  fontSize: 32, fontWeight: FontWeight.w900,
-                  color: _brown, letterSpacing: 2)),
+                const Text('LEVEL UP!', style: TextStyle(
+                  fontFamily: 'Bitroad',
+                  fontSize: 34,
+                  fontWeight: FontWeight.w400,
+                  color: _brown,
+                  letterSpacing: 3,
+                )),
                 const SizedBox(height: 4),
                 Text('Level $level — $title', style: GoogleFonts.nunito(
                   fontSize: 18, fontWeight: FontWeight.w700, color: _brownLt)),
@@ -260,8 +260,11 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
                       boxShadow: [BoxShadow(color: _outline.withOpacity(0.3),
                           offset: const Offset(0, 4), blurRadius: 0)],
                     ),
-                    child: Text('Awesome!', style: GoogleFonts.gaegu(
-                      fontSize: 20, fontWeight: FontWeight.w700, color: _brown)),
+                    child: const Text('Awesome!', style: TextStyle(
+                      fontFamily: 'Bitroad',
+                      fontSize: 20,
+                      color: _brown,
+                    )),
                   ),
                 ),
               ],
@@ -293,150 +296,123 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
   @override
   Widget build(BuildContext context) {
     final currentTab = ref.watch(selectedTabProvider);
-    if (currentTab == 0 && _prevTab != 0) {
-      Future.microtask(() => ref.read(dashboardProvider.notifier).refresh());
-    }
+    if (currentTab != 0 && currentTab == _prevTab) return const SizedBox.shrink();
     _prevTab = currentTab;
 
     final dash = ref.watch(dashboardProvider);
     _syncExpression(dash);
 
-    // Level-up celebration
-    if (dash.pendingLevelUp != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _showLevelUpCelebration(dash.pendingLevelUp!);
-        ref.read(dashboardProvider.notifier).clearLevelUp();
-      });
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (dash.shouldShowLevelUp && mounted) {
+        ref.read(dashboardProvider.notifier).markLevelUpSeen();
+        _showLevelUpCelebration(dash.level);
+      }
+    });
 
-    // Lazy load resources
-    if (!_recsLoaded) _loadRecommendations();
+    final screenW = MediaQuery.of(context).size.width;
+    final contentW = (screenW * 0.92).clamp(360.0, 1200.0);
+    final isWide = contentW >= 900;
 
-    return Stack(children: [
-      // Ombré background
-      Positioned.fill(child: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter, end: Alignment.bottomCenter,
-            colors: [_ombre1, _ombre2, _ombre3, _ombre4],
-            stops: [0.0, 0.3, 0.6, 1.0],
-          ),
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [_ombre1, _ombre2, _ombre3, _ombre4],
         ),
-      )),
-      Positioned.fill(child: CustomPaint(painter: _PawPrintBg())),
-
-      // Content
-      SafeArea(
-        child: RefreshIndicator(
-          color: _outline,
-          backgroundColor: _cardFill,
-          onRefresh: () => ref.read(dashboardProvider.notifier).refresh(),
-          child: LayoutBuilder(
-            builder: (ctx, constraints) {
-              final isWide = constraints.maxWidth > 800;
-              final sidePad = isWide ? 80.0 : 24.0;
-              // Navbar height + breathing room
-              const navH = 80.0;
-              return SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Padding(
-                        padding: EdgeInsets.fromLTRB(sidePad, 28, sidePad, 0),
-                        child: _stagger(0.0, _buildTopBar(dash)),
-                      ),
-
-                      // This gets pushed DOWN by spaceBetween
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          // Avatar + speech
-                          _stagger(0.04, _buildAvatarSection(dash, constraints.maxWidth - sidePad * 2)),
-
-                          // XP divider
-                          Padding(
-                            padding: EdgeInsets.symmetric(horizontal: sidePad),
-                            child: _stagger(0.08, _buildXpDivider(dash)),
-                          ),
-                          const SizedBox(height: 10),
-
-                          // Content (streak, stats, quests, insight)
-                          Padding(
-                            padding: EdgeInsets.fromLTRB(sidePad, 0, sidePad, navH),
-                            child: Column(
+      ),
+      child: CustomPaint(
+        painter: _PawPrintBg(),
+        child: SafeArea(
+          bottom: false,
+          child: Center(
+            child: SizedBox(
+              width: contentW,
+              child: Column(
+                children: [
+                  const SizedBox(height: 16),
+                  _stagger(0.0, _buildHeaderRow(dash)),
+                  const SizedBox(height: 16),
+                  _stagger(0.08, _buildAvatarSection(dash, contentW)),
+                  const SizedBox(height: 8),
+                  _stagger(0.12, _buildXpDivider(dash)),
+                  const SizedBox(height: 20),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.only(bottom: 100),
+                      child: isWide
+                          ? _stagger(0.16, _buildTwoColumnContent(dash))
+                          : Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                if (isWide)
-                                  _stagger(0.14, _buildTwoColumnContent(dash))
-                                else ...[
-                                  _stagger(0.14, _buildWeeklyStreak(dash)),
-                                  const SizedBox(height: 16),
-                                  _stagger(0.18, _buildStatsCard(dash)),
-                                  const SizedBox(height: 16),
-                                  _stagger(0.22, _buildQuestsCard(dash)),
-                                  const SizedBox(height: 16),
-                                  _stagger(0.26, _buildInsightTip(dash)),
-                                ],
+                                _stagger(0.16, _buildWeeklyStreak(dash)),
+                                const SizedBox(height: 18),
+                                _stagger(0.20, _buildStatsCard(dash)),
+                                const SizedBox(height: 18),
+                                _stagger(0.24, _buildQuestsCard(dash)),
+                                const SizedBox(height: 16),
+                                _stagger(0.28, _buildInsightTip(dash)),
                               ],
                             ),
-                          ),
-                        ],
-                      ),
-                    ],
+                    ),
                   ),
-                ),
-              );
-            },
+                ],
+              ),
+            ),
           ),
         ),
       ),
-    ]);
+    );
   }
 
-  //  TOP BAR — greeting left, pills right
-  Widget _buildTopBar(DashboardState dash) {
+  //  HEADER ROW (greeting + pills)
+  Widget _buildHeaderRow(DashboardState dash) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Greeting
+        // Left: greeting
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '${_getGreeting()}, ${dash.displayName}!',
+                '${_getGreeting()}, ${dash.displayName}',
                 style: const TextStyle(
                   fontFamily: 'Bitroad',
-                  fontSize: 28,
+                  fontSize: 22,
                   color: _brown,
-                  height: 1.1,
+                  height: 1.2,
                 ),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 2),
               Text(
                 _getCerebroSays(dash),
-                style: GoogleFonts.gaegu(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
-                  color: _brownLt,
+                style: GoogleFonts.nunito(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: _brownSoft,
                   height: 1.35,
                 ),
               ),
             ],
           ),
         ),
-        const SizedBox(width: 16),
-        // Pills
-        Row(
-          mainAxisSize: MainAxisSize.min,
+        const SizedBox(width: 14),
+        // Right: pills
+        Wrap(
+          spacing: 7,
+          runSpacing: 7,
           children: [
-            _Pill(icon: Icons.calendar_today_rounded, label: _formatDate(), color: _pinkLt),
-            const SizedBox(width: 7),
-            _Pill(icon: Icons.star_rounded, label: 'Lv. ${dash.level}', color: _gold),
-            const SizedBox(width: 7),
+            _Pill(
+              icon: Icons.calendar_today_rounded,
+              label: _formatDate(),
+              color: _purpleHdr.withOpacity(0.5),
+            ),
+            _Pill(
+              icon: Icons.stars_rounded,
+              label: 'Lv. ${dash.level}',
+              color: _skyHdr.withOpacity(0.5),
+            ),
             GestureDetector(
               onTap: _showMoodPopup,
               child: _Pill(
@@ -449,11 +425,8 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
                 color: _coral,
               ),
             ),
-            const SizedBox(width: 7),
-            _Pill(iconWidget: const _CashBill(size: 18), label: '${dash.cash}', color: _cashTint),
-            const SizedBox(width: 7),
-            _Pill(icon: Icons.local_fire_department_rounded, label: '${dash.streak}', color: _orange),
-            const SizedBox(width: 7),
+            _Pill(icon: Icons.monetization_on_rounded, label: '${dash.cash}', color: _gold),
+            _Pill(icon: Icons.local_fire_department_rounded, label: '${dash.streak}d', color: _orange),
             _NotifBell(count: 3),
           ],
         ),
@@ -461,23 +434,14 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
     );
   }
 
-  //  AVATAR + SPEECH BUBBLE (compact, no fixed height)
+  //  AVATAR + SPEECH BUBBLE
   Widget _buildAvatarSection(DashboardState dash, double contentW) {
-    // The avatar clothes layer overflows the widget box downward by ~100px at
-    // scale 0.45. The fix is to raise the CENTER of the avatar high enough
-    // that even the clothes clear above the XP bar (which starts at sectionH).
-    // With top=-100, bottom=20, sectionH=165 (large screen):
-    //   Positioned height = 165+100-20 = 245px
-    //   Avatar layout center in SizedBox = -100 + 245/2 = 22.5px
-    //   Clothes visual offset from center ≈ 103px → clothes at ~125px
-    //   SizedBox bottom = 165px → 40px clearance ✅
     final isSmall  = contentW < 400;
     final isMedium = contentW < 700;
 
     final double avatarScale = isSmall ? 0.35 : (isMedium ? 0.40 : 0.45);
     final double avatarSize  = isSmall ? 260.0 : (isMedium ? 280.0 : 310.0);
     final double sectionH    = isSmall ? 130.0 : (isMedium ? 150.0 : 165.0);
-    // Raise by increasing magnitude of top. bottom=20 keeps some pull from below.
     final double avatarTop   = isSmall ? -65.0 : (isMedium ? -80.0 : -100.0);
     const double avatarBottom = 20.0;
 
@@ -492,8 +456,6 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          // Avatar — Center alignment keeps the avatar's visual center at
-          // (avatarTop + Positioned_height / 2) in SizedBox coordinates.
           Positioned(
             left: 0,
             right: 0,
@@ -517,8 +479,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
                     : _placeholderAvatar(),
               ),
             ),
-          ),  // end avatar
-          // Speech bubble — to the right of the avatar head
+          ),
           if (_speechText.isNotEmpty)
             Positioned(
               left: bubbleLeft,
@@ -546,8 +507,15 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
         children: [
           const Icon(Icons.face_rounded, size: 36, color: CerebroTheme.pinkPop),
           const SizedBox(height: 4),
-          Text('Create avatar!', textAlign: TextAlign.center,
-              style: GoogleFonts.gaegu(fontSize: 14, fontWeight: FontWeight.w700, color: _brown)),
+          const Text(
+            'Create avatar!',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontFamily: 'Bitroad',
+              fontSize: 14,
+              color: _brown,
+            ),
+          ),
         ],
       ),
     );
@@ -562,9 +530,9 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
           _speechText,
           maxLines: 4,
           overflow: TextOverflow.ellipsis,
-          style: GoogleFonts.gaegu(
+          style: const TextStyle(
+            fontFamily: 'Bitroad',
             fontSize: 15,
-            fontWeight: FontWeight.w700,
             color: _brown,
             height: 1.45,
           ),
@@ -575,7 +543,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
 
   //  XP DIVIDER BAR
   Widget _buildXpDivider(DashboardState dash) {
-    final xpPerLevel = 500; // matches provider
+    final xpPerLevel = 500;
     final currentXp = dash.totalXp;
     final levelXp = dash.level * xpPerLevel;
     final prevLevelXp = (dash.level - 1) * xpPerLevel;
@@ -583,7 +551,6 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
         ? ((currentXp - prevLevelXp) / (levelXp - prevLevelXp)).clamp(0.0, 1.0)
         : 0.0;
 
-    // HTML: .xp-div-track { flex: 0 0 22% } — centered row with fixed-width track
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: Row(
@@ -628,7 +595,6 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Left column (40%)
           Expanded(
             flex: 4,
             child: Column(
@@ -640,7 +606,6 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
             ),
           ),
           const SizedBox(width: 40),
-          // Right column (60%)
           Expanded(
             flex: 6,
             child: Column(
@@ -659,13 +624,10 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
   //  WEEKLY STREAK
   Widget _buildWeeklyStreak(DashboardState dash) {
     const dayLabels = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
-    final todayIdx = DateTime.now().weekday - 1; // 0=Mon
-    // Streak logic: streak days ending on today (inclusive)
-    // If any habit is done today, today counts as done
+    final todayIdx = DateTime.now().weekday - 1;
     final streakDays = dash.streak.clamp(0, 7);
     final todayHasProgress = dash.habitsDone > 0;
 
-    // Effective display streak: at least 1 if any habit done today
     final displayStreak = todayHasProgress
         ? math.max(streakDays, 1)
         : streakDays;
@@ -673,13 +635,12 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Section header
         Row(
           children: [
             Icon(Icons.bolt_rounded, size: 16, color: _oliveDk),
             const SizedBox(width: 7),
-            Text('Weekly Streak',
-              style: const TextStyle(fontFamily: 'Bitroad', fontSize: 15, color: _brown)),
+            const Text('Weekly Streak',
+              style: TextStyle(fontFamily: 'Bitroad', fontSize: 15, color: _brown)),
             const Spacer(),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
@@ -690,18 +651,15 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
                 boxShadow: [BoxShadow(color: _oliveDk.withOpacity(0.4),
                     offset: const Offset(1, 1), blurRadius: 0)],
               ),
-              child: Text('${displayStreak} days',
+              child: Text('$displayStreak days',
                 style: GoogleFonts.nunito(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white)),
             ),
           ],
         ),
         const SizedBox(height: 13),
-        // Day circles
         Row(
           children: List.generate(7, (i) {
             final isToday = i == todayIdx;
-            // A day is "done" if it falls within the streak window
-            // Streak window: from (todayIdx - displayStreak + 1) to todayIdx
             final startIdx = todayIdx - displayStreak + 1;
             final isDone = i >= startIdx && i <= todayIdx && displayStreak > 0;
 
@@ -761,22 +719,20 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
     );
   }
 
-  //  TODAY'S SNAPSHOT — 2×3 stat grid (matching HTML)
+  //  TODAY'S SNAPSHOT
   Widget _buildStatsCard(DashboardState dash) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Section header
         Row(
           children: [
             Icon(Icons.show_chart_rounded, size: 16, color: _oliveDk),
             const SizedBox(width: 7),
-            Text("Today's Snapshot",
-              style: const TextStyle(fontFamily: 'Bitroad', fontSize: 15, color: _brown)),
+            const Text("Today's Snapshot",
+              style: TextStyle(fontFamily: 'Bitroad', fontSize: 15, color: _brown)),
           ],
         ),
         const SizedBox(height: 13),
-        // 2×3 grid
         Column(
           children: [
             Row(children: [
@@ -844,7 +800,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
     );
   }
 
-  //  TODAY'S QUESTS — card with progress ring + quest rows
+  //  TODAY'S QUESTS
   Widget _buildQuestsCard(DashboardState dash) {
     final habits = dash.habits;
     final habitsDone = dash.habitsDone;
@@ -854,13 +810,12 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Section header
         Row(
           children: [
             Icon(Icons.description_rounded, size: 16, color: _oliveDk),
             const SizedBox(width: 7),
-            Text("Today's Quests",
-              style: const TextStyle(fontFamily: 'Bitroad', fontSize: 15, color: _brown)),
+            const Text("Today's Quests",
+              style: TextStyle(fontFamily: 'Bitroad', fontSize: 15, color: _brown)),
             const Spacer(),
             GestureDetector(
               onTap: () => ref.read(selectedTabProvider.notifier).state = 1,
@@ -870,7 +825,6 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
           ],
         ),
         const SizedBox(height: 13),
-        // Quest card
         Container(
           decoration: BoxDecoration(
             color: Colors.white.withOpacity(0.88),
@@ -883,12 +837,10 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
             borderRadius: BorderRadius.circular(16.5),
             child: Column(
               children: [
-                // Progress header
                 Padding(
                   padding: const EdgeInsets.fromLTRB(14, 11, 14, 11),
                   child: Row(
                     children: [
-                      // Progress ring
                       SizedBox(
                         width: 36, height: 36,
                         child: Stack(alignment: Alignment.center, children: [
@@ -926,9 +878,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
                   ),
                 ),
                 Divider(height: 1, color: _outline.withOpacity(0.06)),
-                // Quest rows
                 ...List.generate(habits.length, (i) => _questRow(i)),
-                // Completion banner
                 if (habitsDone == habits.length && habits.isNotEmpty)
                   Container(
                     width: double.infinity,
@@ -939,7 +889,11 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
                     ),
                     child: Center(
                       child: Text('All quests done! +${habits.length * 10} XP',
-                        style: GoogleFonts.gaegu(fontSize: 17, fontWeight: FontWeight.w700, color: _brown)),
+                        style: const TextStyle(
+                          fontFamily: 'Bitroad',
+                          fontSize: 17,
+                          color: _brown,
+                        )),
                     ),
                   ),
               ],
@@ -974,7 +928,6 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
           ),
         ),
         child: Row(children: [
-          // Checkbox
           AnimatedContainer(
             duration: const Duration(milliseconds: 150),
             width: 20, height: 20,
@@ -989,7 +942,6 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
             child: done ? const Icon(Icons.check_rounded, size: 12, color: Colors.white) : null,
           ),
           const SizedBox(width: 10),
-          // Name
           Expanded(child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1000,7 +952,6 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
                   decoration: done ? TextDecoration.lineThrough : null)),
             ],
           )),
-          // XP badge
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
             decoration: BoxDecoration(
@@ -1019,58 +970,48 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
   }
 
   //  DAILY INSIGHT TIP
-  //  Tapping (or tapping "See more") opens the full cross-
-  //  domain Insights screen.
   Widget _buildInsightTip(DashboardState dash) {
     final insight = _getInsight(dash);
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => context.push(Routes.insights),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(14, 11, 14, 11),
-        decoration: BoxDecoration(
-          color: _pinkLt.withOpacity(0.22),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: _outline.withOpacity(0.18), width: 1),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 24, height: 24,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                shape: BoxShape.circle,
-                border: Border.all(color: _outline.withOpacity(0.3), width: 1.5),
-              ),
-              child: Icon(Icons.lightbulb_outline_rounded, size: 12, color: _pinkDk),
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 11, 14, 11),
+      decoration: BoxDecoration(
+        color: _pinkLt.withOpacity(0.22),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _outline.withOpacity(0.18), width: 1),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 24, height: 24,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              border: Border.all(color: _outline.withOpacity(0.3), width: 1.5),
             ),
-            const SizedBox(width: 9),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(children: [
-                    Text('DAILY INSIGHT',
-                      style: GoogleFonts.nunito(
-                        fontSize: 10, fontWeight: FontWeight.w700,
-                        letterSpacing: 0.7, color: _pinkDk)),
-                    const Spacer(),
-                    Text('See more →',
-                      style: GoogleFonts.nunito(
-                        fontSize: 10, fontWeight: FontWeight.w700,
-                        letterSpacing: 0.3, color: _pinkDk)),
-                  ]),
-                  const SizedBox(height: 3),
-                  Text(insight,
-                    style: GoogleFonts.gaegu(
-                      fontSize: 15, fontWeight: FontWeight.w700,
-                      color: _brown, height: 1.4)),
-                ],
-              ),
+            child: Icon(Icons.lightbulb_outline_rounded, size: 12, color: _pinkDk),
+          ),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('DAILY INSIGHT',
+                  style: GoogleFonts.nunito(
+                    fontSize: 10, fontWeight: FontWeight.w700,
+                    letterSpacing: 0.7, color: _pinkDk)),
+                const SizedBox(height: 3),
+                Text(insight,
+                  style: const TextStyle(
+                    fontFamily: 'Bitroad',
+                    fontSize: 15,
+                    color: _brown,
+                    height: 1.4,
+                  )),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -1085,33 +1026,43 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
   }
 
   //  STAGGER ANIMATION
+  // Stagger animation. Passes `child` through AnimatedBuilder (so the subtree
+  // isn't rebuilt every frame) and ignores pointer events while animating —
+  // prevents the desktop `_debugDuringDeviceUpdate` mouse-tracker assertion
+  // that fires when hit-test regions change mid-update.
   Widget _stagger(double delay, Widget child) {
-    return AnimatedBuilder(
-      animation: _enterCtrl,
-      builder: (_, __) {
-        final t = Curves.easeOutCubic.transform(
-          ((_enterCtrl.value - delay) / (1.0 - delay)).clamp(0.0, 1.0));
-        return Opacity(opacity: t, child: Transform.translate(
-            offset: Offset(0, 18 * (1 - t)), child: child));
-      },
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: _enterCtrl,
+        child: child,
+        builder: (_, c) {
+          final t = Curves.easeOutCubic.transform(
+            ((_enterCtrl.value - delay) / (1.0 - delay)).clamp(0.0, 1.0));
+          return IgnorePointer(
+            ignoring: t < 1.0,
+            child: Opacity(
+              opacity: t,
+              child: Transform.translate(
+                offset: Offset(0, 18 * (1 - t)), child: c),
+            ),
+          );
+        },
+      ),
     );
   }
 }
 
-//  PILL — compact status badge (matching HTML .pill)
+//  PILL
 class _Pill extends StatelessWidget {
-  final IconData? icon;
-  final Widget? iconWidget;        // overrides `icon` when provided
+  final IconData icon;
   final String label;
   final Color color;
-  const _Pill({this.icon, this.iconWidget, required this.label, required this.color})
-      : assert(icon != null || iconWidget != null,
-               'Provide either icon or iconWidget');
+  const _Pill({required this.icon, required this.label, required this.color});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
         color: color,
         borderRadius: BorderRadius.circular(999),
@@ -1120,51 +1071,19 @@ class _Pill extends StatelessWidget {
             offset: const Offset(2, 2), blurRadius: 0)],
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
-        iconWidget ?? Icon(icon, size: 14, color: _outline),
-        const SizedBox(width: 5),
-        Text(label, style: GoogleFonts.gaegu(
-          fontSize: 15, fontWeight: FontWeight.w700, color: _brown)),
+        Icon(icon, size: 13, color: _outline),
+        const SizedBox(width: 4),
+        Text(label, style: const TextStyle(
+          fontFamily: 'Bitroad',
+          fontSize: 13,
+          color: _brown,
+        )),
       ]),
     );
   }
 }
 
-//  CASH BILL STICKER — tilted sage dollar-bill, matches store
-class _CashBill extends StatelessWidget {
-  final double size;
-  final Color fill;
-  final Color border;
-  final Color glyphColor;
-  const _CashBill({
-    this.size = 16,
-    this.fill      = const Color(0xFF98A869),  // palette sage
-    this.border    = const Color(0xFF58772F),  // palette olive-dk
-    this.glyphColor = const Color(0xFFF9FDEC), // palette cream-yellow
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final double w = size;
-    final double h = size * 0.66;
-    return Transform.rotate(
-      angle: -0.15,
-      child: Container(
-        width: w, height: h,
-        decoration: BoxDecoration(
-          color: fill,
-          borderRadius: BorderRadius.circular(size * 0.15),
-          border: Border.all(color: border, width: size * 0.09),
-        ),
-        child: Center(child: Text('\$',
-          style: GoogleFonts.gaegu(
-            fontSize: size * 0.58, fontWeight: FontWeight.w700,
-            color: glyphColor, height: 1))),
-      ),
-    );
-  }
-}
-
-//  NOTIFICATION BELL (matching HTML .notif)
+//  NOTIFICATION BELL
 class _NotifBell extends StatelessWidget {
   final int count;
   const _NotifBell({this.count = 0});
@@ -1207,7 +1126,7 @@ class _NotifBell extends StatelessWidget {
   }
 }
 
-//  STAT TILE — mini card in 2×3 grid (matching HTML .sc)
+//  STAT TILE
 class _StatTile extends StatelessWidget {
   final IconData icon;
   final String label, value;
@@ -1262,7 +1181,7 @@ class _StatTile extends StatelessWidget {
   }
 }
 
-//  PROGRESS RING PAINTER (for quest progress)
+//  PROGRESS RING PAINTER
 class _ProgressRingPainter extends CustomPainter {
   final double progress;
   final Color bgColor, fgColor;
@@ -1277,14 +1196,12 @@ class _ProgressRingPainter extends CustomPainter {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = (size.width - strokeWidth) / 2;
 
-    // Background circle
     canvas.drawCircle(center, radius,
       Paint()..color = bgColor..style = PaintingStyle.stroke..strokeWidth = strokeWidth);
 
-    // Foreground arc
     canvas.drawArc(
       Rect.fromCircle(center: center, radius: radius),
-      -math.pi / 2, // start from top
+      -math.pi / 2,
       2 * math.pi * progress,
       false,
       Paint()
@@ -1300,7 +1217,7 @@ class _ProgressRingPainter extends CustomPainter {
       old.progress != progress;
 }
 
-//  COZY SPEECH BUBBLE (preserved)
+//  COZY SPEECH BUBBLE
 class _CozyBubblePainter extends CustomPainter {
   static const _radius = 18.0;
   static const _border = 2.0;
@@ -1343,7 +1260,7 @@ class _CozyBubblePainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-//  MOOD POPUP (preserved exactly)
+//  MOOD POPUP
 class _MoodPopup extends StatelessWidget {
   final AvatarConfig config;
   final String? selected;
@@ -1394,8 +1311,11 @@ class _MoodPopup extends StatelessWidget {
                   child: Stack(
                     alignment: Alignment.center,
                     children: [
-                      Text('How are you feeling?', style: GoogleFonts.gaegu(
-                          fontSize: 24, fontWeight: FontWeight.w700, color: _brown)),
+                      const Text('How are you feeling?', style: TextStyle(
+                        fontFamily: 'Bitroad',
+                        fontSize: 24,
+                        color: _brown,
+                      )),
                       Positioned(
                         right: 16,
                         child: GestureDetector(
@@ -1444,9 +1364,11 @@ class _MoodPopup extends StatelessWidget {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Expanded(child: MoodSticker(config: config, mood: key, size: 100)),
-                              Text(label, style: GoogleFonts.gaegu(
-                                  fontSize: 14, fontWeight: FontWeight.w700,
-                                  color: isSel ? _brown : _brownLt)),
+                              Text(label, style: const TextStyle(
+                                fontFamily: 'Bitroad',
+                                fontSize: 14,
+                                color: _brownLt,
+                              )),
                             ],
                           ),
                         ),
@@ -1463,7 +1385,7 @@ class _MoodPopup extends StatelessWidget {
   }
 }
 
-//  PAWPRINT BACKGROUND (preserved)
+//  PAWPRINT BACKGROUND
 class _PawPrintBg extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {

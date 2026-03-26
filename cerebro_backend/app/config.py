@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
-    GOOGLE_CLIENT_ID: str = "767600036492-j7fcuhq2i09dakh2j80c74qj7perrlu8.apps.googleusercontent.com"
+    GOOGLE_CLIENT_ID: str = ""  # set via .env or environment variable
 
     BACKEND_HOST: str = "0.0.0.0"
     BACKEND_PORT: int = 8000

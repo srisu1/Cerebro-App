@@ -11,7 +11,7 @@ from app.utils.auth import (
     decode_token, get_current_user, verify_google_id_token,
 )
 
-router = APIRouter(prefix="/auth", tags=["Authentication"])
+router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)

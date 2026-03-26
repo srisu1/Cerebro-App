@@ -1,15 +1,4 @@
-/// Everything in one beautiful scrollable page.
-/// Bottom sheets for logging. AI insights tie it all together.
-///
-/// Layout:
-///  1. Hero Header with animated Wellness Score ring
-///  2. Mood Check-In Strip (MoodSticker avatars — tap to log)
-///  3. Water Glasses Row (tap-to-fill cups — user loves these)
-///  4. Sleep Card (last night + "How'd you sleep?" prompt)
-///  5. Medications Checklist (inline take/skip)
-///  6. AI Health Insights Card (smart personalized tips)
-///  7. Symptom Quick-Log (simple "Feeling off?" button)
-///  8. Weekly Trends mini-chart
+// Health tab — mood, water, sleep, meds, symptoms, and wellness score
 
 import 'dart:convert';
 import 'dart:math' as math;
