@@ -1,10 +1,4 @@
-/// Pixel-matched to ui-prototype/login.html:
-///   • Olive green (#58772f) background with cross-dot pattern
-///   • White "game-card" with thick dark border + hard box-shadow
-///   • Left panel: SVG illustration + brand block
-///   • Right panel: Sign In / Register tabs, Bitroad titles, pink-accent buttons
-///   • Inputs: thick dark borders, pink focus glow
-///   • All functionality preserved from v5.
+// Login screen with olive-green card layout, sign-in/register tabs.
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';

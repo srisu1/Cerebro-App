@@ -1700,7 +1700,7 @@ class _ScheduleTabState extends State<_ScheduleTab> {
     );
   }
 
-  // two schedulers aren't treated as independent systems by the user. ──
+  // smart scheduling banner
   Widget _smartBanner() {
     final cfg = _smartCfg ?? const {};
     final perWeek = (cfg['quiz_per_week'] is int) ? cfg['quiz_per_week'] : 1;

@@ -1,17 +1,4 @@
-/// Visual language mirrors the Home dashboard (ombre + pawprint +
-/// sticker-stamp cards). Functional integrations:
-///
-///   • Quest Manager — reads/writes the SAME habits the home
-///     dashboard shows (via dashboardProvider). Add/edit/delete
-///     here propagates to home instantly.
-///   • Morning / Evening routines — items are editable; each
-///     routine persists its own item list + completion state.
-///   • Back button — returns to the Home tab (selectedTabProvider = 0),
-///     matching Health Hub + Study Hub.
-///   • Daily Score — based on real completions (quests + routines).
-///
-/// Notes on typography: Bitroad font lacks an apostrophe glyph (it
-/// renders as a comma). All Bitroad section titles avoid apostrophes.
+// Daily habits tab — quests, routines, and daily score
 
 import 'dart:convert';
 import 'dart:math' as math;

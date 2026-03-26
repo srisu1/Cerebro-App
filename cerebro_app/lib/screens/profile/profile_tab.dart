@@ -1,9 +1,4 @@
-/// Layout matched to profile.html:
-///   • Hero: back+title (left), pills (right), avatar (center), info (right of avatar)
-///   • XP divider bar (same as dashboard)
-///   • Two-column content: left (42%) stats+exchange+achievements+tip,
-///     right (58%) settings card with groups & toggles
-///   • All existing functionality preserved (exchange, achievements, logout, about, etc.)
+// Profile tab — stats, settings, achievements, and avatar display
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';

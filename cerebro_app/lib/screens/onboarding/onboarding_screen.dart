@@ -1,10 +1,4 @@
-/// Pixel-matched to ui-prototype/onboarding.html:
-///   • Olive (#98a869) background with diamond checkerboard pattern
-///   • White "game-card" with thick dark border + hard box-shadow
-///   • 3 slides: Master Your Studies, Track Your Wellbeing, Meet Your Companion
-///   • Each slide: gradient illustration area (top) + content area (bottom)
-///   • Nav row: Skip button (green-pale), dots, Next/Get Started button (pink)
-///   • Slide transition: slideIn (translateX 60→0), slideOut (translateX 0→-60)
+// Onboarding carousel — 3 slides with skip/next navigation.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';

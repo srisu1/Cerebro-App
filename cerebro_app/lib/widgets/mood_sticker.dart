@@ -1,25 +1,4 @@
-/// Renders a HEAD-ONLY mood sticker whose individual face layers (eyes,
-/// nose, mouth, hair, facial hair) sit in IDENTICAL relative positions
-/// and use the same scale ratios as the full-body avatar on home +
-/// profile — everything is just scaled DOWN to fit the sticker box.
-///
-/// Implementation: a thin wrapper around [AliveAvatar] with
-/// `headOnly: true`. AliveAvatar owns the single source of truth for
-/// layer positioning (via [AvatarPositions]). We pass our display size
-/// straight through — `dScale = size / 280` inside AliveAvatar naturally
-/// scales the positions AND the layer scales together, so the head looks
-/// like a miniature version of the home/profile head.
-///
-/// In head-only mode AliveAvatar centers the base image vertically in
-/// the box (instead of pushing the head to the top to make room for a
-/// body below), so the face lands right in the middle of the sticker.
-///
-/// For callers that want a tighter crop into the face (e.g. the mood
-/// strip on the health tab), the optional [zoom] applies a uniform
-/// Transform.scale around the whole avatar — layers keep their relative
-/// positioning, everything just gets a bit bigger and the edges clip.
-///
-/// API is unchanged: [config], [mood], [size], [zoom].
+// Head-only mood sticker using AliveAvatar in headOnly mode
 
 import 'package:flutter/material.dart';
 import 'package:cerebro_app/models/avatar_config.dart';

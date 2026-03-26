@@ -1,7 +1,4 @@
-/// EXACT port of .NET AvatarDisplay.razor rendering:
-///   Canvas: 600×550, scale(Size/280), anchor: bottom center
-///   Each layer: centered, translate(X,Y), scale(S) on NATIVE image size
-///   Shows "chest up" view — ideal for dashboard, profile, navbar, etc.
+// Static avatar display widget (chest-up view for dashboard, profile, etc.)
 
 import 'package:flutter/material.dart';
 import 'package:cerebro_app/config/theme.dart';

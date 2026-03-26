@@ -1,11 +1,4 @@
-/// Avatar that feels alive with:
-///  • Gentle breathing (float up/down)
-///  • Periodic blinking (opacity fade on eyes — no asset needed)
-///  • Expression overlays based on mood / time / activity
-///  • Time-based outfit changes
-///
-/// Blink approach: Instead of loading blink/eyes.png (which may not exist),
-/// we FADE OUT the eyes layer briefly to simulate a blink. Much more reliable.
+// Animated avatar widget with breathing, blinking, and expression overlays
 
 import 'dart:async';
 import 'package:flutter/material.dart';

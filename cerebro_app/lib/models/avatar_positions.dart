@@ -1,5 +1,4 @@
-/// Ported from .NET MoodJournal AvatarPositions.cs
-/// Each layer has (x, y, scale) offsets for proper compositing.
+// Position offsets for each avatar layer (x, y, scale)
 
 class LayerPosition {
   final double x;
