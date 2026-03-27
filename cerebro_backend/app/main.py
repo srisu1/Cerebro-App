@@ -1,22 +1,36 @@
+"""
+CEREBRO Backend - FastAPI Application Entry Point
+Run: uvicorn app.main:app --reload --port 8000
+"""
+
+# Load .env file FIRST so API keys are available everywhere
 try:
     from dotenv import load_dotenv
     load_dotenv()
 except ImportError:
-    pass
+    pass  # python-dotenv not installed, that's fine — use env vars directly
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import engine, Base
-from app.routers import auth, study, health, analytics, quiz_engine, calendar, daily, gamification, insights
+from app.routers import (
+    auth, study, health, analytics, quiz_engine, calendar,
+    daily, gamification, insights, topics, smart_schedule,
+    notifications,
+)
+# Import models so tables are created
+import app.models.quiz_engine     # noqa: F401
+import app.models.calendar        # noqa: F401
+import app.models.topic           # noqa: F401
+import app.models.smart_schedule  # noqa: F401
+import app.models.notification    # noqa: F401
 
-import app.models.quiz_engine  # noqa: F401
-import app.models.calendar     # noqa: F401
-
+# In production, use Alembic migrations instead
 Base.metadata.create_all(bind=engine)
 
-# auto-migration: add deck_id to flashcards if missing
+# create_all won't alter existing tables, so we do it here
 from sqlalchemy import text as _sql_text, inspect as _sql_inspect
 with engine.connect() as _conn:
     _inspector = _sql_inspect(engine)
@@ -33,10 +47,49 @@ with engine.connect() as _conn:
         _conn.commit()
         print("[STARTUP] deck_id column added successfully.")
 
-# seed mood definitions if empty
+    # Mirror of alembic migration 007 — wizard-collected user preferences.
+    # Safe to run repeatedly: each ADD COLUMN is gated on the column not existing.
+    _user_cols = {c["name"] for c in _inspector.get_columns("users")}
+    _user_pref_columns = [
+        ("degree_level",        "VARCHAR(50)"),
+        ("affiliation",         "VARCHAR(300)"),
+        ("daily_study_hours",   "DOUBLE PRECISION"),
+        ("study_goals",         "VARCHAR(100)[] DEFAULT '{}'::VARCHAR[]"),
+        ("bedtime",             "TIME"),
+        ("wake_time",           "TIME"),
+        ("sleep_hours_target",  "DOUBLE PRECISION"),
+        ("initial_mood",        "VARCHAR(50)"),
+        ("initial_habits",      "VARCHAR(100)[] DEFAULT '{}'::VARCHAR[]"),
+    ]
+    _added_user_cols = []
+    for _col, _ddl in _user_pref_columns:
+        if _col not in _user_cols:
+            _conn.execute(_sql_text(f"ALTER TABLE users ADD COLUMN {_col} {_ddl}"))
+            _added_user_cols.append(_col)
+    if _added_user_cols:
+        _conn.commit()
+        print(f"[STARTUP] Added user preference columns: {', '.join(_added_user_cols)}")
+
+    # Notification preference columns — added separately so we can default
+    # both to TRUE (opt-out model) without touching the batch above. Also
+    # runs with a fresh users-column snapshot to catch the case where the
+    # prior loop just added something new.
+    _user_cols_v2 = {c["name"] for c in _inspector.get_columns("users")}
+    _notif_pref_columns = [
+        ("notifications_enabled",  "BOOLEAN DEFAULT TRUE NOT NULL"),
+        ("daily_reminders_enabled", "BOOLEAN DEFAULT TRUE NOT NULL"),
+    ]
+    _added_notif_cols = []
+    for _col, _ddl in _notif_pref_columns:
+        if _col not in _user_cols_v2:
+            _conn.execute(_sql_text(f"ALTER TABLE users ADD COLUMN {_col} {_ddl}"))
+            _added_notif_cols.append(_col)
+    if _added_notif_cols:
+        _conn.commit()
+        print(f"[STARTUP] Added notification preference columns: {', '.join(_added_notif_cols)}")
+
 from app.database import SessionLocal
 from app.models.health import MoodDefinition
-
 
 def _seed_mood_definitions():
     db = SessionLocal()
@@ -82,12 +135,13 @@ def _seed_mood_definitions():
             db.commit()
             print(f"[STARTUP] Seeded {len(moods)} mood definitions.")
         else:
+            # Rename existing mood definitions if needed
             renames = {"Energetic": "Excited", "Stressed": "Angry"}
             for old_name, new_name in renames.items():
                 row = db.query(MoodDefinition).filter(MoodDefinition.name == old_name).first()
                 if row:
                     row.name = new_name
-                    print(f"[STARTUP] Renamed mood '{old_name}' -> '{new_name}'")
+                    print(f"[STARTUP] Renamed mood '{old_name}' → '{new_name}'")
             db.commit()
     except Exception as e:
         print(f"[STARTUP] Mood seed error: {e}")
@@ -95,12 +149,9 @@ def _seed_mood_definitions():
     finally:
         db.close()
 
-
 _seed_mood_definitions()
 
-# seed achievements if empty
 from app.models.gamification import Achievement
-
 
 def _seed_achievements():
     db = SessionLocal()
@@ -108,7 +159,6 @@ def _seed_achievements():
         if db.query(Achievement).count() == 0:
             print("[STARTUP] Seeding achievements...")
             achievements = [
-                # study
                 {"name": "First Steps", "description": "Complete your first study session",
                  "category": "study", "icon": "school", "xp_reward": 25, "coin_reward": 5,
                  "condition_type": "count", "condition_value": 1,
@@ -133,7 +183,6 @@ def _seed_achievements():
                  "category": "study", "icon": "flash_on", "xp_reward": 200, "coin_reward": 40,
                  "condition_type": "count", "condition_value": 100,
                  "condition_field": "flashcards.reviews", "rarity": "rare"},
-                # health
                 {"name": "Sleep Champion", "description": "Get 7+ hours of sleep for 7 consecutive nights",
                  "category": "health", "icon": "bedtime", "xp_reward": 150, "coin_reward": 30,
                  "condition_type": "streak", "condition_value": 7,
@@ -150,7 +199,6 @@ def _seed_achievements():
                  "category": "health", "icon": "medication", "xp_reward": 150, "coin_reward": 30,
                  "condition_type": "streak", "condition_value": 7,
                  "condition_field": "medications.adherence", "rarity": "rare"},
-                # daily
                 {"name": "Habit Former", "description": "Maintain a 7-day habit streak",
                  "category": "daily", "icon": "repeat", "xp_reward": 150, "coin_reward": 30,
                  "condition_type": "streak", "condition_value": 7,
@@ -178,13 +226,19 @@ def _seed_achievements():
     finally:
         db.close()
 
-
 _seed_achievements()
 
 app = FastAPI(
     title="CEREBRO API",
-    description="Student Companion Backend",
-    version="0.3.0",
+    description=(
+        "Student Companion - Backend API\n\n"
+        "Domains: Study | Health | Daily Life\n"
+        "Features: Cross-domain intelligence, gamified avatar system, "
+        "hybrid ML recommendations"
+    ),
+    version="0.1.0",
+    docs_url="/docs",       # Swagger UI
+    redoc_url="/redoc",     # ReDoc UI
 )
 
 app.add_middleware(
@@ -196,14 +250,25 @@ app.add_middleware(
 )
 
 
-@app.get("/")
+@app.get("/", tags=["system"])
 def root():
-    return {"app": settings.APP_NAME, "status": "running", "version": "0.3.0"}
+    """API health check endpoint."""
+    return {
+        "app": settings.APP_NAME,
+        "status": "running",
+        "version": "0.1.0",
+        "docs": "/docs",
+    }
 
 
-@app.get("/health")
+@app.get("/health", tags=["system"])
 def health_check():
-    return {"status": "healthy", "database": "connected", "environment": settings.APP_ENV}
+    """Detailed health check."""
+    return {
+        "status": "healthy",
+        "database": "connected",
+        "environment": settings.APP_ENV,
+    }
 
 
 app.include_router(auth.router, prefix="/api/v1")
@@ -212,6 +277,10 @@ app.include_router(health.router, prefix="/api/v1")
 app.include_router(analytics.router, prefix="/api/v1")
 app.include_router(quiz_engine.router, prefix="/api/v1")
 app.include_router(calendar.router, prefix="/api/v1")
+
 app.include_router(daily.router, prefix="/api/v1")
 app.include_router(gamification.router, prefix="/api/v1")
 app.include_router(insights.router, prefix="/api/v1")
+app.include_router(topics.router, prefix="/api/v1")
+app.include_router(smart_schedule.router, prefix="/api/v1")
+app.include_router(notifications.router, prefix="/api/v1")
