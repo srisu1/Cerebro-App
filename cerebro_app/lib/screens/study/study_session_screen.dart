@@ -1,9 +1,10 @@
-// Pomodoro study session screen with ambient audio, notes, and past sessions
+// Study session — Pomodoro timer with ambient audio, notes, and past sessions.
 
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:cerebro_app/config/theme.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -17,58 +18,64 @@ import 'package:cerebro_app/providers/dashboard_provider.dart';
 import 'package:cerebro_app/providers/study_session_provider.dart';
 import 'package:cerebro_app/screens/study/study_tab.dart';
 
-const _ombre1  = Color(0xFFFFFBF7);
-const _ombre2  = Color(0xFFFFF8F3);
-const _ombre3  = Color(0xFFFFF3EF);
-const _ombre4  = Color(0xFFFEEDE9);
-const _pawClr  = Color(0xFFF8BCD0);
 
-const _outline  = Color(0xFF6E5848);
-const _brown    = Color(0xFF4E3828);
-const _brownLt  = Color(0xFF7A5840);
-const _cardFill = Color(0xFFFFF8F4);
-const _panelBg  = Color(0xFFFFF6EE);
+bool get _darkMode =>
+    CerebroTheme.brightnessNotifier.value == Brightness.dark;
 
-const _pinkHdr  = Color(0xFFE8B0A8);
-const _pinkLt   = Color(0xFFF0C0B8);
-const _greenHdr = Color(0xFFA8D5A3);
-const _greenLt  = Color(0xFFC2E8BC);
-const _greenDk  = Color(0xFF88B883);
-const _goldHdr  = Color(0xFFF0D878);
-const _goldLt   = Color(0xFFFFF0C0);
-const _goldDk   = Color(0xFFD4B850);
-const _coralHdr = Color(0xFFF0A898);
-const _coralLt  = Color(0xFFF8C0B0);
-const _purpleHdr = Color(0xFFCDA8D8);
-const _purpleLt = Color(0xFFD8C0E8);
-const _purpleDk = Color(0xFFAA88C0);
-const _skyHdr   = Color(0xFF9DD4F0);
-const _skyLt    = Color(0xFFC0E0F8);
-const _skyDk    = Color(0xFF6BB8E0);
-
+Color get _ombre1 => _darkMode ? const Color(0xFF191513) : const Color(0xFFFFFBF7);
+Color get _ombre2 => _darkMode ? const Color(0xFF1E1A17) : const Color(0xFFFFF8F3);
+Color get _ombre3 => _darkMode ? const Color(0xFF29221D) : const Color(0xFFFFF3EF);
+Color get _ombre4 => _darkMode ? const Color(0xFF312821) : const Color(0xFFFEEDE9);
+Color get _pawClr => _darkMode ? const Color(0xFF231D18) : const Color(0xFFF8BCD0);
+Color get _outline => _darkMode ? const Color(0xFFAD7F58) : const Color(0xFF6E5848);
+Color get _brown => _darkMode ? const Color(0xFFF2E1CA) : const Color(0xFF4E3828);
+Color get _brownLt => _darkMode ? const Color(0xFFDBB594) : const Color(0xFF7A5840);
+Color get _cardFill => _darkMode ? const Color(0xFF29221D) : const Color(0xFFFFF8F4);
+Color get _panelBg => _darkMode ? const Color(0xFF1E1A17) : const Color(0xFFFFF6EE);
+Color get _pinkHdr => const Color(0xFFE8B0A8);
+Color get _pinkLt => const Color(0xFFF0C0B8);
+Color get _greenHdr => const Color(0xFFA8D5A3);
+Color get _greenLt => _darkMode ? const Color(0xFF143125) : const Color(0xFFC2E8BC);
+Color get _greenDk => const Color(0xFF88B883);
+Color get _goldHdr => const Color(0xFFF0D878);
+Color get _goldLt => const Color(0xFFFFF0C0);
+Color get _goldDk => const Color(0xFFD4B850);
+Color get _coralHdr => const Color(0xFFF0A898);
+Color get _coralLt => const Color(0xFFF8C0B0);
+Color get _purpleHdr => const Color(0xFFCDA8D8);
+Color get _purpleLt => const Color(0xFFD8C0E8);
+Color get _purpleDk => const Color(0xFFAA88C0);
+Color get _skyHdr => const Color(0xFF9DD4F0);
+Color get _skyLt => const Color(0xFFC0E0F8);
+Color get _skyDk => const Color(0xFF6BB8E0);
 // Sage/olive — user's requested primary palette (matches study_tab _olive/_oliveDk)
-const _olive    = Color(0xFF98A869);
-const _oliveLt  = Color(0xFFB8C87A);
-const _oliveDk  = Color(0xFF58772F);
-const _oliveBg  = Color(0xFFF9FDEC); // soft cream-green tint
+Color get _olive => const Color(0xFF98A869);
+Color get _oliveLt => const Color(0xFFB8C87A);
+Color get _oliveDk => const Color(0xFF58772F);
+// Dark-mode returns GREEN-4 over the BROWN-3 base so sage-tinted surfaces
+// read as warm & cohesive instead of bright-cream-on-black.
+Color get _oliveBg => _darkMode ? const Color(0xFF143125) : const Color(0xFFF9FDEC);
 
 // Body softer ink — matches dashboard_tab
-const _inkSoft  = Color(0xFF9A8070);
-
+Color get _inkSoft => _darkMode ? const Color(0xFFBD926C) : const Color(0xFF9A8070);
 //    from the user's provided palette. The primary sage (#98A869)
 //    and deep sage (#58772F) alias to `_olive` / `_oliveDk` above,
 //    keeping existing call sites untouched while giving new layout
 //    code intent-revealing names.
-const _sagePale   = Color(0xFFF9FDEC); // soft pale green — card wash
-const _pinkSoft   = Color(0xFFFFD5F5); // details card wash
-const _pinkDeep   = Color(0xFFFEA9D3); // details accent
-const _skySoft    = Color(0xFFDDF6FF); // ambience card wash
-const _creamSoft  = Color(0xFFFDEFDB); // quote card wash + warm cream
-const _coralSoft  = Color(0xFFF7AEAE); // focused session accent
-const _tanWarm    = Color(0xFFE4BC83); // xp / gold pill
-const _orangeWarm = Color(0xFFFFBC5C); // streak pill
+// NOTE: These WERE const — promoted to mode-aware getters so dark mode
+// returns CRUMBS shade-4 hue tints (warm, cozy) instead of the bright
+// pastel washes (which looked jarring & cartoonish on a dark brown base).
+// In light mode the values are unchanged.
+Color get _sagePale   => _darkMode ? const Color(0xFF143125) : const Color(0xFFF9FDEC); // card wash (green)
+Color get _pinkSoft   => _darkMode ? const Color(0xFF411C35) : const Color(0xFFFFD5F5); // card wash (pink)
+Color get _pinkDeep   => _darkMode ? const Color(0xFFE93D82) : const Color(0xFFFEA9D3); // details accent
+Color get _skySoft    => _darkMode ? const Color(0xFF102A4C) : const Color(0xFFDDF6FF); // card wash (sky)
+Color get _creamSoft  => _darkMode ? const Color(0xFF3E2F15) : const Color(0xFFFDEFDB); // card wash (cream/amber)
+Color get _coralSoft  => _darkMode ? const Color(0xFF3E1A1A) : const Color(0xFFF7AEAE); // focused session accent
+Color get _tanWarm    => _darkMode ? const Color(0xFFC88C4D) : const Color(0xFFE4BC83); // xp / gold pill
+Color get _orangeWarm => _darkMode ? const Color(0xFFE38E30) : const Color(0xFFFFBC5C); // streak pill
 // ignore: unused_element
-const _redAccent  = Color(0xFFEF6262); // reserved — alerts / emphasis
+Color get _redAccent  => _darkMode ? const Color(0xFFE54D2E) : const Color(0xFFEF6262); // reserved — alerts / emphasis
 
 enum _Phase { setup, running, paused, onBreak, completed }
 
@@ -114,11 +121,7 @@ const _ambientUrls = <String, String>{
 
 //  MAIN SCREEN
 class StudySessionScreen extends ConsumerStatefulWidget {
-  /// When true, the screen auto-opens the Past Sessions bottom sheet on
-  /// first frame — used by the Study Hub's "History" entry point so users
-  /// can reach their past sessions even when a live session is running
-  /// (otherwise the sheet is only reachable via the setup phase, which is
-  /// not rendered once a session has started).
+  // When true, auto-opens Past Sessions sheet on first frame.
   final bool showPastOnOpen;
   const StudySessionScreen({Key? key, this.showPastOnOpen = false})
       : super(key: key);
@@ -232,16 +235,8 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
     });
   }
 
-  /// If `studySessionProvider` reports a live session, skip the setup UI and
-  /// jump straight into `_Phase.running` (or `_Phase.paused` if paused),
-  /// seeding our local timer fields from the provider's server-computed
-  /// elapsed time. This is what makes the "start a session on dashboard
-  /// hero → land in full session screen already running" flow work.
-  ///
-  /// If the provider has `endRequested == true`, we jump straight to the
-  /// Wrapped / completion phase instead — this is how the mini session bar
-  /// and the Study tab hero's Stop button route users into the rating UI
-  /// rather than quietly finalizing the row.
+  // Adopt a live session from the provider, jumping to running/paused/completion
+  // phase and seeding local timer fields from server-computed elapsed time.
   void _adoptGlobalSession() {
     if (!mounted) return;
     final s = ref.read(studySessionProvider);
@@ -300,21 +295,8 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
     }
   }
 
-  /// Max focus score the user is allowed to claim given how many times
-  /// attention drifted during this session.
-  ///
-  ///   0  distractions → 100
-  ///   1              → 90
-  ///   2              → 80
-  ///   …
-  ///   7+             → 30 (floor — we still let them log *something*)
-  ///
-  /// Per product decision: the session-recap slider is not a place to
-  /// rewrite history. If you paused twice and wandered off to Daily once,
-  /// you cannot claim "100% focused". Matches the backend's fallback
-  /// derivation in /sessions/{id}/end when focus_score is omitted
-  /// (max(30, 85 - distractions*10)), but with a slightly more generous
-  /// no-distraction ceiling to reward clean runs.
+  // Max focus score allowed given distractions.
+  // Formula: 0 distractions → 100, then -10 per distraction, floor 30.
   int _maxFocusForDistractions() {
     final d = (ref.read(studySessionProvider).distractions)
         .clamp(0, 100);
@@ -324,14 +306,7 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
     return (100 - d * 10).clamp(30, 100);
   }
 
-  /// Surface a brief, non-blocking explainer when the user tries to push
-  /// the focus slider past the distraction-imposed cap. Uses a throttled
-  /// SnackBar so rapid drags don't flood the screen with duplicates.
-  ///
-  /// Why a SnackBar (not a dialog): the completion screen is a chained
-  /// series of taps — slider → notes → topics → save. A modal would break
-  /// that flow. The SnackBar hints, auto-dismisses, and the slider
-  /// physically snaps back so the cap is self-evident on the next drag.
+  // Throttled SnackBar when the user drags the focus slider past the cap.
   DateTime? _lastCapNudge;
   void _nudgeCapTooltip(int maxFocus, int distractions) {
     final now = DateTime.now();
@@ -1049,7 +1024,7 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
       backgroundColor: _ombre1,
       body: Stack(children: [
         // Ombré background
-        Positioned.fill(child: Container(decoration: const BoxDecoration(
+        Positioned.fill(child: Container(decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter, end: Alignment.bottomCenter,
             colors: [_ombre1, _ombre2, _ombre3, _ombre4],
@@ -1176,7 +1151,7 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         Icon(icon, size: 13, color: _brown),
         const SizedBox(width: 5),
-        Text(label, style: const TextStyle(
+        Text(label, style: TextStyle(
           fontFamily: 'Bitroad', fontSize: 13, color: _brown, height: 1)),
       ]),
     );
@@ -1203,19 +1178,19 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
           child: Container(
             width: 46, height: 46,
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: _cardFill,
               borderRadius: BorderRadius.circular(13),
               border: Border.all(color: _outline.withOpacity(0.35), width: 1.5),
               boxShadow: [BoxShadow(
                 color: _outline.withOpacity(0.28),
                 offset: const Offset(2, 3), blurRadius: 0)]),
-            child: const Icon(Icons.chevron_left_rounded,
+            child: Icon(Icons.chevron_left_rounded,
               size: 28, color: _outline),
           ),
         ),
         const SizedBox(width: 16),
         // Title — bigger Bitroad type for hero presence
-        Flexible(child: Text(title, style: const TextStyle(
+        Flexible(child: Text(title, style: TextStyle(
           fontFamily: 'Bitroad', fontSize: 36,
           color: _brown, height: 1.0),
           overflow: TextOverflow.ellipsis, maxLines: 1)),
@@ -1277,7 +1252,7 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
             child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
               Icon(icon, size: 19, color: _oliveDk),
               const SizedBox(width: 9),
-              Text(title, style: const TextStyle(
+              Text(title, style: TextStyle(
                 fontFamily: 'Bitroad', fontSize: 19, color: _brown)),
               const SizedBox(width: 12),
               Expanded(child: Text(sub, style: GoogleFonts.gaegu(
@@ -1411,9 +1386,13 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
           ]));
 
       if (desktop) {
+        //   Goal: a structured control panel that breathes. Cards
+        //   should be sized to their CONTENT, not stretched to
+        //   identical rectangles.
+        //
         // Layout: left column = hero card (session type, focus length, begin button)
         // right column = details card (top) + rhythm card (bottom)
-        // quote text + past sessions link below
+        //   "quote text — loose"             [Past sessions →]
 
         // Right column — Details on top (compact), Rhythm below.
         //   Both shrink-wrap their content. No Expanded forcing
@@ -1460,7 +1439,7 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
               Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
                 Icon(Icons.graphic_eq_rounded, size: 19, color: _oliveDk),
                 const SizedBox(width: 9),
-                const Text('Ambience', style: TextStyle(
+                Text('Ambience', style: TextStyle(
                   fontFamily: 'Bitroad', fontSize: 19, color: _brown)),
                 const SizedBox(width: 12),
                 Expanded(child: Text('sound to settle into',
@@ -1505,7 +1484,7 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
                   Icon(Icons.history_rounded, size: 14, color: _brownLt),
                   const SizedBox(width: 6),
                   Text('Past sessions (${_pastSessions.length})',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontFamily: 'Bitroad', fontSize: 12,
                       color: _brown, letterSpacing: 0.2)),
                 ]),
@@ -1571,7 +1550,7 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
           color: _inkSoft, letterSpacing: 1.5)),
         const SizedBox(height: 6),
         Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-          Text(value, style: const TextStyle(
+          Text(value, style: TextStyle(
             fontFamily: 'Bitroad', fontSize: 26, color: _brown, height: 1)),
           const SizedBox(width: 3),
           Padding(
@@ -1603,7 +1582,7 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
         Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
           Icon(Icons.favorite_rounded, size: 18, color: _oliveDk),
           const SizedBox(width: 8),
-          Text('Your Rhythm', style: const TextStyle(
+          Text('Your Rhythm', style: TextStyle(
             fontFamily: 'Bitroad', fontSize: 18, color: _brown)),
           const SizedBox(width: 11),
           Expanded(child: Text('a quiet pulse check',
@@ -1625,7 +1604,7 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               Icon(Icons.star_rounded, size: 13, color: _brown),
               const SizedBox(width: 4),
-              Text('$totalXp', style: const TextStyle(
+              Text('$totalXp', style: TextStyle(
                 fontFamily: 'Bitroad', fontSize: 13, color: _brown, height: 1)),
             ]),
           ),
@@ -1665,10 +1644,15 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft, end: Alignment.bottomRight,
-          colors: [
-            const Color(0xFFFDEFDB).withOpacity(0.95),
-            const Color(0xFFFFF6E4).withOpacity(0.78),
-          ]),
+          colors: _darkMode
+              ? [
+                  const Color(0xFF3E2F15).withOpacity(0.95),  // AMBER-4
+                  const Color(0xFF4F3B18).withOpacity(0.78),  // AMBER-5
+                ]
+              : [
+                  const Color(0xFFFDEFDB).withOpacity(0.95),
+                  const Color(0xFFFFF6E4).withOpacity(0.78),
+                ]),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: _goldDk.withOpacity(0.42), width: 1.8),
         boxShadow: [BoxShadow(
@@ -1767,18 +1751,21 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
             duration: const Duration(milliseconds: 180),
             padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 6),
             decoration: BoxDecoration(
-              color: sel ? color.withOpacity(0.42)
-                  : const Color(0xFFFFF8F0),
+              color: sel
+                  ? (_darkMode
+                      ? Color.alphaBlend(color.withOpacity(0.28), const Color(0xFF29221D))
+                      : color.withOpacity(0.42))
+                  : (_darkMode ? const Color(0xFF312821) : const Color(0xFFFFF8F0)),
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
                 color: sel
-                    ? color.withOpacity(0.7)
-                    : _outline.withOpacity(0.28),
+                    ? color.withOpacity(_darkMode ? 0.85 : 0.7)
+                    : _outline.withOpacity(_darkMode ? 0.42 : 0.28),
                 width: 1.6),
               boxShadow: [BoxShadow(
                 color: sel
-                    ? color.withOpacity(0.38)
-                    : _outline.withOpacity(0.18),
+                    ? color.withOpacity(_darkMode ? 0.2 : 0.38)
+                    : _outline.withOpacity(_darkMode ? 0.3 : 0.18),
                 offset: const Offset(2, 3), blurRadius: 0)]),
             child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
               Icon(icons[i], size: 16,
@@ -1807,7 +1794,7 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.95),
+              color: _cardFill.withOpacity(0.95),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: _outline.withOpacity(0.28), width: 1.5),
               boxShadow: [BoxShadow(
@@ -1848,7 +1835,7 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
         const SizedBox(height: 6),
         Container(
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.95),
+            color: _cardFill.withOpacity(0.95),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: _outline.withOpacity(0.28), width: 1.5),
             boxShadow: [BoxShadow(
@@ -1886,29 +1873,54 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
     showModalBottomSheet(
       context: context,
       backgroundColor: _cardFill,
+      // Needed so the sheet can grow past the default ~half-screen cap;
+      // without this, the inner list overflows once the user has more
+      // than a handful of subjects (bug report: "Bottom overflowed by
+      // 101 pixels" on the Choose Subject sheet).
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Container(width: 36, height: 4,
-            decoration: BoxDecoration(color: _outline.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(2))),
-          const SizedBox(height: 14),
-          Text('Choose Subject', style: GoogleFonts.gaegu(
-            fontSize: 20, fontWeight: FontWeight.w700, color: _brown)),
-          const SizedBox(height: 14),
-          _subjectTile(null, 'No subject', null, ctx),
-          if (_subjectsLoading)
-            Padding(padding: const EdgeInsets.all(16),
-              child: SizedBox(width: 20, height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2, color: _pinkHdr)))
-          else
-            ...(_subjects.map((s) => _subjectTile(
-              s['id']?.toString(), s['name']?.toString() ?? 'Unknown',
-              s['color']?.toString(), ctx))),
-        ]),
-      ),
+      builder: (ctx) {
+        // Cap the sheet at 80% of screen height so it never crowds the
+        // status bar; the subject list inside scrolls when it's longer.
+        final maxH = MediaQuery.of(ctx).size.height * 0.80;
+        return ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxH),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              // Drag handle
+              Container(width: 36, height: 4,
+                decoration: BoxDecoration(color: _outline.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(2))),
+              const SizedBox(height: 14),
+              Text('Choose Subject', style: GoogleFonts.gaegu(
+                fontSize: 20, fontWeight: FontWeight.w700, color: _brown)),
+              const SizedBox(height: 14),
+              // The scrollable list — Flexible + ListView keeps the drag
+              // handle + title pinned while the subject rows scroll.
+              Flexible(
+                child: _subjectsLoading
+                  ? Padding(padding: const EdgeInsets.all(16),
+                      child: SizedBox(width: 20, height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2, color: _pinkHdr)))
+                  : ListView(
+                      shrinkWrap: true,
+                      padding: EdgeInsets.zero,
+                      children: [
+                        _subjectTile(null, 'No subject', null, ctx),
+                        ..._subjects.map((s) => _subjectTile(
+                          s['id']?.toString(),
+                          s['name']?.toString() ?? 'Unknown',
+                          s['color']?.toString(), ctx)),
+                      ],
+                    ),
+              ),
+            ]),
+          ),
+        );
+      },
     );
   }
 
@@ -1935,10 +1947,14 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
         margin: const EdgeInsets.only(bottom: 5),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
         decoration: BoxDecoration(
-          color: sel ? _pinkHdr.withOpacity(0.08) : Colors.white,
+          color: sel
+              ? (_darkMode ? const Color(0xFF411C35) : _pinkHdr.withOpacity(0.08))
+              : _cardFill,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: sel ? _pinkHdr.withOpacity(0.35) : _outline.withOpacity(0.08),
+            color: sel
+                ? _pinkHdr.withOpacity(_darkMode ? 0.7 : 0.35)
+                : _outline.withOpacity(_darkMode ? 0.25 : 0.08),
             width: sel ? 2 : 1)),
         child: Row(children: [
           if (id != null) ...[
@@ -2067,18 +2083,20 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
               padding: const EdgeInsets.symmetric(vertical: 12),
               decoration: BoxDecoration(
                 color: sel
-                    ? c.withOpacity(0.36)
-                    : const Color(0xFFFFF8F0),
+                    ? (_darkMode
+                        ? Color.alphaBlend(c.withOpacity(0.26), const Color(0xFF29221D))
+                        : c.withOpacity(0.36))
+                    : (_darkMode ? const Color(0xFF312821) : const Color(0xFFFFF8F0)),
                 borderRadius: BorderRadius.circular(13),
                 border: Border.all(
                   color: sel
-                      ? c.withOpacity(0.68)
-                      : _outline.withOpacity(0.25),
+                      ? c.withOpacity(_darkMode ? 0.85 : 0.68)
+                      : _outline.withOpacity(_darkMode ? 0.4 : 0.25),
                   width: 1.5),
                 boxShadow: sel
-                    ? [BoxShadow(color: c.withOpacity(0.34),
+                    ? [BoxShadow(color: c.withOpacity(_darkMode ? 0.18 : 0.34),
                         offset: const Offset(2, 3), blurRadius: 0)]
-                    : [BoxShadow(color: _outline.withOpacity(0.16),
+                    : [BoxShadow(color: _outline.withOpacity(_darkMode ? 0.25 : 0.16),
                         offset: const Offset(2, 2), blurRadius: 0)]),
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 if (_audioLoading && _ambientSound == sounds[i] && sounds[i] != 'none')
@@ -2117,7 +2135,7 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
         child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
           Icon(icon, size: 19, color: accent ?? _oliveDk),
           const SizedBox(width: 9),
-          Text(label, style: const TextStyle(
+          Text(label, style: TextStyle(
             fontFamily: 'Bitroad', fontSize: 18, color: _brown)),
           if (sub != null) ...[
             const SizedBox(width: 12),
@@ -2272,7 +2290,7 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
       return Container(
         padding: const EdgeInsets.fromLTRB(14, 13, 14, 14),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.88),
+          color: _cardFill.withOpacity(0.88),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: _outline.withOpacity(0.22), width: 1.5),
           boxShadow: [BoxShadow(
@@ -2291,7 +2309,7 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
                 overflow: TextOverflow.ellipsis)),
             ]),
             const SizedBox(height: 9),
-            Text(value, style: const TextStyle(
+            Text(value, style: TextStyle(
               fontFamily: 'Bitroad', fontSize: 25, color: _brown, height: 1.0)),
           ]),
       );
@@ -2300,7 +2318,7 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
     Widget xpMeter() => Container(
       padding: const EdgeInsets.fromLTRB(18, 15, 18, 16),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.88),
+        color: _cardFill.withOpacity(0.88),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: _outline.withOpacity(0.22), width: 1.5),
         boxShadow: [BoxShadow(
@@ -2317,7 +2335,7 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
             style: GoogleFonts.nunito(
               fontSize: 11, fontWeight: FontWeight.w700,
               color: _inkSoft, letterSpacing: 0.3))),
-          Text('$xpEst', style: const TextStyle(
+          Text('$xpEst', style: TextStyle(
             fontFamily: 'Bitroad', fontSize: 17, color: _brown)),
           const SizedBox(width: 4),
           Text('xp', style: GoogleFonts.nunito(
@@ -2360,7 +2378,7 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
           const SizedBox(width: 10),
           Expanded(child: Text(
             _notesCtrl.text.trim().isEmpty ? 'Open notes' : 'Edit notes',
-            style: const TextStyle(
+            style: TextStyle(
               fontFamily: 'Bitroad', fontSize: 15,
               color: _brown, letterSpacing: 0.2))),
           if (_notesCtrl.text.trim().isNotEmpty)
@@ -2380,17 +2398,17 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
         decoration: BoxDecoration(
-          color: const Color(0xFFFFF8F0),
+          color: _darkMode ? const Color(0xFF312821) : const Color(0xFFFFF8F0),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: _outline.withOpacity(0.22), width: 1.5),
+          border: Border.all(color: _outline.withOpacity(_darkMode ? 0.4 : 0.22), width: 1.5),
           boxShadow: [BoxShadow(
-            color: _outline.withOpacity(0.14),
+            color: _outline.withOpacity(_darkMode ? 0.22 : 0.14),
             offset: const Offset(0, 2.5), blurRadius: 0)]),
         child: Row(children: [
           Icon(_ambientIcon(_ambientSound), size: 16, color: _skyDk),
           const SizedBox(width: 9),
           Expanded(child: Text(_ambientLabel(_ambientSound),
-            style: const TextStyle(
+            style: TextStyle(
               fontFamily: 'Bitroad', fontSize: 15,
               color: _brown, letterSpacing: 0.2))),
           Icon(Icons.close_rounded, size: 15,
@@ -2435,7 +2453,7 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
                 color: _purpleDk, letterSpacing: 1.4)),
             ]),
             const SizedBox(height: 10),
-            Text(title, style: const TextStyle(
+            Text(title, style: TextStyle(
               fontFamily: 'Bitroad', fontSize: 17,
               color: _brown, height: 1.15),
               maxLines: 2, overflow: TextOverflow.ellipsis),
@@ -2479,7 +2497,7 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
             ]),
             const SizedBox(height: 14),
             Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-              Text('$elapsedMin', style: const TextStyle(
+              Text('$elapsedMin', style: TextStyle(
                 fontFamily: 'Bitroad', fontSize: 38, color: _brown, height: 1)),
               const SizedBox(width: 5),
               Padding(padding: const EdgeInsets.only(bottom: 5),
@@ -2798,7 +2816,7 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
           width: double.infinity,
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.92),
+            color: _cardFill.withOpacity(0.92),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: _outline.withOpacity(0.15), width: 1.2)),
           child: Wrap(spacing: 6, runSpacing: 6, children: [
@@ -2882,7 +2900,7 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
         Container(
           constraints: const BoxConstraints(minHeight: 130, maxHeight: 240),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.92),
+            color: _cardFill.withOpacity(0.92),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: _outline.withOpacity(0.15), width: 1.2)),
           child: TextField(
@@ -2910,10 +2928,14 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
       child: Container(
         width: 30, height: 28,
         decoration: BoxDecoration(
-          color: active ? _pinkHdr.withOpacity(0.12) : Colors.white,
+          color: active
+              ? (_darkMode ? const Color(0xFF411C35) : _pinkHdr.withOpacity(0.12))
+              : _cardFill,
           borderRadius: BorderRadius.circular(7),
           border: Border.all(
-            color: active ? _pinkHdr.withOpacity(0.3) : _outline.withOpacity(0.08),
+            color: active
+                ? _pinkHdr.withOpacity(_darkMode ? 0.6 : 0.3)
+                : _outline.withOpacity(_darkMode ? 0.25 : 0.08),
             width: 1)),
         child: Icon(icon, size: 14,
           color: active ? _pinkHdr : _brownLt.withOpacity(0.5)),
@@ -2938,7 +2960,7 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
           Padding(
             padding: const EdgeInsets.only(left: 2),
             child: Row(children: [
-              Container(width: 8, height: 8, decoration: const BoxDecoration(
+              Container(width: 8, height: 8, decoration: BoxDecoration(
                 color: _oliveDk, shape: BoxShape.circle)),
               const SizedBox(width: 11),
               Text('YOU STUDIED FOR', style: GoogleFonts.nunito(
@@ -2953,7 +2975,7 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
             ]),
           ),
           Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            Text('$mins', style: const TextStyle(
+            Text('$mins', style: TextStyle(
               fontFamily: 'Bitroad', fontSize: 112, color: _brown, height: 0.92)),
             const SizedBox(width: 10),
             Padding(
@@ -3021,7 +3043,7 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
           mainAxisSize: MainAxisSize.max,
           children: [
             Row(children: [
-              Container(width: 8, height: 8, decoration: const BoxDecoration(
+              Container(width: 8, height: 8, decoration: BoxDecoration(
                 color: _pinkHdr, shape: BoxShape.circle)),
               const SizedBox(width: 11),
               Text('THE NUMBERS', style: GoogleFonts.nunito(
@@ -3079,7 +3101,7 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min, children: [
                   Row(children: [
-                    Container(width: 8, height: 8, decoration: const BoxDecoration(
+                    Container(width: 8, height: 8, decoration: BoxDecoration(
                       color: _skyHdr, shape: BoxShape.circle)),
                     const SizedBox(width: 11),
                     Text('HOW FOCUSED', style: GoogleFonts.nunito(
@@ -3206,10 +3228,12 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
                     padding: const EdgeInsets.symmetric(
                         horizontal: 12, vertical: 9),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFFFE8C9).withOpacity(0.7),
+                      color: _darkMode
+                          ? const Color(0xFF402A15).withOpacity(0.85)
+                          : const Color(0xFFFFE8C9).withOpacity(0.7),
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
-                          color: _outline.withOpacity(0.22), width: 1),
+                          color: _outline.withOpacity(_darkMode ? 0.38 : 0.22), width: 1),
                     ),
                     child: Row(children: [
                       Icon(Icons.info_outline_rounded, size: 15,
@@ -3238,18 +3262,18 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
           decoration: BoxDecoration(
-            color: const Color(0xFFFFF8F0),
+            color: _darkMode ? const Color(0xFF312821) : const Color(0xFFFFF8F0),
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: _outline.withOpacity(0.22), width: 1.5),
+            border: Border.all(color: _outline.withOpacity(_darkMode ? 0.4 : 0.22), width: 1.5),
             boxShadow: [BoxShadow(
-              color: _outline.withOpacity(0.16),
+              color: _outline.withOpacity(_darkMode ? 0.24 : 0.16),
               offset: const Offset(0, 2.5), blurRadius: 0)]),
           child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
             Icon(Icons.edit_note_rounded, size: 22, color: _oliveDk),
             const SizedBox(width: 11),
             Text(_notesCtrl.text.trim().isEmpty
                 ? 'Add notes' : 'View notes',
-              style: const TextStyle(
+              style: TextStyle(
                 fontFamily: 'Bitroad', fontSize: 18,
                 color: _brown, letterSpacing: 0.2)),
           ]),
@@ -3268,14 +3292,19 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topLeft, end: Alignment.bottomRight,
-                  colors: [
-                    const Color(0xFFFDEFDB).withOpacity(0.92),
-                    const Color(0xFFFFF6E4).withOpacity(0.7),
-                  ]),
+                  colors: _darkMode
+                      ? [
+                          const Color(0xFF3E2F15).withOpacity(0.92),  // AMBER-4
+                          const Color(0xFF4F3B18).withOpacity(0.7),   // AMBER-5
+                        ]
+                      : [
+                          const Color(0xFFFDEFDB).withOpacity(0.92),
+                          const Color(0xFFFFF6E4).withOpacity(0.7),
+                        ]),
                 borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: _goldDk.withOpacity(0.28), width: 1.5),
+                border: Border.all(color: _goldDk.withOpacity(_darkMode ? 0.5 : 0.28), width: 1.5),
                 boxShadow: [BoxShadow(
-                  color: _goldDk.withOpacity(0.18),
+                  color: _goldDk.withOpacity(_darkMode ? 0.3 : 0.18),
                   offset: const Offset(0, 3), blurRadius: 0)]),
               child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
                 Column(
@@ -3287,7 +3316,7 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
                     const SizedBox(height: 6),
                     Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
                       Text('+${_xpEarned > 0 ? _xpEarned : baseXp + bonusXp}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontFamily: 'Bitroad', fontSize: 38,
                           color: _brown, height: 0.95)),
                       const SizedBox(width: 5),
@@ -3343,14 +3372,14 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 26),
           decoration: BoxDecoration(
-            color: const Color(0xFFFFF8F0),
+            color: _darkMode ? const Color(0xFF312821) : const Color(0xFFFFF8F0),
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: _outline.withOpacity(0.22), width: 1.5),
+            border: Border.all(color: _outline.withOpacity(_darkMode ? 0.4 : 0.22), width: 1.5),
             boxShadow: [BoxShadow(
-              color: _outline.withOpacity(0.14),
+              color: _outline.withOpacity(_darkMode ? 0.24 : 0.14),
               offset: const Offset(0, 2.5), blurRadius: 0)]),
           child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Text('Discard', style: const TextStyle(
+            Text('Discard', style: TextStyle(
               fontFamily: 'Bitroad', fontSize: 18,
               color: _brownLt, letterSpacing: 0.3)),
           ]),
@@ -3518,7 +3547,7 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
           fontSize: 15, fontWeight: FontWeight.w800, color: _inkSoft,
           letterSpacing: 0.4)),
         const Spacer(),
-        Flexible(child: Text(value, style: const TextStyle(
+        Flexible(child: Text(value, style: TextStyle(
           fontFamily: 'Bitroad', fontSize: 20, color: _brown),
           textAlign: TextAlign.right, overflow: TextOverflow.ellipsis)),
       ]),
@@ -3553,7 +3582,7 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
           offset: const Offset(0, 3), blurRadius: 0)]),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          Container(width: 7, height: 7, decoration: const BoxDecoration(
+          Container(width: 7, height: 7, decoration: BoxDecoration(
             color: _purpleDk, shape: BoxShape.circle)),
           const SizedBox(width: 10),
           Text('WHAT YOU COVERED', style: GoogleFonts.nunito(
@@ -3574,7 +3603,7 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.9),
+              color: _cardFill.withOpacity(0.9),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
                 color: _outline.withOpacity(hasSubject ? 0.24 : 0.34),
@@ -3657,7 +3686,7 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
                             _purpleHdr.withOpacity(0.65),
                           ])
                         : null,
-                      color: sel ? null : Colors.white.withOpacity(0.9),
+                      color: sel ? null : _cardFill.withOpacity(0.9),
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
                         color: sel
@@ -3704,7 +3733,7 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
           width: double.infinity,
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.92),
+            color: _cardFill.withOpacity(0.92),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: _outline.withOpacity(0.18), width: 1.2)),
           child: Wrap(spacing: 6, runSpacing: 6, children: [
@@ -3771,7 +3800,7 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
           fontSize: 9, fontWeight: FontWeight.w900,
           color: color, letterSpacing: 0.6)),
         const SizedBox(width: 5),
-        Text(value, style: const TextStyle(
+        Text(value, style: TextStyle(
           fontFamily: 'Bitroad', fontSize: 13, color: _brown)),
       ]),
     );
@@ -3885,7 +3914,7 @@ class _StudySessionScreenState extends ConsumerState<StudySessionScreen>
         mainAxisSize: MainAxisSize.max,
         children: [
           Row(children: [
-            Container(width: 8, height: 8, decoration: const BoxDecoration(
+            Container(width: 8, height: 8, decoration: BoxDecoration(
               color: _coralHdr, shape: BoxShape.circle)),
             const SizedBox(width: 11),
             Text('HOW DID IT FEEL', style: GoogleFonts.nunito(
@@ -4068,7 +4097,7 @@ class _PastSessionsSheetState extends State<_PastSessionsSheet> {
       context: context,
       builder: (_) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        backgroundColor: const Color(0xFFFFF8F4),
+        backgroundColor: _cardFill,
         title: Text('Delete Session?', style: GoogleFonts.gaegu(
           fontSize: 20, fontWeight: FontWeight.w700, color: _brown)),
         content: Text('This will permanently delete this study session and revert the XP earned. This cannot be undone.',
@@ -4334,7 +4363,7 @@ class _PastSessionsSheetState extends State<_PastSessionsSheet> {
               maxWidth: 600,
               maxHeight: MediaQuery.of(context).size.height * 0.85),
             decoration: BoxDecoration(
-              color: const Color(0xFFFFF8F4),
+              color: _cardFill,
               borderRadius: BorderRadius.circular(20)),
             child: Column(children: [
               Container(
@@ -4512,7 +4541,7 @@ class _PastSessionsSheetState extends State<_PastSessionsSheet> {
                             borderRadius: BorderRadius.circular(12),
                             borderSide: BorderSide(color: typeColor.withOpacity(0.3), width: 2)),
                           filled: true,
-                          fillColor: Colors.white,
+                          fillColor: _darkMode ? const Color(0xFF231D18) : Colors.white,
                           contentPadding: const EdgeInsets.all(14)),
                       ),
                     )
@@ -4603,7 +4632,7 @@ class _PastSessionsSheetState extends State<_PastSessionsSheet> {
                     Expanded(child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min, children: [
-                        Text('Past Sessions', style: const TextStyle(
+                        Text('Past Sessions', style: TextStyle(
                           fontFamily: 'Bitroad', fontSize: 24,
                           color: _brown, height: 1.05)),
                         const SizedBox(height: 3),
@@ -4740,7 +4769,7 @@ class _PastSessionsSheetState extends State<_PastSessionsSheet> {
 
               // Sessions list (or loading / empty state)
               if (_loading)
-                const SliverFillRemaining(
+                SliverFillRemaining(
                   hasScrollBody: false,
                   child: Center(
                     child: CircularProgressIndicator(strokeWidth: 2, color: _pinkHdr)),
@@ -4810,8 +4839,8 @@ class _PastSessionsSheetState extends State<_PastSessionsSheet> {
             child: Container(
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
               decoration: BoxDecoration(
-                color: Colors.white,
-                border: Border(top: BorderSide(color: _outline.withOpacity(0.08)))),
+                color: _darkMode ? const Color(0xFF231D18) : Colors.white,
+                border: Border(top: BorderSide(color: _outline.withOpacity(_darkMode ? 0.3 : 0.08)))),
               child: Row(children: [
                 Text('${selectedSessions.length} selected',
                   style: GoogleFonts.nunito(fontSize: 12,
@@ -4947,15 +4976,20 @@ class _PastSessionsSheetState extends State<_PastSessionsSheet> {
         // intent, but legal under Flutter's painter contract.
         margin: const EdgeInsets.only(bottom: 10),
         decoration: BoxDecoration(
-          color: isSelected ? _oliveBg : Colors.white,
+          // Dark-mode lifts session rows to BROWN-4 (#3D3028) so they
+          // sit clearly above the sheet's BROWN-3 background instead of
+          // looking like pure white cards pasted onto black.
+          color: isSelected
+              ? _oliveBg
+              : (_darkMode ? const Color(0xFF3D3028) : Colors.white),
           borderRadius: BorderRadius.circular(14),
           boxShadow: [BoxShadow(
-            color: _outline.withOpacity(0.06),
+            color: _outline.withOpacity(_darkMode ? 0.25 : 0.06),
             blurRadius: 6, offset: const Offset(0, 2))],
           border: Border.all(
             color: isSelected
-                ? _oliveDk.withOpacity(0.4)
-                : _outline.withOpacity(0.22),
+                ? _oliveDk.withOpacity(_darkMode ? 0.65 : 0.4)
+                : _outline.withOpacity(_darkMode ? 0.35 : 0.22),
             width: 1)),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(14),
@@ -5051,9 +5085,14 @@ class _PastSessionsSheetState extends State<_PastSessionsSheet> {
                       width: double.infinity,
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFFFFCF8),
+                        // Dark: BROWN-2 (`#231D18`) inside the BROWN-4 card
+                        // gives a softly recessed notes panel.
+                        color: _darkMode
+                            ? const Color(0xFF231D18)
+                            : const Color(0xFFFFFCF8),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: _outline.withOpacity(0.04))),
+                        border: Border.all(
+                          color: _outline.withOpacity(_darkMode ? 0.18 : 0.04))),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -5375,26 +5414,28 @@ class _DurationChip extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 14),
         decoration: BoxDecoration(
           color: selected
-              ? accent.withOpacity(0.42)
-              : const Color(0xFFFFF8F0),
+              ? (_darkMode
+                  ? Color.alphaBlend(accent.withOpacity(0.28), const Color(0xFF29221D))
+                  : accent.withOpacity(0.42))
+              : (_darkMode ? const Color(0xFF312821) : const Color(0xFFFFF8F0)),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: selected
-                ? accent.withOpacity(0.75)
-                : _outline.withOpacity(0.28),
+                ? accent.withOpacity(_darkMode ? 0.85 : 0.75)
+                : _outline.withOpacity(_darkMode ? 0.42 : 0.28),
             width: 1.6),
           boxShadow: [
             BoxShadow(
               color: selected
-                  ? accent.withOpacity(0.32)
-                  : _outline.withOpacity(0.18),
+                  ? accent.withOpacity(_darkMode ? 0.18 : 0.32)
+                  : _outline.withOpacity(_darkMode ? 0.28 : 0.18),
               offset: const Offset(2, 3),
               blurRadius: 0,
             ),
           ],
         ),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text(label, style: const TextStyle(
+          Text(label, style: TextStyle(
             fontFamily: 'Bitroad', fontSize: 16, color: _brown)),
           const SizedBox(height: 2),
           Text(desc, style: GoogleFonts.nunito(
@@ -5695,7 +5736,7 @@ class _NotesEditorRouteState extends State<_NotesEditorRoute> {
       child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
         Icon(icon, size: 19, color: accent ?? _oliveDk),
         const SizedBox(width: 9),
-        Text(label, style: const TextStyle(
+        Text(label, style: TextStyle(
           fontFamily: 'Bitroad', fontSize: 19, color: _brown)),
         if (sub != null) ...[
           const SizedBox(width: 12),
@@ -5723,7 +5764,7 @@ class _NotesEditorRouteState extends State<_NotesEditorRoute> {
       mainAxisSize: MainAxisSize.min, children: [
         _sectionHdr('Document', Icons.description_rounded,
           accent: _oliveDk, sub: 'this session'),
-        Text(widget.sessionTitle, style: const TextStyle(
+        Text(widget.sessionTitle, style: TextStyle(
           fontFamily: 'Bitroad', fontSize: 17, color: _brown,
           height: 1.2)),
         if (widget.subjectName != null) Padding(
@@ -5748,7 +5789,7 @@ class _NotesEditorRouteState extends State<_NotesEditorRoute> {
                 color: _inkSoft, letterSpacing: 1.4)),
               const SizedBox(height: 6),
               Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                Text('${widget.studiedMin}', style: const TextStyle(
+                Text('${widget.studiedMin}', style: TextStyle(
                   fontFamily: 'Bitroad', fontSize: 24, color: _brown, height: 1)),
                 const SizedBox(width: 4),
                 Padding(
@@ -5813,7 +5854,7 @@ class _NotesEditorRouteState extends State<_NotesEditorRoute> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.7),
+            color: _cardFill.withOpacity(0.7),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: _outline.withOpacity(0.15), width: 1)),
@@ -5884,10 +5925,15 @@ class _NotesEditorRouteState extends State<_NotesEditorRoute> {
         Positioned.fill(child: Container(
           decoration: BoxDecoration(gradient: LinearGradient(
             begin: Alignment.topLeft, end: Alignment.bottomRight,
-            colors: [
-              const Color(0xFFFDF6E9),
-              const Color(0xFFFFFAF2),
-            ])))),
+            colors: _darkMode
+                ? [
+                    const Color(0xFF29221D),
+                    const Color(0xFF312821),
+                  ]
+                : [
+                    const Color(0xFFFDF6E9),
+                    const Color(0xFFFFFAF2),
+                  ])))),
         Positioned.fill(child: IgnorePointer(child: CustomPaint(
           painter: _RuledPaperBg(
             line: _outline.withOpacity(0.07),
@@ -5966,7 +6012,7 @@ class _NotesEditorRouteState extends State<_NotesEditorRoute> {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.92),
+              color: _cardFill.withOpacity(0.92),
               borderRadius: BorderRadius.circular(22),
               border: Border.all(color: _outline.withOpacity(0.14), width: 1),
               boxShadow: [BoxShadow(
@@ -6019,7 +6065,7 @@ class _NotesEditorRouteState extends State<_NotesEditorRoute> {
       color: Colors.transparent,
       child: Stack(children: [
         // Backdrop blur via gradient
-        Container(decoration: BoxDecoration(gradient: const LinearGradient(
+        Container(decoration: BoxDecoration(gradient: LinearGradient(
           begin: Alignment.topLeft, end: Alignment.bottomRight,
           colors: [_ombre1, _ombre3]))),
         // Paw print backdrop
@@ -6043,7 +6089,7 @@ class _NotesEditorRouteState extends State<_NotesEditorRoute> {
               Expanded(child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min, children: [
-                  const Text('Notebook', style: TextStyle(
+                  Text('Notebook', style: TextStyle(
                     fontFamily: 'Bitroad', fontSize: 30,
                     color: _brown, height: 1.05)),
                   const SizedBox(height: 4),

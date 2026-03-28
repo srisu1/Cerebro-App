@@ -1,6 +1,4 @@
-/// Uses GoRouter for declarative navigation.
-/// Title screen shows first, then navigates via TitleScreen._go()
-/// Flow: title → onboarding → register → setup → avatar → home
+// GoRouter config — title screen is the entry point.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,9 +10,9 @@ import 'package:cerebro_app/screens/auth/login_screen.dart';
 import 'package:cerebro_app/screens/auth/register_screen.dart';
 import 'package:cerebro_app/screens/auth/set_password_screen.dart';
 import 'package:cerebro_app/screens/home/home_screen.dart';
-// ignore: unused_import — keep importable while the wizard is bypassed; restore by swapping the /onboarding builder.
+// ignore: unused_import
 import 'package:cerebro_app/screens/onboarding/onboarding_screen.dart';
-// ignore: unused_import — keep importable while the wizard is bypassed; restore by swapping the /setup builder.
+// ignore: unused_import
 import 'package:cerebro_app/screens/onboarding/setup_flow_screen.dart';
 import 'package:cerebro_app/screens/study/subjects_screen.dart';
 import 'package:cerebro_app/screens/study/study_session_screen.dart';
@@ -76,13 +74,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: Routes.onboarding,
-        // Onboarding disabled — auto-bypass to login (or home if logged in).
-        // Swap back to `const OnboardingScreen()` to re-enable the carousel.
-        builder: (context, state) => const _WizardBypassScreen(target: _BypassTarget.auto),
+        builder: (context, state) =>
+            const _WizardBypassScreen(target: _BypassTarget.auto),
       ),
-      // The original onboarding screen is still importable if you need
-      // to re-enable it; leave the import and route builder above, flip
-      // the builder back to `const OnboardingScreen()`.
       GoRoute(
         path: Routes.login,
         builder: (context, state) => const LoginScreen(),
@@ -97,16 +91,13 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: Routes.setup,
-        // Setup wizard disabled — auto-bypass to home. Restore by
-        // replacing the builder with `const SetupFlowScreen()`.
-        builder: (context, state) => const _WizardBypassScreen(target: _BypassTarget.home),
+        builder: (context, state) =>
+            const _WizardBypassScreen(target: _BypassTarget.auto),
       ),
       GoRoute(
         path: Routes.avatarSetup,
-        // Avatar setup gate disabled — auto-bypass to home. Restore by
-        // replacing the builder with
-        // `const AvatarCustomizationScreen(isSetup: true)`.
-        builder: (context, state) => const _WizardBypassScreen(target: _BypassTarget.home),
+        builder: (context, state) =>
+            const _WizardBypassScreen(target: _BypassTarget.home),
       ),
       GoRoute(
         path: Routes.home,
@@ -202,15 +193,7 @@ final routerProvider = Provider<GoRouter>((ref) {
   );
 });
 
-//  WIZARD BYPASS SCREEN
-//  Temporary replacement for the onboarding carousel, setup wizard,
-//  and avatar-setup gate while those flows are turned off. It:
-//    1. Marks every wizard completion flag as `true` in prefs so
-//       downstream guards (HomeScreen, login redirects, title
-//       screen routing) don't bounce the user back.
-//    2. Immediately redirects — to /home if we have a token,
-//       otherwise to /login.
-//  Shows a brief cream splash so the switch isn't jarring.
+// Wizard bypass — marks onboarding flags done and redirects.
 enum _BypassTarget {
   /// Always go to /home (we know we're authenticated).
   home,
@@ -259,7 +242,7 @@ class _WizardBypassScreenState extends State<_WizardBypassScreen> {
   @override
   Widget build(BuildContext context) {
     // Minimal splash — the user only sees this for one frame.
-    return const Scaffold(
+    return Scaffold(
       backgroundColor: CerebroTheme.creamWarm,
       body: Center(
         child: CircularProgressIndicator(

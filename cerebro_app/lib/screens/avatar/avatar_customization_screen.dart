@@ -1,4 +1,4 @@
-// Avatar customization screen
+// Avatar customization screen — pick gender, skin, hair, clothes, accessories.
 
 import 'dart:convert';
 import 'dart:math';
@@ -16,12 +16,15 @@ import 'package:cerebro_app/providers/auth_provider.dart';
 import 'package:cerebro_app/services/api_service.dart';
 
 // .NET CSS constants
-const _panelPink = Color(0xFFF4A9C1);
-const _panelBodyPink = Color(0xFFF9E5EF);
-const _tabBg = Color(0xFFF6E0E9);
-const _genderActive = Color(0xFFF490AF);
-const _okGreen = Color(0xFFA8D5A3);
 
+bool get _darkMode =>
+    CerebroTheme.brightnessNotifier.value == Brightness.dark;
+
+Color get _panelPink => const Color(0xFFF4A9C1);
+Color get _panelBodyPink => const Color(0xFFF9E5EF);
+Color get _tabBg => const Color(0xFFF6E0E9);
+Color get _genderActive => const Color(0xFFF490AF);
+Color get _okGreen => const Color(0xFFA8D5A3);
 class AvatarCustomizationScreen extends ConsumerStatefulWidget {
   final bool isSetup;
   final String? preSelectStyle;
@@ -118,9 +121,7 @@ class _AvatarCustomizationScreenState
     return map['$style-$color'];
   }
 
-  /// Returns true if a specific clothes style+color combo is locked.
-  /// Base colors (green, red, blue, black) are NEVER locked.
-  /// Store colors (babypink, brown, olive) are locked per-item until purchased.
+  /// True if this clothes style+color needs a store purchase.
   bool _isClothesItemLocked(String style, String color) {
     if (!_storeClothesColors.contains(color)) return false; // base colors always free
     final storeId = _storeClothingId(style, color);
@@ -128,9 +129,7 @@ class _AvatarCustomizationScreenState
     return !_ownedStoreItems.contains(storeId);
   }
 
-  /// Get the correct asset path for a clothes style+color combo.
-  /// Store colors (babypink, brown, olive) use assets/store/Store_items/
-  /// Base colors (green, red, blue, black) use assets/avatar/{gender}/clothes/
+  /// Asset path for a clothes style+color combo.
   String _clothesAssetPath(String style, String color) {
     if (_storeClothesColors.contains(color)) {
       // Map to store item filename (handle naming differences)
@@ -238,10 +237,7 @@ class _AvatarCustomizationScreenState
     super.dispose();
   }
 
-  /// Resolve a per-user storage scope so avatar/store/etc don't leak
-  /// across accounts on the same device. Tries `cerebro_user_id` from
-  /// prefs first (set by the API service after a successful /auth/me)
-  /// then falls back to a one-shot /auth/me fetch + cache.
+  /// Resolve per-user scope from prefs or /auth/me fallback.
   Future<String?> _currentUserScope() async {
     final prefs = await SharedPreferences.getInstance();
     final cached = prefs.getString(AppConstants.userIdKey);
@@ -259,17 +255,13 @@ class _AvatarCustomizationScreenState
     return null;
   }
 
-  /// Suffix a base SharedPreferences key with the current user's id so
-  /// data scoped to a particular account doesn't bleed into another
-  /// account on the same device.
+  /// Suffix a pref key with user id for per-account scoping.
   String _scopedKey(String base, String? userId) {
     if (userId == null || userId.isEmpty) return base;
     return '${base}__$userId';
   }
 
-  /// Pre-fill the name field from /auth/me so the avatar page matches
-  /// whatever the user currently considers their display name. Falls
-  /// back silently when offline.
+  /// Pre-fill name field from /auth/me display name.
   Future<void> _hydrateNameFromMe() async {
     try {
       final api = ref.read(apiServiceProvider);
@@ -468,6 +460,13 @@ class _AvatarCustomizationScreenState
   // BUILD
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<Brightness>(
+      valueListenable: CerebroTheme.brightnessNotifier,
+      builder: (context, _, __) => _buildScaffold(context),
+    );
+  }
+
+  Widget _buildScaffold(BuildContext context) {
     return Scaffold(
       body: LayoutBuilder(builder: (context, box) {
         final w = box.maxWidth;
@@ -509,20 +508,29 @@ class _AvatarCustomizationScreenState
         final tabGap = ((leftH - numTabs * tabH) / (numTabs - 1)).clamp(2.0, 8.0);
 
         return Stack(children: [
-          // Background: cream → pink vertical ombre
+          // Background: cream → pink vertical ombre (dark mode: BROWN 1→2
+          // with a faint pink tint bottom so the pink panel still feels
+          // grounded without turning the whole screen into a cream blob).
           Positioned.fill(
             child: Container(
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [
-                    Color(0xFFFEF5E8), // cream top
-                    Color(0xFFFEF0E4), // warm mid
-                    Color(0xFFFCE8E0), // peach
-                    Color(0xFFF9DDD8), // soft pink bottom
-                  ],
-                  stops: [0.0, 0.4, 0.7, 1.0],
+                  colors: _darkMode
+                      ? const [
+                          Color(0xFF191513), // BROWN 1
+                          Color(0xFF1E1A17), // BROWN 2
+                          Color(0xFF29221D), // BROWN 3
+                          Color(0xFF2E1522), // pink-tinted brown
+                        ]
+                      : const [
+                          Color(0xFFFEF5E8), // cream top
+                          Color(0xFFFEF0E4), // warm mid
+                          Color(0xFFFCE8E0), // peach
+                          Color(0xFFF9DDD8), // soft pink bottom
+                        ],
+                  stops: const [0.0, 0.4, 0.7, 1.0],
                 ),
               ),
             ),
@@ -760,9 +768,9 @@ class _AvatarCustomizationScreenState
                   counterText: '', hintText: 'NAME',
                   hintStyle: GoogleFonts.nunito(fontSize: 18, fontWeight: FontWeight.w500, color: const Color(0xFFBBBBBB)),
                   contentPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
-                  filled: true, fillColor: Colors.white,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(40), borderSide: const BorderSide(color: Color(0xFF4A3F35), width: 3)),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(40), borderSide: const BorderSide(color: Color(0xFF4A3F35), width: 3)),
+                  filled: true, fillColor: CerebroTheme.inputBg,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(40), borderSide: BorderSide(color: CerebroTheme.text1, width: 3)),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(40), borderSide: BorderSide(color: CerebroTheme.text1, width: 3)),
                   focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(40), borderSide: BorderSide(color: _genderActive, width: 3)),
                 ),
               ),
@@ -832,14 +840,7 @@ class _AvatarCustomizationScreenState
     );
   }
 
-  // AVATAR PREVIEW — EXACT .NET RENDERING
-  // Uses native image sizes + Transform.scale (like CSS)
-  // CSS: .avatarContainer { transform: scale(0.6) }
-  //      .avatarLayer { top:50%; left:50%;
-  //        transform: translate(calc(-50%+X),calc(-50%+Y)) scale(S) }
-  // Flutter: OverflowBox(center) → translate(dx,dy) → scale(s)
-  //   where s = layerScale * containerScale
-  //   and dx/dy = X/Y * containerScale
+  // Avatar preview — layered rendering with OverflowBox + Transform.scale.
   Widget _buildAvatar(double pvSize) {
     final containerScale = pvSize / 1000.0;
     final layers = <_Layer>[];
@@ -1166,7 +1167,11 @@ class _AvatarCustomizationScreenState
                   duration: const Duration(milliseconds: 600),
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: selected ? Colors.white : CerebroTheme.cream,
+                    // Selected pops one elevation up from the card bg.
+                    // Light: white on cream. Dark: BROWN-4 on BROWN-2.
+                    color: selected
+                        ? (_darkMode ? CerebroTheme.creamDark : Colors.white)
+                        : CerebroTheme.cream,
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
                       color: isGlowing ? const Color(0xFFF8E080) : CerebroTheme.outline,

@@ -1,59 +1,40 @@
-/// A single source of truth for the "upload study material" flow.
-///
-/// Used from:
-///   • subjects_screen  (upload + tag to a subject)
-///   • flashcard_screen (upload → optional generate flashcards)
-///   • quiz_screen      (upload → source material for quiz gen)
-///   • subject detail   (upload pre-scoped to that subject)
-///
-/// Everything the old per-screen upload dialogs did lives here:
-///   1. FilePicker with extension validation (PDF, PNG, JPG, TXT, MD)
-///   2. Cream/brown-outline modal matching the Focus Mode vibe
-///   3. Title, subject, topic-tags inputs with dropdown
-///   4. POST /study/materials/upload with multipart form-data
-///   5. Success / failure snackbars using the shared palette
-///
-/// Call site:
-///
-/// ```dart
-/// await UploadNotesModal.show(
-///   context,
-///   ref: ref,
-///   subjects: _subjects,
-///   preselectedSubjectId: someId,            // optional
-///   defaultTopics: ['Photosynthesis'],       // optional
-///   onUploaded: (resp) => _refresh(),        // optional
-/// );
-/// ```
+// Unified upload-notes modal — file pick, metadata form, multipart upload.
 library;
 
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:cerebro_app/config/theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../providers/auth_provider.dart';
 
-const _outline   = Color(0xFF6E5848);
-const _brown     = Color(0xFF4E3828);
-const _brownLt   = Color(0xFF7A5840);
-const _brownSoft = Color(0xFF9A8070);
-const _cream     = Color(0xFFFDEFDB);
-const _creamWarm = Color(0xFFFFF8F4);
-const _olive     = Color(0xFF98A869);
-const _oliveDk   = Color(0xFF58772F);
-const _mTerra    = Color(0xFFD9B5A6);
-const _mSage     = Color(0xFFB5C4A0);
+
+bool get _darkMode =>
+    CerebroTheme.brightnessNotifier.value == Brightness.dark;
+
+Color get _outline => _darkMode ? const Color(0xFFAD7F58) : const Color(0xFF6E5848);
+Color get _brown => _darkMode ? const Color(0xFFF2E1CA) : const Color(0xFF4E3828);
+Color get _brownLt => _darkMode ? const Color(0xFFDBB594) : const Color(0xFF7A5840);
+Color get _brownSoft => _darkMode ? const Color(0xFFBD926C) : const Color(0xFF9A8070);
+Color get _cream => _darkMode ? const Color(0xFF1E1A17) : const Color(0xFFFDEFDB);
+Color get _creamWarm => _darkMode ? const Color(0xFF29221D) : const Color(0xFFFFF8F4);
+Color get _cardFill  => _darkMode ? const Color(0xFF29221D) : const Color(0xFFFFF8F4);
+Color get _olive => const Color(0xFF98A869);
+Color get _oliveDk => const Color(0xFF58772F);
+Color get _mTerra => const Color(0xFFD9B5A6);
+Color get _mSage => const Color(0xFFB5C4A0);
 const _bitroad   = 'Bitroad';
 
+// Nullable `color` + in-body fallback — `_brown` is a mode-aware getter now.
 TextStyle _gaegu({
   double size = 14,
   FontWeight weight = FontWeight.w600,
-  Color color = _brown,
+  Color? color,
   double? h,
 }) =>
-    GoogleFonts.gaegu(fontSize: size, fontWeight: weight, color: color, height: h);
+    GoogleFonts.gaegu(fontSize: size, fontWeight: weight, color: color ?? _brown, height: h);
 
 /// Description of a selectable subject for the modal's subject dropdown.
 class UploadModalSubject {
@@ -95,10 +76,7 @@ class UploadNotesModal extends ConsumerStatefulWidget {
     this.onUploaded,
   });
 
-  /// Run the full upload flow. Returns `true` if the upload succeeded,
-  /// `false` if it failed, `null` if the user cancelled.
-  ///
-  /// If no file is supplied, this picks one via FilePicker first.
+  /// Run the upload flow. Picks a file if none supplied.
   static Future<bool?> show(
     BuildContext context, {
     required WidgetRef ref,
@@ -263,11 +241,11 @@ class _UploadNotesModalState extends ConsumerState<UploadNotesModal> {
                         width: 34,
                         height: 34,
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: _cardFill,
                           shape: BoxShape.circle,
                           border: Border.all(color: _outline, width: 1.5),
                         ),
-                        child: const Icon(Icons.close_rounded,
+                        child: Icon(Icons.close_rounded,
                             size: 17, color: _brown),
                       ),
                     ),
@@ -299,7 +277,7 @@ class _UploadNotesModalState extends ConsumerState<UploadNotesModal> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(widget.file.name,
-                                style: const TextStyle(
+                                style: TextStyle(
                                     fontFamily: _bitroad,
                                     fontSize: 22,
                                     color: _brown,
@@ -324,7 +302,7 @@ class _UploadNotesModalState extends ConsumerState<UploadNotesModal> {
                     hint: 'link to a subject (optional)',
                     icon: Icons.folder_rounded,
                     items: [
-                      const DropdownMenuItem<String?>(
+                      DropdownMenuItem<String?>(
                         value: null,
                         child: Text('no subject (general)',
                             style: TextStyle(
@@ -386,6 +364,7 @@ class _UploadNotesModalState extends ConsumerState<UploadNotesModal> {
   }
 }
 
+
 class _ModalInput extends StatelessWidget {
   final TextEditingController ctrl;
   final String hint;
@@ -396,7 +375,7 @@ class _ModalInput extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: _cardFill,
           borderRadius: BorderRadius.circular(18),
           border: Border.all(color: _outline, width: 2),
           boxShadow: const [
@@ -455,7 +434,7 @@ class _ModalDropdown<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: _cardFill,
           borderRadius: BorderRadius.circular(18),
           border: Border.all(color: _outline, width: 2),
           boxShadow: const [
@@ -481,7 +460,7 @@ class _ModalDropdown<T> extends StatelessWidget {
             child: DropdownButton<T>(
               value: value,
               isExpanded: true,
-              icon: const Icon(Icons.expand_more_rounded, color: _brownLt),
+              icon: Icon(Icons.expand_more_rounded, color: _brownLt),
               hint: Text(hint, style: _gaegu(size: 16, color: _brownSoft)),
               style: _gaegu(size: 16, weight: FontWeight.w600, color: _brown),
               dropdownColor: Colors.white,
@@ -496,13 +475,14 @@ class _ModalDropdown<T> extends StatelessWidget {
 class _SoftButton extends StatelessWidget {
   final String label;
   final Color fill;
-  final Color textColor;
+  // Nullable + in-body fallback — `_brown` is a mode-aware runtime getter.
+  final Color? textColor;
   final VoidCallback onTap;
-  const _SoftButton(
+  _SoftButton(
       {required this.label,
       required this.fill,
       required this.onTap,
-      this.textColor = _brown});
+      this.textColor});
   @override
   Widget build(BuildContext context) => GestureDetector(
         onTap: onTap,

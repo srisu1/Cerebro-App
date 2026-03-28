@@ -1,4 +1,4 @@
-// Login screen with olive-green card layout, sign-in/register tabs.
+// Login and registration screen with tabbed form layout.
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -220,29 +220,38 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide:
-              const BorderSide(color: CerebroTheme.text1, width: 2.5)),
+              BorderSide(color: CerebroTheme.text1, width: 2.5)),
       enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide:
-              const BorderSide(color: CerebroTheme.text1, width: 2.5)),
+              BorderSide(color: CerebroTheme.text1, width: 2.5)),
       focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide:
-              const BorderSide(color: CerebroTheme.pinkAccent, width: 2.5)),
+              BorderSide(color: CerebroTheme.pinkAccent, width: 2.5)),
       errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide:
-              const BorderSide(color: CerebroTheme.coral, width: 2.5)),
+              BorderSide(color: CerebroTheme.coral, width: 2.5)),
       focusedErrorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide:
-              const BorderSide(color: CerebroTheme.coral, width: 2.5)),
+              BorderSide(color: CerebroTheme.coral, width: 2.5)),
     );
   }
 
   //  BUILD
   @override
   Widget build(BuildContext context) {
+    // Rebuild the whole screen on theme flip so the card surface +
+    // inner panels swap without needing a remount.
+    return ValueListenableBuilder<Brightness>(
+      valueListenable: CerebroTheme.brightnessNotifier,
+      builder: (context, _, __) => _buildBody(context),
+    );
+  }
+
+  Widget _buildBody(BuildContext context) {
     final auth = ref.watch(authProvider);
     final loading = auth.status == AuthStatus.loading;
     final wide = MediaQuery.of(context).size.width > 720;
@@ -267,7 +276,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                     height: double.infinity,
                     constraints: const BoxConstraints(maxWidth: 1400),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      // Game-card surface — swaps to BROWN-1 in dark mode.
+                      color: CerebroTheme.cream,
                       borderRadius: BorderRadius.circular(24),
                       border: Border.all(color: CerebroTheme.text1, width: 3),
                       boxShadow: [
@@ -308,7 +318,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   //  LEFT BRAND PANEL
   Widget _brandPanel({bool compact = false}) {
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -342,7 +352,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
             padding: EdgeInsets.symmetric(
                 horizontal: compact ? 18 : 28,
                 vertical: compact ? 14 : 22),
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               color: CerebroTheme.creamWarm,
               border: Border(
                   top: BorderSide(color: CerebroTheme.text1, width: 3)),
@@ -412,7 +422,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
   Widget _buildTabs() {
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         border: Border(
             bottom: BorderSide(color: CerebroTheme.dividerGreen, width: 2)),
       ),
@@ -545,7 +555,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                         onChanged: (v) =>
                             setState(() => _rememberMe = v ?? false),
                         activeColor: CerebroTheme.pinkAccent,
-                        side: const BorderSide(
+                        side: BorderSide(
                             color: CerebroTheme.text2, width: 1.5),
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(3)),
@@ -614,7 +624,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
           const SizedBox(height: 18),
 
           Row(children: [
-            const Expanded(
+            Expanded(
                 child: Divider(
                     color: CerebroTheme.dividerGreen, thickness: 1.5)),
             Padding(
@@ -626,7 +636,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                       fontWeight: FontWeight.w700,
                       letterSpacing: 0.8)),
             ),
-            const Expanded(
+            Expanded(
                 child: Divider(
                     color: CerebroTheme.dividerGreen, thickness: 1.5)),
           ]),
@@ -825,7 +835,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
           const SizedBox(height: 18),
 
           Row(children: [
-            const Expanded(
+            Expanded(
                 child: Divider(
                     color: CerebroTheme.dividerGreen, thickness: 1.5)),
             Padding(
@@ -837,7 +847,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                       fontWeight: FontWeight.w700,
                       letterSpacing: 0.8)),
             ),
-            const Expanded(
+            Expanded(
                 child: Divider(
                     color: CerebroTheme.dividerGreen, thickness: 1.5)),
           ]),
@@ -930,7 +940,8 @@ class _GameDialog extends StatelessWidget {
       child: Container(
         constraints: const BoxConstraints(maxWidth: 420),
         decoration: BoxDecoration(
-          color: Colors.white,
+          // Dialog surface — swaps with theme.
+          color: CerebroTheme.cream,
           borderRadius: BorderRadius.circular(22),
           border: Border.all(color: CerebroTheme.text1, width: 3),
           boxShadow: [
@@ -1005,7 +1016,8 @@ class _GoogleGameBtnState extends State<_GoogleGameBtn> {
         height: 52,
         transform: Matrix4.translationValues(0, _p ? 3 : 0, 0),
         decoration: BoxDecoration(
-          color: Colors.white,
+          // Google-btn surface — swaps so "Google" label stays readable.
+          color: CerebroTheme.cream,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: CerebroTheme.text1, width: 2.5),
           boxShadow: [
@@ -1225,7 +1237,8 @@ class _ForgotPasswordDialogState extends State<_ForgotPasswordDialog> {
       child: Container(
         constraints: const BoxConstraints(maxWidth: 440),
         decoration: BoxDecoration(
-          color: Colors.white,
+          // Reset-password dialog surface — swaps with theme.
+          color: CerebroTheme.cream,
           borderRadius: BorderRadius.circular(22),
           border: Border.all(color: CerebroTheme.text1, width: 3),
           boxShadow: [
@@ -1378,15 +1391,15 @@ class _ForgotPasswordDialogState extends State<_ForgotPasswordDialog> {
             border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(14),
                 borderSide:
-                    const BorderSide(color: CerebroTheme.text1, width: 2.5)),
+                    BorderSide(color: CerebroTheme.text1, width: 2.5)),
             enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(14),
                 borderSide:
-                    const BorderSide(color: CerebroTheme.text1, width: 2.5)),
+                    BorderSide(color: CerebroTheme.text1, width: 2.5)),
             focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(14),
                 borderSide:
-                    const BorderSide(color: CerebroTheme.pinkAccent, width: 2.5)),
+                    BorderSide(color: CerebroTheme.pinkAccent, width: 2.5)),
           )),
       const SizedBox(height: 14),
 
@@ -1457,7 +1470,7 @@ class _ForgotPasswordDialogState extends State<_ForgotPasswordDialog> {
           shape: BoxShape.circle,
           border: Border.all(color: CerebroTheme.text1, width: 2.5),
         ),
-        child: const Icon(Icons.check_rounded,
+        child: Icon(Icons.check_rounded,
             color: CerebroTheme.sageDark, size: 36),
       ),
       const SizedBox(height: 16),

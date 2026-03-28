@@ -1,5 +1,4 @@
-/// 6 tabs: Home, Daily, Study, Shop, Health, Profile
-/// Bottom nav = olive rounded bar with white-pill active state.
+// Home screen — 6-tab shell with olive bottom nav bar.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -14,10 +13,13 @@ import 'package:cerebro_app/screens/health/health_tab.dart';
 import 'package:cerebro_app/screens/profile/profile_tab.dart';
 import 'package:cerebro_app/widgets/mini_session_bar.dart';
 
-const _olive   = Color(0xFF98A869);
-const _oliveDk = Color(0xFF58772F);
-const _brown   = Color(0xFF4E3828);
 
+bool get _darkMode =>
+    CerebroTheme.brightnessNotifier.value == Brightness.dark;
+
+Color get _olive => const Color(0xFF98A869);
+Color get _oliveDk => const Color(0xFF58772F);
+Color get _brown => _darkMode ? const Color(0xFFF2E1CA) : const Color(0xFF4E3828);
 final selectedTabProvider = StateProvider<int>((ref) => 0);
 
 class HomeScreen extends ConsumerWidget {
@@ -83,21 +85,7 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
-  /// Route tab taps through the "attention drift" counter.
-  ///
-  /// UX contract (per product decision):
-  ///   • Navigating *within* the Study tab counts as studying — no flag.
-  ///   • Leaving the Study tab while a session is live is allowed freely,
-  ///     but each trip out counts as one distraction. The session keeps
-  ///     running, the mini-player remains visible, and the Wrapped screen
-  ///     uses the final distraction count to clamp the max focus score
-  ///     the user can claim.
-  ///   • A brief snackbar surfaces the bump so the user understands their
-  ///     focus score will be affected — no blocking sheet, no friction.
-  ///
-  /// Implemented here (the HomeScreen) because only the shell sees every
-  /// tab switch — each tab widget would need its own route observer
-  /// otherwise.
+  // Handle tab tap — tracks distractions when leaving Study during a live session.
   void _handleTabTap(BuildContext context, WidgetRef ref,
       {required int fromTab, required int toTab}) {
     final live = ref.read(isSessionLiveProvider);

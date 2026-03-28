@@ -1,4 +1,4 @@
-// Provider for live study session state, synced with backend
+// Live study session provider — syncs with backend, ticks locally.
 
 import 'dart:async';
 
@@ -8,9 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cerebro_app/services/api_service.dart';
 import 'package:cerebro_app/providers/auth_provider.dart';
 
-/// Session lifecycle states. Mirrors the backend's `status` column exactly
-/// plus an `idle` sentinel for "no live session" so the UI can branch
-/// cleanly between hero-with-timer and hero-with-start-button.
+/// Session lifecycle — mirrors backend `status` plus `idle`.
 enum SessionPhase { idle, running, paused, completed }
 
 SessionPhase _phaseFromString(String? s) {
@@ -26,8 +24,7 @@ SessionPhase _phaseFromString(String? s) {
   }
 }
 
-/// Immutable snapshot of the current session. Everything the hero,
-/// mini-player, and session screen need lives on this record.
+/// Current session snapshot.
 class SessionState {
   final SessionPhase phase;
   final String? sessionId;
@@ -46,12 +43,7 @@ class SessionState {
   // they reflect transient network state only.
   final bool loading;
   final String? error;
-  // Transient "user wants to wrap up this session" signal. Set by the mini
-  // session bar's Stop button and the Study tab hero Stop button — both
-  // of which should land the user on the full Wrapped rating screen rather
-  // than instantly killing the session. The study_session_screen listens
-  // for this flag flipping true, jumps to its completion phase, and calls
-  // `notifier.consumeEndRequest()` so the flag resets.
+  // When true, the session screen should show the rating/wrap-up flow.
   final bool endRequested;
 
   const SessionState({
@@ -73,15 +65,11 @@ class SessionState {
     this.endRequested = false,
   });
 
-  /// True when there is a session the user has opened but not yet finalized.
-  /// This is what the cross-tab guard checks — if this is true and the user
-  /// tries to leave the Study tab, we show the "end session first" sheet.
+  /// True when there's an active (running or paused) session.
   bool get isLive =>
       phase == SessionPhase.running || phase == SessionPhase.paused;
 
-  /// Fraction of planned duration completed, clamped to [0, 1]. The hero's
-  /// ring uses this; once a user overshoots their target the ring holds at
-  /// 1.0 rather than spilling into a second revolution.
+  /// Fraction of planned duration completed, clamped to [0, 1].
   double get progress {
     if (plannedDurationMinutes <= 0) return 0;
     final total = plannedDurationMinutes * 60;
@@ -137,11 +125,7 @@ class SessionState {
   }
 }
 
-/// StateNotifier that mediates all live-session interactions.
-///
-/// Usage pattern:
-///   final state = ref.watch(studySessionProvider);
-///   ref.read(studySessionProvider.notifier).start(...);
+/// Manages live study session state and server sync.
 class StudySessionNotifier extends StateNotifier<SessionState> {
   final ApiService _api;
   Timer? _ticker;
@@ -198,21 +182,13 @@ class StudySessionNotifier extends StateNotifier<SessionState> {
     }
   }
 
-  /// Reset to a pristine idle state (no session). Stops the ticker too.
-  /// `endRequested` is implicitly cleared because it defaults to false on
-  /// the fresh SessionState.
+  /// Reset to idle (no active session).
   void _resetToIdle() {
     _stopTicker();
     state = const SessionState();
   }
 
-  //
-  // The server computes `elapsed_seconds` on every request, but we only
-  // request on explicit user actions. Between those, we need the timer on
-  // screen to advance, so we run a cheap 1 Hz tick that bumps
-  // `elapsedSeconds` by 1 as long as the phase is `running`. When a server
-  // response lands, `_applyServer` overwrites our local counter so drift
-  // between client and server never gets worse than ~1 s per mutation.
+  // 1 Hz local tick — server overwrites on each mutation.
 
   void _startTicker() {
     _ticker?.cancel();
@@ -228,11 +204,7 @@ class StudySessionNotifier extends StateNotifier<SessionState> {
   }
 
 
-  /// Pull the active session from the backend on app boot.
-  ///
-  /// 204 means no active session — we just stay idle. Any other error we
-  /// surface via `state.error` but leave the phase at idle so the user
-  /// isn't trapped in a stuck loading shell.
+  /// Restore active session from backend on app boot.
   Future<void> hydrate() async {
     state = state.copyWith(loading: true, clearError: true);
     try {
@@ -257,13 +229,7 @@ class StudySessionNotifier extends StateNotifier<SessionState> {
     }
   }
 
-  /// Open a fresh live session. Returns the new session id on success,
-  /// null on failure (error is set on state).
-  ///
-  /// If a live session already exists, the backend rejects with 409 and we
-  /// call `hydrate()` to adopt that session rather than surface a user-
-  /// facing error — the UX invariant is "there's always at most one live
-  /// session, and it's the one on screen".
+  /// Start a new session. Returns session id or null on failure.
   Future<String?> start({
     String? subjectId,
     String? subjectName,
@@ -348,15 +314,7 @@ class StudySessionNotifier extends StateNotifier<SessionState> {
     }
   }
 
-  /// Finalize the session with optional focus score, notes, and topics.
-  /// After this resolves successfully, state returns to idle.
-  ///
-  /// `discard` signals "the user chose Discard on the confirm sheet" — we
-  /// still call /end so the backend has a clean audit trail, but we pass
-  /// focus_score=1 and notes="__discarded__" so Analytics can filter it
-  /// out of focus averages. (The row isn't DELETE'd because we want the
-  /// distraction count to still show up on the weekly heatmap as a
-  /// signal.)
+  /// End the session. Pass `discard: true` to mark it as discarded.
   Future<bool> end({
     int? focusScore,
     String? notes,
@@ -388,19 +346,7 @@ class StudySessionNotifier extends StateNotifier<SessionState> {
     }
   }
 
-  /// Ask the study_session_screen to move to its Wrapped/completion phase.
-  ///
-  /// Called by the mini session bar's Stop button and the Study tab hero
-  /// Stop button — both of which now *navigate* the user into a full
-  /// rating screen rather than quietly calling /end. When true, the
-  /// session_screen observes the flag, jumps to completion phase, and
-  /// immediately clears it via [consumeEndRequest] so the flag is truly
-  /// ephemeral.
-  ///
-  /// Also pauses the underlying timer — once the user is rating, the clock
-  /// shouldn't keep running and inflating their elapsed display. If the
-  /// user backs out of the rating screen without saving, they can always
-  /// resume from the mini player.
+  /// Signal the session screen to show the completion/rating flow.
   Future<void> requestEnd() async {
     if (!state.isLive) return;
     state = state.copyWith(endRequested: true);
@@ -411,24 +357,14 @@ class StudySessionNotifier extends StateNotifier<SessionState> {
     }
   }
 
-  /// Reset the endRequested flag after the study_session_screen has acted
-  /// on it. Prevents the screen from re-entering completion phase on every
-  /// rebuild.
+  /// Clear the endRequested flag after the screen acts on it.
   void consumeEndRequest() {
     if (state.endRequested) {
       state = state.copyWith(endRequested: false);
     }
   }
 
-  /// Record a distraction event without pausing the timer. Used by the
-  /// top-level tab guard: leaving the Study tab while a session is live
-  /// counts as "attention drift" — session clock keeps ticking, but we
-  /// bump the counter so the Wrapped screen's focus-score clamp (and the
-  /// server's auto-derived focus score fallback) reflect it.
-  ///
-  /// Bumps local state optimistically and then best-effort sync to server.
-  /// Failure is silent — the worst case is a +1 divergence between local
-  /// and server distractions, which reconciles on the next /pause or /end.
+  /// Bump the distraction counter without pausing.
   Future<void> addDistraction() async {
     final id = state.sessionId;
     if (id == null || !state.isLive) return;
@@ -466,17 +402,13 @@ final studySessionProvider =
   final api = ref.watch(apiServiceProvider);
   final notifier = StudySessionNotifier(api);
 
-  // Reset + re-hydrate whenever the active account changes so we never
-  // show Account A's live session to Account B (or vice versa).
+  // Reset on auth transitions so sessions don't leak across accounts.
   ref.listen<AuthState>(authProvider, (prev, next) {
     final becameAuthed = (prev?.status != AuthStatus.authenticated) &&
         (next.status == AuthStatus.authenticated);
     final becameUnauthed = (prev?.status == AuthStatus.authenticated) &&
         (next.status != AuthStatus.authenticated);
     if (becameAuthed) {
-      // Immediately drop the in-memory session so the hero / mini-player
-      // don't show the previous user's timer while /sessions/active is
-      // in flight.
       notifier._resetToIdle();
       // ignore: discarded_futures
       notifier.hydrate();
@@ -488,8 +420,7 @@ final studySessionProvider =
   return notifier;
 });
 
-/// Convenience selector for the common "is there a live session right now?"
-/// check — used by tab guards and the mini-player visibility.
+/// Whether a live session is active right now.
 final isSessionLiveProvider = Provider<bool>((ref) {
   return ref.watch(studySessionProvider).isLive;
 });

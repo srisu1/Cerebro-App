@@ -1,48 +1,51 @@
-// Study resources screen with filtering and bookmarks
+// Resource screen — recommended study resources from GET /study/recommendations.
 
 import 'package:flutter/material.dart';
+import 'package:cerebro_app/config/theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cerebro_app/providers/auth_provider.dart';
 
-const _ombre1 = Color(0xFFFFFBF7);
-const _ombre2 = Color(0xFFFFF8F3);
-const _ombre3 = Color(0xFFFFF3EF);
-const _ombre4 = Color(0xFFFEEDE9);
-const _pawClr = Color(0xFFF8BCD0);
 
-const _outline   = Color(0xFF6E5848);
-const _brown     = Color(0xFF4E3828);
-const _brownLt   = Color(0xFF7A5840);
-const _brownSoft = Color(0xFF9A8070);
+bool get _darkMode =>
+    CerebroTheme.brightnessNotifier.value == Brightness.dark;
 
-const _cream    = Color(0xFFFDEFDB);
-const _olive    = Color(0xFF98A869);
-const _oliveDk  = Color(0xFF58772F);
-const _pinkLt   = Color(0xFFFFD5F5);
-const _pink     = Color(0xFFFEA9D3);
-const _pinkDk   = Color(0xFFE890B8);
-const _coral    = Color(0xFFF7AEAE);
-const _gold     = Color(0xFFE4BC83);
-const _orange   = Color(0xFFFFBC5C);
-const _red      = Color(0xFFEF6262);
-const _blueLt   = Color(0xFFDDF6FF);
-const _greenLt  = Color(0xFFC2E8BC);
-const _skyHdr   = Color(0xFF9DD4F0);
-const _purpleHdr = Color(0xFFCDA8D8);
-
-const _mTerra   = Color(0xFFD9B5A6);
-const _mSlate   = Color(0xFFB6CBD6);
-const _mSage    = Color(0xFFB5C4A0);
-const _mMint    = Color(0xFFC8DCC2);
-const _mLav     = Color(0xFFC9B8D9);
-const _mButter  = Color(0xFFE8D4A0);
-const _mBlush   = Color(0xFFEAD0CE);
-const _mSand    = Color(0xFFE8D9C2);
-
-TextStyle _gaegu({double size = 14, FontWeight weight = FontWeight.w600, Color color = _brown, double? h}) =>
-    GoogleFonts.gaegu(fontSize: size, fontWeight: weight, color: color, height: h);
+Color get _ombre1 => _darkMode ? const Color(0xFF191513) : const Color(0xFFFFFBF7);
+Color get _ombre2 => _darkMode ? const Color(0xFF1E1A17) : const Color(0xFFFFF8F3);
+Color get _ombre3 => _darkMode ? const Color(0xFF29221D) : const Color(0xFFFFF3EF);
+Color get _ombre4 => _darkMode ? const Color(0xFF312821) : const Color(0xFFFEEDE9);
+Color get _pawClr => _darkMode ? const Color(0xFF231D18) : const Color(0xFFF8BCD0);
+Color get _outline => _darkMode ? const Color(0xFFAD7F58) : const Color(0xFF6E5848);
+Color get _brown => _darkMode ? const Color(0xFFF2E1CA) : const Color(0xFF4E3828);
+Color get _brownLt => _darkMode ? const Color(0xFFDBB594) : const Color(0xFF7A5840);
+Color get _brownSoft => _darkMode ? const Color(0xFFBD926C) : const Color(0xFF9A8070);
+Color get _cream => _darkMode ? const Color(0xFF1E1A17) : const Color(0xFFFDEFDB);
+Color get _cardFill => _darkMode ? const Color(0xFF29221D) : const Color(0xFFFFF8F4);
+Color get _olive => const Color(0xFF98A869);
+Color get _oliveDk => const Color(0xFF58772F);
+Color get _pinkLt => _darkMode ? const Color(0xFF411C35) : const Color(0xFFFFD5F5);
+Color get _pink => const Color(0xFFFEA9D3);
+Color get _pinkDk => const Color(0xFFE890B8);
+Color get _coral => const Color(0xFFF7AEAE);
+Color get _gold => const Color(0xFFE4BC83);
+Color get _orange => const Color(0xFFFFBC5C);
+Color get _red => const Color(0xFFEF6262);
+Color get _blueLt => _darkMode ? const Color(0xFF102A4C) : const Color(0xFFDDF6FF);
+Color get _greenLt => _darkMode ? const Color(0xFF143125) : const Color(0xFFC2E8BC);
+Color get _skyHdr => const Color(0xFF9DD4F0);
+Color get _purpleHdr => const Color(0xFFCDA8D8);
+Color get _mTerra => const Color(0xFFD9B5A6);
+Color get _mSlate => const Color(0xFFB6CBD6);
+Color get _mSage => const Color(0xFFB5C4A0);
+Color get _mMint => const Color(0xFFC8DCC2);
+Color get _mLav => const Color(0xFFC9B8D9);
+Color get _mButter => const Color(0xFFE8D4A0);
+Color get _mBlush => const Color(0xFFEAD0CE);
+Color get _mSand => const Color(0xFFE8D9C2);
+// Nullable + in-body fallback — `_brown` is a mode-aware getter now.
+TextStyle _gaegu({double size = 14, FontWeight weight = FontWeight.w600, Color? color, double? h}) =>
+    GoogleFonts.gaegu(fontSize: size, fontWeight: weight, color: color ?? _brown, height: h);
 const _bitroad = 'Bitroad';
 
 // Mapped from the `/study/recommendations` payload. `technique` maps
@@ -58,15 +61,12 @@ class _Resource {
   final String subject;       // topic or subject name surfaced in the chip
   final _ResKind kind;
   final int minutes;
-  final double rating;        // AI doesn't rate — we synthesize from difficulty
+  final double rating;        // synthesized from difficulty level
   final bool bookmarked;
   final String summary;       // description
-  /// Why this came back for *this* user ("your thermodynamics score is 35%").
-  /// Shown in the detail modal as the AI's justification line.
+  /// Why this was recommended for the user.
   final String whyRecommended;
-  /// Real URL resolved server-side (YouTube watch URL, Wikipedia article,
-  /// Khan Academy exercise, Google fallback). null if the AI call failed
-  /// and we're showing a search fallback.
+  /// Resolved URL (YouTube, Wikipedia, Khan Academy, etc). Null on failure.
   final String? url;
   /// Human label for the primary CTA, e.g. "Watch on YouTube".
   final String urlLabel;
@@ -88,9 +88,7 @@ class _Resource {
     this.bookmarked = false,
   });
 
-  /// Parse one entry from the backend recommendations payload.
-  /// Defensive — the AI occasionally drops fields, so every read has a
-  /// sensible default rather than crashing the list.
+  /// Parse one entry from the backend. Fields may be missing — defaults used.
   factory _Resource.fromJson(Map<String, dynamic> j, int index) {
     final rawType = (j['resource_type'] as String?)?.toLowerCase() ?? 'article';
     final kind = switch (rawType) {
@@ -111,7 +109,7 @@ class _Resource {
     return _Resource(
       id: 'rec-$index',
       title: (j['title'] as String?) ?? 'Recommended resource',
-      source: (j['source'] as String?) ?? 'AI-picked',
+      source: (j['source'] as String?) ?? 'recommended',
       subject: (j['topic'] as String?) ?? 'General',
       kind: kind,
       minutes: (j['estimated_minutes'] is int)
@@ -152,10 +150,7 @@ String _kindLabel(_ResKind k) => switch (k) {
       _ResKind.practice   => 'Practice',
     };
 
-// NOTE: The mock `_demoResources` list that used to live here has been
-// removed. Resources are now fetched from `/study/recommendations` — a
-// real AI endpoint driven by the user's actual quiz/flashcard history
-// (see cerebro_backend/app/routers/study.py::get_resource_recommendations).
+// Resources fetched live from /study/recommendations.
 
 //  RESOURCE SCREEN
 class ResourceScreen extends ConsumerStatefulWidget {
@@ -173,10 +168,7 @@ class _ResourceScreenState extends ConsumerState<ResourceScreen>
   late final AnimationController _enter;
   final Set<String> _bookmarks = {};
 
-  // `_resources` is the full list returned by the AI recommendations
-  // endpoint. `_loading` gates the skeleton. `_refreshing` is a lighter
-  // indicator used by the "refresh" pill so users know a bypass-cache
-  // call is in flight without losing the current list.
+  // Full recommendations list, loading/refreshing state.
   List<_Resource> _resources = const [];
   bool _loading = true;
   bool _refreshing = false;
@@ -196,8 +188,7 @@ class _ResourceScreenState extends ConsumerState<ResourceScreen>
     super.dispose();
   }
 
-  /// Fetch AI recommendations from the backend. Default is cached-OK;
-  /// pass `force=true` to hit `/study/recommendations/refresh`.
+  // Fetch recommendations. Pass force=true to bypass cache.
   Future<void> _loadRecommendations({bool force = false}) async {
     if (!mounted) return;
     setState(() {
@@ -243,7 +234,7 @@ class _ResourceScreenState extends ConsumerState<ResourceScreen>
         _loading = false;
         _refreshing = false;
         _error = 'Could not load recommendations. '
-            'Check the backend is running and an AI key is set.';
+            'Check the backend is running and the API key is set.';
       });
     }
   }
@@ -303,7 +294,7 @@ class _ResourceScreenState extends ConsumerState<ResourceScreen>
     return Material(
       type: MaterialType.transparency,
       child: Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft, end: Alignment.bottomRight,
           colors: [_ombre1, _ombre2, _ombre3, _ombre4],
@@ -358,12 +349,12 @@ class _ResourceScreenState extends ConsumerState<ResourceScreen>
 
   Widget _loadingState() => Center(
     child: Column(mainAxisSize: MainAxisSize.min, children: [
-      const CircularProgressIndicator(color: _oliveDk, strokeWidth: 2.6),
+      CircularProgressIndicator(color: _oliveDk, strokeWidth: 2.6),
       const SizedBox(height: 14),
       Text('Reading your study history…',
         style: _gaegu(size: 15, color: _brownLt, weight: FontWeight.w600)),
       const SizedBox(height: 4),
-      Text('The AI is picking videos, articles, and practice for your weak areas.',
+      Text('Picking videos, articles, and practice for your weak areas.',
         textAlign: TextAlign.center,
         style: _gaegu(size: 12, color: _brownSoft)),
     ]),
@@ -380,10 +371,10 @@ class _ResourceScreenState extends ConsumerState<ResourceScreen>
           boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
               offset: const Offset(3, 3), blurRadius: 0)],
         ),
-        child: const Icon(Icons.cloud_off_rounded, size: 32, color: _brown),
+        child: Icon(Icons.cloud_off_rounded, size: 32, color: _brown),
       ),
       const SizedBox(height: 12),
-      const Text('Recommendations unavailable',
+      Text('Recommendations unavailable',
         style: TextStyle(fontFamily: _bitroad, fontSize: 19, color: _brown)),
       const SizedBox(height: 6),
       Text(_error ?? 'Please try again.',
@@ -412,7 +403,7 @@ class _ResourceScreenState extends ConsumerState<ResourceScreen>
         child: const Icon(Icons.auto_awesome_rounded, size: 32, color: Colors.white),
       ),
       const SizedBox(height: 12),
-      const Text('No recommendations yet',
+      Text('No recommendations yet',
         style: TextStyle(fontFamily: _bitroad, fontSize: 19, color: _brown)),
       const SizedBox(height: 6),
       Text(
@@ -435,7 +426,7 @@ class _ResourceScreenState extends ConsumerState<ResourceScreen>
       child: Container(
         width: 40, height: 40,
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.88),
+          color: _cardFill.withOpacity(0.88),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: _outline.withOpacity(0.22), width: 1.5),
           boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
@@ -447,7 +438,7 @@ class _ResourceScreenState extends ConsumerState<ResourceScreen>
     const SizedBox(width: 12),
     Expanded(
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Text('AI Recommendations',
+        Text('Recommendations',
           style: TextStyle(fontFamily: _bitroad, fontSize: 26, color: _brown, height: 1.15)),
         const SizedBox(height: 2),
         Text(
@@ -486,7 +477,7 @@ class _ResourceScreenState extends ConsumerState<ResourceScreen>
     height: 46,
     padding: const EdgeInsets.symmetric(horizontal: 14),
     decoration: BoxDecoration(
-      color: Colors.white.withOpacity(0.88),
+      color: _cardFill.withOpacity(0.88),
       borderRadius: BorderRadius.circular(14),
       border: Border.all(color: _outline.withOpacity(0.22), width: 1.5),
       boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
@@ -579,7 +570,7 @@ class _ResourceScreenState extends ConsumerState<ResourceScreen>
           Container(
             width: 64, height: 64,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.75),
+              color: _cardFill.withOpacity(0.75),
               borderRadius: BorderRadius.circular(18),
               border: Border.all(color: _outline.withOpacity(0.3), width: 1.5),
             ),
@@ -592,7 +583,7 @@ class _ResourceScreenState extends ConsumerState<ResourceScreen>
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: _cardFill,
                     borderRadius: BorderRadius.circular(999),
                     border: Border.all(color: _outline.withOpacity(0.3), width: 1),
                   ),
@@ -606,7 +597,7 @@ class _ResourceScreenState extends ConsumerState<ResourceScreen>
               ]),
               const SizedBox(height: 4),
               Text(f.title,
-                style: const TextStyle(fontFamily: _bitroad, fontSize: 20, color: _brown, height: 1.2),
+                style: TextStyle(fontFamily: _bitroad, fontSize: 20, color: _brown, height: 1.2),
                 overflow: TextOverflow.ellipsis, maxLines: 2),
               const SizedBox(height: 2),
               Text(f.summary,
@@ -618,7 +609,7 @@ class _ResourceScreenState extends ConsumerState<ResourceScreen>
           Container(
             width: 40, height: 40,
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: _cardFill,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: _outline.withOpacity(0.35), width: 1.5),
               boxShadow: [BoxShadow(color: _outline.withOpacity(0.22),
@@ -667,7 +658,7 @@ class _ResourceScreenState extends ConsumerState<ResourceScreen>
         child: Icon(Icons.travel_explore_rounded, size: 32, color: _brownLt),
       ),
       const SizedBox(height: 12),
-      const Text('No resources match',
+      Text('No resources match',
         style: TextStyle(fontFamily: _bitroad, fontSize: 19, color: _brown)),
       const SizedBox(height: 4),
       Text('Try clearing a filter or another search term',
@@ -714,7 +705,7 @@ class _ResourceCard extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.88),
+          color: _cardFill.withOpacity(0.88),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: _outline.withOpacity(0.22), width: 1.5),
           boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
@@ -734,7 +725,7 @@ class _ResourceCard extends StatelessWidget {
                 Container(
                   width: 38, height: 38,
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.75),
+                    color: _cardFill.withOpacity(0.75),
                     borderRadius: BorderRadius.circular(11),
                     border: Border.all(color: _outline.withOpacity(0.3), width: 1.3),
                   ),
@@ -747,7 +738,7 @@ class _ResourceCard extends StatelessWidget {
                       style: _gaegu(size: 10, weight: FontWeight.w700,
                         color: _brown.withOpacity(0.75)).copyWith(letterSpacing: 0.7)),
                     Text(resource.subject,
-                      style: const TextStyle(fontFamily: _bitroad, fontSize: 13, color: _brown)),
+                      style: TextStyle(fontFamily: _bitroad, fontSize: 13, color: _brown)),
                   ],
                 )),
                 GestureDetector(
@@ -776,7 +767,7 @@ class _ResourceCard extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(resource.title,
-                    style: const TextStyle(fontFamily: _bitroad, fontSize: 16, color: _brown, height: 1.25),
+                    style: TextStyle(fontFamily: _bitroad, fontSize: 16, color: _brown, height: 1.25),
                     maxLines: 2, overflow: TextOverflow.ellipsis),
                   const SizedBox(height: 4),
                   Text(resource.source,
@@ -842,11 +833,11 @@ class _ResourceDetailModal extends StatelessWidget {
                     child: Container(
                       width: 34, height: 34,
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: _cardFill,
                         shape: BoxShape.circle,
                         border: Border.all(color: _outline, width: 1.5),
                       ),
-                      child: const Icon(Icons.close_rounded, size: 17, color: _brown),
+                      child: Icon(Icons.close_rounded, size: 17, color: _brown),
                     ),
                   ),
                 ]),
@@ -870,7 +861,7 @@ class _ResourceDetailModal extends StatelessWidget {
                     padding: const EdgeInsets.only(top: 2),
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Text(resource.title,
-                        style: const TextStyle(fontFamily: _bitroad, fontSize: 22, color: _brown, height: 1.15),
+                        style: TextStyle(fontFamily: _bitroad, fontSize: 22, color: _brown, height: 1.15),
                         maxLines: 2, overflow: TextOverflow.ellipsis),
                       const SizedBox(height: 6),
                       Text(resource.source,
@@ -898,7 +889,7 @@ class _ResourceDetailModal extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.fromLTRB(10, 12, 16, 14),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: _cardFill,
                     borderRadius: BorderRadius.circular(18),
                     border: Border.all(color: _outline, width: 2),
                     boxShadow: const [
@@ -925,15 +916,12 @@ class _ResourceDetailModal extends StatelessWidget {
                         Text(resource.summary.isEmpty
                             ? 'A resource tailored to your current weak area.'
                             : resource.summary,
-                          style: const TextStyle(fontFamily: _bitroad, fontSize: 14, color: _brown, height: 1.4)),
+                          style: TextStyle(fontFamily: _bitroad, fontSize: 14, color: _brown, height: 1.4)),
                       ],
                     )),
                   ]),
                 ),
-                // "Why recommended" — the AI's actual justification line,
-                // tied to the user's own performance numbers. This is the
-                // feature that makes the page feel personalised instead
-                // of mock.
+                // "Why recommended" justification line.
                 if (resource.whyRecommended.isNotEmpty) ...[
                   const SizedBox(height: 12),
                   Container(
@@ -944,7 +932,7 @@ class _ResourceDetailModal extends StatelessWidget {
                       border: Border.all(color: _outline.withOpacity(0.25), width: 1.5),
                     ),
                     child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      const Icon(Icons.auto_awesome_rounded, size: 18, color: _brown),
+                      Icon(Icons.auto_awesome_rounded, size: 18, color: _brown),
                       const SizedBox(width: 10),
                       Expanded(child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1128,10 +1116,11 @@ class _SoftButton extends StatelessWidget {
   final String label;
   final IconData? icon;
   final Color fill;
-  final Color textColor;
+  // Nullable + in-body fallback because `_brown` is a runtime getter.
+  final Color? textColor;
   final VoidCallback onTap;
-  const _SoftButton({required this.label, required this.fill, required this.onTap,
-    this.icon, this.textColor = _brown});
+  _SoftButton({required this.label, required this.fill, required this.onTap,
+    this.icon, this.textColor});
   @override
   Widget build(BuildContext context) => GestureDetector(
     onTap: onTap,

@@ -1,18 +1,7 @@
-//  CEREBRO — Subject Detail Screen  (v2 — redesigned)
-//  Full-page destination for a single subject.
-//  Tabs: Overview · Topics · Content
-//
-//  Design language matches sibling screens (subjects_screen.dart,
-//  study_session_screen.dart): cream/terra-cotta ombre with paw-
-//  print overlay, softly tinted cards with hard-offset shadows,
-//  thick brown outlines, pill chips, Gaegu + Nunito typography.
-//
-//  Data: merges /study/quizzes (completed attempts) with
-//  /study/generated-quizzes (AI-generated quizzes). Each row
-//  carries a synthetic `_source` field so the UI and delete
-//  handlers can branch on origin.
+// Subject detail — Overview, Topics, Content tabs for a single subject.
 
 import 'package:flutter/material.dart';
+import 'package:cerebro_app/config/theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cerebro_app/providers/auth_provider.dart';
@@ -20,28 +9,30 @@ import 'package:cerebro_app/widgets/upload_notes_modal.dart';
 import 'package:cerebro_app/screens/study/flashcard_screen.dart';
 import 'package:cerebro_app/screens/study/quiz_screen.dart';
 
-const _ombre1   = Color(0xFFFFFBF7);
-const _ombre4   = Color(0xFFFEEDE9);
-const _cardFill = Color(0xFFFFF8F4);
-const _cream    = Color(0xFFFDEFDB);
-const _panelBg  = Color(0xFFFFF6EE);
-const _outline  = Color(0xFF6E5848);
-const _brown    = Color(0xFF4E3828);
-const _brownLt  = Color(0xFF7A5840);
-const _brownSoft = Color(0xFF9A8070);
-const _olive    = Color(0xFF98A869);
-const _oliveDk  = Color(0xFF58772F);
-const _mSage    = Color(0xFFB5C4A0);
-const _mTerra   = Color(0xFFD9B5A6);
-const _mSlate   = Color(0xFFB6CBD6);
-const _mLav     = Color(0xFFC9B8D9);
-const _mButter  = Color(0xFFE8D4A0);
-const _mBlush   = Color(0xFFEAD0CE);
-const _red      = Color(0xFFEF6262);
 
+bool get _darkMode =>
+    CerebroTheme.brightnessNotifier.value == Brightness.dark;
+
+Color get _ombre1 => _darkMode ? const Color(0xFF191513) : const Color(0xFFFFFBF7);
+Color get _ombre4 => _darkMode ? const Color(0xFF312821) : const Color(0xFFFEEDE9);
+Color get _cardFill => _darkMode ? const Color(0xFF29221D) : const Color(0xFFFFF8F4);
+Color get _cream => _darkMode ? const Color(0xFF1E1A17) : const Color(0xFFFDEFDB);
+Color get _panelBg => _darkMode ? const Color(0xFF1E1A17) : const Color(0xFFFFF6EE);
+Color get _outline => _darkMode ? const Color(0xFFAD7F58) : const Color(0xFF6E5848);
+Color get _brown => _darkMode ? const Color(0xFFF2E1CA) : const Color(0xFF4E3828);
+Color get _brownLt => _darkMode ? const Color(0xFFDBB594) : const Color(0xFF7A5840);
+Color get _brownSoft => _darkMode ? const Color(0xFFBD926C) : const Color(0xFF9A8070);
+Color get _olive => const Color(0xFF98A869);
+Color get _oliveDk => const Color(0xFF58772F);
+Color get _mSage => const Color(0xFFB5C4A0);
+Color get _mTerra => const Color(0xFFD9B5A6);
+Color get _mSlate => const Color(0xFFB6CBD6);
+Color get _mLav => const Color(0xFFC9B8D9);
+Color get _mButter => const Color(0xFFE8D4A0);
+Color get _mBlush => const Color(0xFFEAD0CE);
+Color get _red => const Color(0xFFEF6262);
 // Paw overlay color — matches sibling screens.
-const _pawClr   = Color(0xFFF8BCD0);
-
+Color get _pawClr => _darkMode ? const Color(0xFF231D18) : const Color(0xFFF8BCD0);
 class _SubjectSummary {
   final String id;
   final String name;
@@ -326,7 +317,7 @@ class _SubjectDetailScreenState extends ConsumerState<SubjectDetailScreen>
         maxChildSize: 0.92,
         expand: false,
         builder: (ctx, scrollCtrl) => Container(
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             color: _cardFill,
             borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -360,7 +351,7 @@ class _SubjectDetailScreenState extends ConsumerState<SubjectDetailScreen>
                       letterSpacing: 1.2, color: _brownLt)),
                 ])),
                 IconButton(
-                  icon: const Icon(Icons.close_rounded, color: _brownLt, size: 22),
+                  icon: Icon(Icons.close_rounded, color: _brownLt, size: 22),
                   onPressed: () => Navigator.pop(ctx),
                 ),
               ]),
@@ -487,7 +478,7 @@ class _SubjectDetailScreenState extends ConsumerState<SubjectDetailScreen>
         backgroundColor: _cardFill,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(18),
-          side: const BorderSide(color: _outline, width: 3),
+          side: BorderSide(color: _outline, width: 3),
         ),
         title: Text('New deck for ${_subject!.name}',
           style: GoogleFonts.gaegu(
@@ -506,13 +497,13 @@ class _SubjectDetailScreenState extends ConsumerState<SubjectDetailScreen>
                 labelStyle: GoogleFonts.nunito(fontSize: 13, color: _brownLt),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: _outline, width: 1.5)),
+                  borderSide: BorderSide(color: _outline, width: 1.5)),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: _outline, width: 1.5)),
+                  borderSide: BorderSide(color: _outline, width: 1.5)),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: _outline, width: 2.2)),
+                  borderSide: BorderSide(color: _outline, width: 2.2)),
               ),
             ),
             const SizedBox(height: 12),
@@ -524,13 +515,13 @@ class _SubjectDetailScreenState extends ConsumerState<SubjectDetailScreen>
                 labelStyle: GoogleFonts.nunito(fontSize: 13, color: _brownLt),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: _outline, width: 1.5)),
+                  borderSide: BorderSide(color: _outline, width: 1.5)),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: _outline, width: 1.5)),
+                  borderSide: BorderSide(color: _outline, width: 1.5)),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: _outline, width: 2.2)),
+                  borderSide: BorderSide(color: _outline, width: 2.2)),
               ),
             ),
             const SizedBox(height: 14),
@@ -552,7 +543,7 @@ class _SubjectDetailScreenState extends ConsumerState<SubjectDetailScreen>
                         width: color == hex ? 3 : 1.5),
                     ),
                     child: color == hex
-                      ? const Icon(Icons.check_rounded, size: 16, color: _brown)
+                      ? Icon(Icons.check_rounded, size: 16, color: _brown)
                       : null,
                   ),
                 ),
@@ -663,7 +654,7 @@ class _SubjectDetailScreenState extends ConsumerState<SubjectDetailScreen>
       ? 'Delete this generated quiz?'
       : 'Delete this quiz result?';
     final body = isGenerated
-      ? 'The AI-generated quiz and its question set will be permanently removed.'
+      ? 'This auto-generated quiz and its question set will be permanently removed.'
       : 'The quiz history entry will be permanently removed.';
     if (!await _confirm(title, body)) return;
     try {
@@ -705,11 +696,11 @@ class _SubjectDetailScreenState extends ConsumerState<SubjectDetailScreen>
                 filled: true, fillColor: Colors.white,
                 contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: _outline, width: 1.2)),
+                  borderSide: BorderSide(color: _outline, width: 1.2)),
                 enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: _outline, width: 1.2)),
+                  borderSide: BorderSide(color: _outline, width: 1.2)),
                 focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: _oliveDk, width: 1.5)),
+                  borderSide: BorderSide(color: _oliveDk, width: 1.5)),
               ),
             ),
             const SizedBox(height: 14),
@@ -760,11 +751,11 @@ class _SubjectDetailScreenState extends ConsumerState<SubjectDetailScreen>
                 filled: true, fillColor: Colors.white,
                 contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: _outline, width: 1.2)),
+                  borderSide: BorderSide(color: _outline, width: 1.2)),
                 enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: _outline, width: 1.2)),
+                  borderSide: BorderSide(color: _outline, width: 1.2)),
                 focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: _oliveDk, width: 1.5)),
+                  borderSide: BorderSide(color: _oliveDk, width: 1.5)),
               ),
             ),
             const SizedBox(height: 14),
@@ -806,12 +797,12 @@ class _SubjectDetailScreenState extends ConsumerState<SubjectDetailScreen>
   }
 
   //
-  // Re-runs the AI topic extractor over every material already attached
+  // Re-runs topic extraction over every material already attached
   // to this subject. Uploads already trigger extraction automatically
   // (server-side in `/materials` and `/materials/upload`), so this button
   // is primarily a backfill affordance for:
   //   • materials created before auto-extract shipped
-  //   • the occasional case where the AI returned [] (e.g. no key, rate
+  //   • the occasional case where extraction returned [] (e.g. no key, rate
   //     limit, flaky provider) and the user wants to retry
   //
   // The endpoint is idempotent — names that already exist as Topic rows
@@ -820,12 +811,12 @@ class _SubjectDetailScreenState extends ConsumerState<SubjectDetailScreen>
   Future<void> _autoExtractTopicsForSubject() async {
     if (_subject == null) return;
     if (_materials.isEmpty) {
-      _snack('Upload a note first — AI extracts topics from your material.');
+      _snack('Upload a note first — topics are extracted from your material.');
       return;
     }
     final proceed = await _confirm(
       'Auto-extract topics?',
-      'Claude will scan ${_materials.length} material${_materials.length == 1 ? '' : 's'} '
+      'We'll scan ${_materials.length} material${_materials.length == 1 ? '' : 's'} '
       'and propose topic names. Existing topics are preserved — matching '
       'names are deduped. You can rename or delete anything afterwards.',
     );
@@ -856,7 +847,7 @@ class _SubjectDetailScreenState extends ConsumerState<SubjectDetailScreen>
 
     if (!mounted) return;
     if (succeeded == 0) {
-      _snack('Extraction failed for all materials. Check your AI key.',
+      _snack('Extraction failed for all materials. Check your API key.',
           bg: _mTerra);
     } else if (totalAdded == 0) {
       _snack('Done — no new topics (already up to date).');
@@ -891,7 +882,7 @@ class _SubjectDetailScreenState extends ConsumerState<SubjectDetailScreen>
       extendBodyBehindAppBar: true,
       backgroundColor: _ombre1,
       body: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft, end: Alignment.bottomRight,
             colors: [_ombre1, _ombre4])),
@@ -994,13 +985,13 @@ class _SubjectDetailScreenState extends ConsumerState<SubjectDetailScreen>
             child: Container(
               width: 40, height: 40,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.88),
+                color: _cardFill.withOpacity(0.88),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: _outline.withOpacity(0.22), width: 1.5),
                 boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
                   offset: const Offset(3, 3), blurRadius: 0)],
               ),
-              child: const Icon(Icons.arrow_back_rounded, size: 20, color: _brown),
+              child: Icon(Icons.arrow_back_rounded, size: 20, color: _brown),
             ),
           ),
           const SizedBox(width: 16),
@@ -1020,7 +1011,7 @@ class _SubjectDetailScreenState extends ConsumerState<SubjectDetailScreen>
             // the sibling Subjects screen. 26px preserves one-line fit even
             // for long subject names (we still ellipsize as a safeguard).
             Text(name,
-              style: const TextStyle(
+              style: TextStyle(
                 fontFamily: 'Bitroad', fontSize: 26,
                 color: _brown, height: 1.15),
               overflow: TextOverflow.ellipsis, maxLines: 1),
@@ -1153,7 +1144,7 @@ class _SubjectDetailScreenState extends ConsumerState<SubjectDetailScreen>
         maxChildSize: 0.95,
         expand: false,
         builder: (ctx, scrollCtrl) => Container(
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             color: _cardFill,
             borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -1170,7 +1161,7 @@ class _SubjectDetailScreenState extends ConsumerState<SubjectDetailScreen>
                   style: GoogleFonts.gaegu(fontSize: 22, fontWeight: FontWeight.w700, color: _brown),
                   overflow: TextOverflow.ellipsis, maxLines: 2)),
                 IconButton(
-                  icon: const Icon(Icons.delete_outline_rounded, color: _red, size: 22),
+                  icon: Icon(Icons.delete_outline_rounded, color: _red, size: 22),
                   onPressed: () async {
                     Navigator.pop(ctx);
                     await _deleteMaterial(m);
@@ -1299,13 +1290,13 @@ class _OverviewTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (loading) {
-      return const Center(child: CircularProgressIndicator(color: _oliveDk, strokeWidth: 2.5));
+      return Center(child: CircularProgressIndicator(color: _oliveDk, strokeWidth: 2.5));
     }
     if (error != null) {
       return Center(child: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Icon(Icons.error_outline_rounded, color: _red, size: 36),
+          Icon(Icons.error_outline_rounded, color: _red, size: 36),
           const SizedBox(height: 10),
           Text(error!, textAlign: TextAlign.center,
             style: GoogleFonts.nunito(fontSize: 13, color: _brownSoft)),
@@ -1559,7 +1550,7 @@ class _ActivityRow extends StatelessWidget {
               overflow: TextOverflow.ellipsis, maxLines: 1)),
             if (item.type == _ActivityType.quiz && isGenerated) ...[
               const SizedBox(width: 6),
-              _TagPill(label: 'AI', color: _mLav),
+              _TagPill(label: 'Auto', color: _mLav),
             ],
           ]),
           Row(children: [
@@ -1642,10 +1633,7 @@ class _StatCell extends StatelessWidget {
 class _TopicsTab extends StatelessWidget {
   final bool loading;
   final List<Map<String, dynamic>> topics;
-  /// Count of materials already attached to the subject. Drives the
-  /// enabled/disabled state of the "AI extract" pill — with zero
-  /// materials there's nothing to extract from, so we'd rather nudge
-  /// the user toward upload than fire a no-op network round-trip.
+  // Number of materials attached; disables extract pill when zero.
   final int materialsCount;
   final Color subjectAccent;
   final Future<void> Function() onCreate;
@@ -1654,10 +1642,7 @@ class _TopicsTab extends StatelessWidget {
   /// Tap handler — opens the topic-detail bottom sheet showing every
   /// piece of content linked to the topic.
   final void Function(Map<String, dynamic>) onOpen;
-  /// Re-runs AI topic extraction across every material on this subject.
-  /// Back-fills topics for notes uploaded before auto-extract shipped,
-  /// and lets the user retry when a provider hiccups. Idempotent — the
-  /// server dedupes matching names.
+  // Re-runs topic extraction across all materials; server dedupes matches.
   final Future<void> Function() onAutoExtract;
   const _TopicsTab({
     required this.loading,
@@ -1674,7 +1659,7 @@ class _TopicsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (loading) {
-      return const Center(child: CircularProgressIndicator(color: _oliveDk, strokeWidth: 2.5));
+      return Center(child: CircularProgressIndicator(color: _oliveDk, strokeWidth: 2.5));
     }
     // Zero horizontal padding — outer contentW wrapper handles side margins.
     final canAutoExtract = materialsCount > 0;
@@ -1687,13 +1672,13 @@ class _TopicsTab extends StatelessWidget {
             dotColor: subjectAccent,
             label: '${topics.length} topic${topics.length == 1 ? '' : 's'}',
             subtitle: canAutoExtract
-                ? 'AI reads your notes — editable after'
+                ? 'Scans your notes — editable after'
                 : 'upload a note to auto-extract',
-            // Two-button trailing: AI extract + manual add. Wrap lets
+            // Two-button trailing: Auto-extract + manual add. Wrap lets
             // this fold gracefully on narrower viewports.
             trailing: Wrap(spacing: 6, runSpacing: 6, children: [
               _PillBtn(
-                label: '✨ AI extract',
+                label: '✨ Auto-extract',
                 fill: canAutoExtract ? _mLav : _cream,
                 textColor: canAutoExtract ? Colors.white : _brownSoft,
                 onTap: () => onAutoExtract(),
@@ -1741,18 +1726,18 @@ class _TopicsTab extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             materialsCount > 0
-              ? 'Tap "AI extract" — Claude will scan your $materialsCount note${materialsCount == 1 ? '' : 's'} and propose topic names you can edit.'
+              ? 'Tap "Auto-extract" — We'll scan your $materialsCount note${materialsCount == 1 ? '' : 's'} and propose topic names you can edit.'
               : 'Topics auto-populate when you upload notes. You can also add them manually any time.',
             textAlign: TextAlign.center,
             style: GoogleFonts.nunito(fontSize: 12, color: _brownSoft, height: 1.4)),
           const SizedBox(height: 14),
           // Primary action depends on whether there's source material.
-          // With materials → AI extract is the headline CTA; manual add
+          // With materials → Auto-extract is the headline CTA; manual add
           // is a secondary chip below. Without materials → only manual
-          // add is shown (no point pretending AI extract works on nothing).
+          // add is shown (no point pretending Auto-extract works on nothing).
           if (materialsCount > 0) ...[
             _PillBtn(
-              label: '✨ AI extract topics',
+              label: '✨ Auto-extract topics',
               fill: _mLav, textColor: Colors.white,
               onTap: () => onAutoExtract(),
             ),
@@ -1806,13 +1791,13 @@ class _TopicsTab extends StatelessWidget {
           IconButton(
             tooltip: 'Rename',
             visualDensity: VisualDensity.compact,
-            icon: const Icon(Icons.edit_rounded, size: 18, color: _brownLt),
+            icon: Icon(Icons.edit_rounded, size: 18, color: _brownLt),
             onPressed: () => onRename(t),
           ),
           IconButton(
             tooltip: 'Delete',
             visualDensity: VisualDensity.compact,
-            icon: const Icon(Icons.delete_outline_rounded, size: 18, color: _red),
+            icon: Icon(Icons.delete_outline_rounded, size: 18, color: _red),
             onPressed: () => onDelete(t),
           ),
         ]),
@@ -1891,7 +1876,7 @@ class _ContentTabState extends State<_ContentTab> {
   @override
   Widget build(BuildContext context) {
     if (widget.loading) {
-      return const Center(child: CircularProgressIndicator(color: _oliveDk, strokeWidth: 2.5));
+      return Center(child: CircularProgressIndicator(color: _oliveDk, strokeWidth: 2.5));
     }
     final isEmpty = widget.materials.isEmpty && widget.decks.isEmpty && widget.quizzes.isEmpty;
     // Zero horizontal padding — outer contentW wrapper handles side margins.
@@ -2096,7 +2081,7 @@ class _MaterialRow extends StatelessWidget {
                 style: GoogleFonts.nunito(fontSize: 10, fontWeight: FontWeight.w700, color: _brownSoft)),
               if (created != null) ...[
                 const SizedBox(width: 8),
-                const Icon(Icons.schedule_rounded, size: 10, color: _brownSoft),
+                Icon(Icons.schedule_rounded, size: 10, color: _brownSoft),
                 const SizedBox(width: 2),
                 Text(_fmtDate(created),
                   style: GoogleFonts.nunito(fontSize: 10, fontWeight: FontWeight.w700, color: _brownSoft)),
@@ -2165,7 +2150,7 @@ class _DeckRow extends StatelessWidget {
                 style: GoogleFonts.nunito(fontSize: 10, fontWeight: FontWeight.w700, color: _brownSoft)),
               if (updated != null) ...[
                 const SizedBox(width: 8),
-                const Icon(Icons.schedule_rounded, size: 10, color: _brownSoft),
+                Icon(Icons.schedule_rounded, size: 10, color: _brownSoft),
                 const SizedBox(width: 2),
                 Text(_fmtDate(updated),
                   style: GoogleFonts.nunito(fontSize: 10, fontWeight: FontWeight.w700, color: _brownSoft)),
@@ -2364,7 +2349,7 @@ class _TrashBtn extends StatelessWidget {
           color: _mTerra.withOpacity(0.3),
           borderRadius: BorderRadius.circular(9),
           border: Border.all(color: _red.withOpacity(0.35), width: 1)),
-        child: const Icon(Icons.delete_outline_rounded, size: 16, color: _red),
+        child: Icon(Icons.delete_outline_rounded, size: 16, color: _red),
       ),
     );
   }
@@ -2385,7 +2370,7 @@ class _HeaderIconBtn extends StatelessWidget {
         child: Container(
           width: 38, height: 38,
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.88),
+            color: _cardFill.withOpacity(0.88),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: _outline.withOpacity(0.32), width: 1.5),
             boxShadow: [BoxShadow(
@@ -2435,7 +2420,7 @@ class _SessionRowCompact extends StatelessWidget {
               style: GoogleFonts.nunito(fontSize: 10, fontWeight: FontWeight.w700, color: _brownSoft)),
             if (started != null) ...[
               const SizedBox(width: 8),
-              const Icon(Icons.schedule_rounded, size: 10, color: _brownSoft),
+              Icon(Icons.schedule_rounded, size: 10, color: _brownSoft),
               const SizedBox(width: 2),
               Text(_fmtDate(started),
                 style: GoogleFonts.nunito(fontSize: 10, fontWeight: FontWeight.w700, color: _brownSoft)),
@@ -2483,7 +2468,8 @@ class _PawPrintBg extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter o) => false;
 }
 
-// Unused-but-preserved panel background color so the constant import
-// stays valid for future extensions (e.g. filter drawers).
+// Unused-but-preserved panel background color so the import stays valid
+// for future extensions (e.g. filter drawers). Getter form because
+// `_panelBg` is now mode-aware.
 // ignore: unused_element
-const _panelBgRef = _panelBg;
+Color get _panelBgRef => _panelBg;

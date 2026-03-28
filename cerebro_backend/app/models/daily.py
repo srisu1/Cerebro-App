@@ -1,3 +1,8 @@
+"""
+CEREBRO - Daily Life Domain Models
+Password Manager, Habits, Schedule
+"""
+
 import uuid
 from datetime import datetime, date
 from sqlalchemy import (
@@ -11,6 +16,7 @@ from app.database import Base
 
 
 class PasswordEntry(Base):
+    """Encrypted password storage for students."""
     __tablename__ = "password_entries"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -30,6 +36,7 @@ class PasswordEntry(Base):
 
 
 class HabitEntry(Base):
+    """Daily habit tracking."""
     __tablename__ = "habit_entries"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -37,7 +44,7 @@ class HabitEntry(Base):
     name = Column(String(100), nullable=False)
     description = Column(Text)
     frequency = Column(String(50), default="daily")  # daily, weekdays, weekly
-    target_count = Column(Integer, default=1)
+    target_count = Column(Integer, default=1)  # How many times per frequency period
     color = Column(String(7), default="#10B981")
     icon = Column(String(50), default="check_circle")
     is_active = Column(Boolean, default=True)
@@ -47,6 +54,7 @@ class HabitEntry(Base):
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    # Relationships
     completions = relationship("HabitCompletion", back_populates="habit", cascade="all, delete-orphan")
 
     def __repr__(self):
@@ -54,6 +62,7 @@ class HabitEntry(Base):
 
 
 class HabitCompletion(Base):
+    """Records when a habit was completed."""
     __tablename__ = "habit_completions"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -63,6 +72,7 @@ class HabitCompletion(Base):
     date = Column(Date, default=date.today)
     notes = Column(Text)
 
+    # Relationships
     habit = relationship("HabitEntry", back_populates="completions")
 
     def __repr__(self):
@@ -70,6 +80,7 @@ class HabitCompletion(Base):
 
 
 class ScheduleEntry(Base):
+    """Class schedule and event management."""
     __tablename__ = "schedule_entries"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

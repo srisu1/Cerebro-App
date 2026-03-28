@@ -112,11 +112,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       await prefs.setString(AppConstants.accessTokenKey, accessToken);
       await prefs.setString(AppConstants.refreshTokenKey, refreshToken);
 
-      // If this account differs from the one whose data is in prefs,
-      // wipe the per-user cache so XP/cash/quests/avatar don't leak in.
-      // Removing the cached user_id first forces a fresh /auth/me lookup
-      // so we compare against the *new* account's id, not whatever was
-      // stamped from the previous session.
+      // Wipe per-user cache if switching accounts.
       await prefs.remove(AppConstants.userIdKey);
       try {
         await refreshUserScope(_api);

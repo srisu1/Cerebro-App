@@ -1,4 +1,4 @@
-// Home dashboard — hero section with avatar, XP bar, and two-column content layout.
+// Dashboard tab — greeting, avatar, XP bar, stats, quests, insight.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -11,47 +11,49 @@ import 'package:go_router/go_router.dart';
 import 'package:cerebro_app/config/router.dart';
 import 'package:cerebro_app/providers/auth_provider.dart';
 import 'package:cerebro_app/providers/dashboard_provider.dart';
+import 'package:cerebro_app/providers/notifications_provider.dart';
 import 'package:cerebro_app/screens/home/home_screen.dart';
 import 'package:cerebro_app/widgets/alive_avatar.dart';
 import 'package:cerebro_app/widgets/mood_sticker.dart';
 import 'package:cerebro_app/screens/health/health_tab.dart';
 import 'dart:math' as math;
 
-const _ombre1  = Color(0xFFFFFBF7);
-const _ombre2  = Color(0xFFFFF8F3);
-const _ombre3  = Color(0xFFFFF3EF);
-const _ombre4  = Color(0xFFFEEDE9);
-const _pawClr  = Color(0xFFF8BCD0);
 
-const _outline = Color(0xFF6E5848);
-const _brown   = Color(0xFF4E3828);
-const _brownLt = Color(0xFF7A5840);
-const _brownSoft = Color(0xFF9A8070);
+bool get _darkMode =>
+    CerebroTheme.brightnessNotifier.value == Brightness.dark;
 
-const _cardFill  = Color(0xFFFFF8F4);
-const _panelBg   = Color(0xFFFFF6EE);
-const _cream     = Color(0xFFFDEFDB);
-const _olive     = Color(0xFF98A869);
-const _oliveDk   = Color(0xFF58772F);
-const _pinkLt    = Color(0xFFFFD5F5);
-const _pink      = Color(0xFFFEA9D3);
-const _pinkDk    = Color(0xFFE890B8);
-const _coral     = Color(0xFFF7AEAE);
-const _gold      = Color(0xFFE4BC83);
-const _orange    = Color(0xFFFFBC5C);
-const _red       = Color(0xFFEF6262);
-const _blueLt    = Color(0xFFDDF6FF);
-const _green     = Color(0xFFA8D5A3);
-const _greenLt   = Color(0xFFC2E8BC);
-const _greenDk   = Color(0xFF88B883);
-const _goldGlow  = Color(0xFFF8E080);
-const _purpleHdr = Color(0xFFCDA8D8);
+Color get _ombre1 => _darkMode ? const Color(0xFF191513) : const Color(0xFFFFFBF7);
+Color get _ombre2 => _darkMode ? const Color(0xFF1E1A17) : const Color(0xFFFFF8F3);
+Color get _ombre3 => _darkMode ? const Color(0xFF29221D) : const Color(0xFFFFF3EF);
+Color get _ombre4 => _darkMode ? const Color(0xFF312821) : const Color(0xFFFEEDE9);
+Color get _pawClr => _darkMode ? const Color(0xFF231D18) : const Color(0xFFF8BCD0);
+Color get _outline => _darkMode ? const Color(0xFFAD7F58) : const Color(0xFF6E5848);
+Color get _brown => _darkMode ? const Color(0xFFF2E1CA) : const Color(0xFF4E3828);
+Color get _brownLt => _darkMode ? const Color(0xFFDBB594) : const Color(0xFF7A5840);
+Color get _brownSoft => _darkMode ? const Color(0xFFBD926C) : const Color(0xFF9A8070);
+Color get _cardFill => _darkMode ? const Color(0xFF29221D) : const Color(0xFFFFF8F4);
+Color get _panelBg => _darkMode ? const Color(0xFF1E1A17) : const Color(0xFFFFF6EE);
+Color get _cream => _darkMode ? const Color(0xFF1E1A17) : const Color(0xFFFDEFDB);
+Color get _olive => const Color(0xFF98A869);
+Color get _oliveDk => const Color(0xFF58772F);
+Color get _pinkLt => _darkMode ? const Color(0xFF411C35) : const Color(0xFFFFD5F5);
+Color get _pink => const Color(0xFFFEA9D3);
+Color get _pinkDk => const Color(0xFFE890B8);
+Color get _coral => const Color(0xFFF7AEAE);
+Color get _gold => const Color(0xFFE4BC83);
+Color get _orange => const Color(0xFFFFBC5C);
+Color get _red => const Color(0xFFEF6262);
+Color get _blueLt => _darkMode ? const Color(0xFF102A4C) : const Color(0xFFDDF6FF);
+Color get _green => const Color(0xFFA8D5A3);
+Color get _greenLt => _darkMode ? const Color(0xFF143125) : const Color(0xFFC2E8BC);
+Color get _greenDk => const Color(0xFF88B883);
+Color get _goldGlow => const Color(0xFFF8E080);
+Color get _purpleHdr => const Color(0xFFCDA8D8);
 // Soft sage tint — used as the cash-pill background so the
 // sage dollar-bill sticker reads as part of the pill instead
 // of clashing with a warm gold/tan fill.
-const _cashTint  = Color(0xFFDCE8C9);
-const _skyHdr    = Color(0xFF9DD4F0);
-
+Color get _cashTint => _darkMode ? const Color(0xFF29331B) : const Color(0xFFDCE8C9);
+Color get _skyHdr => const Color(0xFF9DD4F0);
 class DashboardTab extends ConsumerStatefulWidget {
   const DashboardTab({super.key});
   @override
@@ -79,6 +81,13 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
       vsync: this, duration: const Duration(milliseconds: 900),
     )..forward();
     _startSpeechCycle();
+    // Kick off a notifications fetch on first paint. This also makes the
+    // backend materialise any day-before reminders for events coming up
+    // in the next 24h — and, when the user has daily_reminders_enabled,
+    // sends the corresponding email.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) ref.read(notificationsProvider.notifier).refresh();
+    });
   }
 
   @override
@@ -315,7 +324,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
     return Stack(children: [
       // Ombré background
       Positioned.fill(child: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter, end: Alignment.bottomCenter,
             colors: [_ombre1, _ombre2, _ombre3, _ombre4],
@@ -408,7 +417,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
             children: [
               Text(
                 '${_getGreeting()}, ${dash.displayName}!',
-                style: const TextStyle(
+                style: TextStyle(
                   fontFamily: 'Bitroad',
                   fontSize: 28,
                   color: _brown,
@@ -454,10 +463,29 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
             const SizedBox(width: 7),
             _Pill(icon: Icons.local_fire_department_rounded, label: '${dash.streak}', color: _orange),
             const SizedBox(width: 7),
-            _NotifBell(count: 3),
+            // Live-wired bell — count reflects real unread notifications.
+            // Tapping opens a tray; pull-to-refresh inside the tray (and
+            // the dashboard open itself) re-fetches the list.
+            GestureDetector(
+              onTap: () => _openNotificationTray(),
+              child: _NotifBell(count: ref.watch(
+                notificationsProvider.select((s) => s.unreadCount))),
+            ),
           ],
         ),
       ],
+    );
+  }
+
+  void _openNotificationTray() {
+    // Refresh once on open so the tray shows the freshest state without
+    // waiting for the full dashboard to reload.
+    ref.read(notificationsProvider.notifier).refresh();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => const _NotificationTraySheet(),
     );
   }
 
@@ -537,14 +565,14 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
     return Container(
       width: 120, height: 130,
       decoration: BoxDecoration(
-        color: const Color(0xFFFFF0E8),
+        color: _darkMode ? const Color(0xFF3E1A1A) : const Color(0xFFFFF0E8),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: _outline, width: 3),
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.face_rounded, size: 36, color: CerebroTheme.pinkPop),
+          Icon(Icons.face_rounded, size: 36, color: CerebroTheme.pinkPop),
           const SizedBox(height: 4),
           Text('Create avatar!', textAlign: TextAlign.center,
               style: GoogleFonts.gaegu(fontSize: 14, fontWeight: FontWeight.w700, color: _brown)),
@@ -554,8 +582,14 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
   }
 
   Widget _buildSpeechBubble() {
+    // Warm cream in light, warm mid-brown paper in dark (still distinct from
+    // page bg but no longer glows white against a pitch background).
+    final bubbleFill = _darkMode ? const Color(0xFF29221D) : const Color(0xFFFFFBF8);
     return CustomPaint(
-      painter: _CozyBubblePainter(),
+      painter: _CozyBubblePainter(
+        fillColor: bubbleFill,
+        borderColor: _outline,
+      ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(24, 14, 16, 14),
         child: Text(
@@ -590,7 +624,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Text('Lv. ${dash.level}',
-            style: const TextStyle(fontFamily: 'Bitroad', fontSize: 12, color: _brownLt)),
+            style: TextStyle(fontFamily: 'Bitroad', fontSize: 12, color: _brownLt)),
           const SizedBox(width: 14),
           SizedBox(
             width: MediaQuery.of(context).size.width * 0.22,
@@ -606,7 +640,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
                 widthFactor: progress,
                 child: Container(
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(colors: [_olive, _oliveDk]),
+                    gradient: LinearGradient(colors: [_olive, _oliveDk]),
                     borderRadius: BorderRadius.circular(999),
                   ),
                 ),
@@ -679,7 +713,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
             Icon(Icons.bolt_rounded, size: 16, color: _oliveDk),
             const SizedBox(width: 7),
             Text('Weekly Streak',
-              style: const TextStyle(fontFamily: 'Bitroad', fontSize: 15, color: _brown)),
+              style: TextStyle(fontFamily: 'Bitroad', fontSize: 15, color: _brown)),
             const Spacer(),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
@@ -772,7 +806,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
             Icon(Icons.show_chart_rounded, size: 16, color: _oliveDk),
             const SizedBox(width: 7),
             Text("Today's Snapshot",
-              style: const TextStyle(fontFamily: 'Bitroad', fontSize: 15, color: _brown)),
+              style: TextStyle(fontFamily: 'Bitroad', fontSize: 15, color: _brown)),
           ],
         ),
         const SizedBox(height: 13),
@@ -860,7 +894,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
             Icon(Icons.description_rounded, size: 16, color: _oliveDk),
             const SizedBox(width: 7),
             Text("Today's Quests",
-              style: const TextStyle(fontFamily: 'Bitroad', fontSize: 15, color: _brown)),
+              style: TextStyle(fontFamily: 'Bitroad', fontSize: 15, color: _brown)),
             const Spacer(),
             GestureDetector(
               onTap: () => ref.read(selectedTabProvider.notifier).state = 1,
@@ -873,7 +907,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
         // Quest card
         Container(
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.88),
+            color: _cardFill.withOpacity(0.88),
             borderRadius: BorderRadius.circular(18),
             border: Border.all(color: _outline.withOpacity(0.22), width: 1.5),
             boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
@@ -904,7 +938,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
                             ),
                           ),
                           Text('$habitsDone/${habits.length}',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontFamily: 'Bitroad', fontSize: 10, color: _brown)),
                         ]),
                       ),
@@ -1011,7 +1045,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
                   offset: const Offset(1, 1), blurRadius: 0)],
             ),
             child: Text(done ? '+10' : '10',
-              style: const TextStyle(fontFamily: 'Bitroad', fontSize: 11, color: _brown)),
+              style: TextStyle(fontFamily: 'Bitroad', fontSize: 11, color: _brown)),
           ),
         ]),
       ),
@@ -1039,7 +1073,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
             Container(
               width: 24, height: 24,
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: _cardFill,
                 shape: BoxShape.circle,
                 border: Border.all(color: _outline.withOpacity(0.3), width: 1.5),
               ),
@@ -1222,8 +1256,14 @@ class _StatTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final textColor = isHighlight ? Colors.white : _brown;
     final labelColor = isHighlight ? Colors.white.withOpacity(0.85) : _brownSoft;
-    final iconBg = isHighlight ? Colors.white.withOpacity(0.2) : Colors.white;
-    final iconBorder = isHighlight ? Colors.white.withOpacity(0.25) : _outline.withOpacity(0.1);
+    // In dark mode, a stark white icon well looks disconnected on a tinted
+    // pastel tile; fall back to BROWN-2 so it reads as a recessed notch.
+    final iconBg = isHighlight
+        ? Colors.white.withOpacity(0.2)
+        : (_darkMode ? const Color(0xFF231D18) : Colors.white);
+    final iconBorder = isHighlight
+        ? Colors.white.withOpacity(0.25)
+        : _outline.withOpacity(_darkMode ? 0.3 : 0.1);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
@@ -1306,8 +1346,10 @@ class _CozyBubblePainter extends CustomPainter {
   static const _border = 2.0;
   static const _tailW = 12.0;
   static const _tailH = 18.0;
-  static const _fillColor = Color(0xFFFFFBF8);
-  static const _borderColor = Color(0xFF6E5848);
+
+  final Color fillColor;
+  final Color borderColor;
+  _CozyBubblePainter({required this.fillColor, required this.borderColor});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1318,9 +1360,9 @@ class _CozyBubblePainter extends CustomPainter {
 
     final shadowRect = RRect.fromRectAndRadius(
       Rect.fromLTWH(4, 5, w, h), Radius.circular(_radius));
-    canvas.drawRRect(shadowRect, Paint()..color = _borderColor.withOpacity(0.12));
+    canvas.drawRRect(shadowRect, Paint()..color = borderColor.withOpacity(0.12));
 
-    canvas.drawRRect(boxRect, Paint()..color = _fillColor);
+    canvas.drawRRect(boxRect, Paint()..color = fillColor);
 
     final tailCY = h / 2;
     final tailTip = Offset(-_tailW, tailCY);
@@ -1329,14 +1371,14 @@ class _CozyBubblePainter extends CustomPainter {
 
     final tailOuter = Path()..moveTo(tailTip.dx, tailTip.dy)
       ..lineTo(tailTop.dx, tailTop.dy)..lineTo(tailBot.dx, tailBot.dy)..close();
-    canvas.drawPath(tailOuter, Paint()..color = _borderColor);
+    canvas.drawPath(tailOuter, Paint()..color = borderColor);
 
     final tailInner = Path()..moveTo(tailTip.dx + 6, tailTip.dy)
       ..lineTo(tailTop.dx, tailTop.dy + 5)..lineTo(tailBot.dx, tailBot.dy - 5)..close();
-    canvas.drawPath(tailInner, Paint()..color = _fillColor);
+    canvas.drawPath(tailInner, Paint()..color = fillColor);
 
     canvas.drawRRect(boxRect, Paint()
-      ..color = _borderColor..style = PaintingStyle.stroke..strokeWidth = _border);
+      ..color = borderColor..style = PaintingStyle.stroke..strokeWidth = _border);
   }
 
   @override
@@ -1350,32 +1392,72 @@ class _MoodPopup extends StatelessWidget {
   final ValueChanged<String> onPick;
   const _MoodPopup({required this.config, required this.selected, required this.onPick});
 
-  static const _moods = [
-    {'key': 'happy',   'label': 'Happy',   'color': Color(0xFFFFF9E0)},
-    {'key': 'sad',     'label': 'Sad',     'color': Color(0xFFE8F0FF)},
-    {'key': 'anxious', 'label': 'Anxious', 'color': Color(0xFFFFE8EC)},
-    {'key': 'calm',    'label': 'Calm',    'color': Color(0xFFE8FFF0)},
-    {'key': 'excited', 'label': 'Excited', 'color': Color(0xFFFFF0E0)},
-    {'key': 'tired',   'label': 'Tired',   'color': Color(0xFFEDE5FF)},
-    {'key': 'angry',   'label': 'Angry',   'color': Color(0xFFFFE0E0)},
-    {'key': 'focused', 'label': 'Focused', 'color': Color(0xFFF0FFF0)},
+  // Mood meta (labels + keys) — colors are resolved at build-time below
+  // so we can swap in dark-mode tints without losing the const list.
+  static const _moodKeys = [
+    {'key': 'happy',   'label': 'Happy'},
+    {'key': 'sad',     'label': 'Sad'},
+    {'key': 'anxious', 'label': 'Anxious'},
+    {'key': 'calm',    'label': 'Calm'},
+    {'key': 'excited', 'label': 'Excited'},
+    {'key': 'tired',   'label': 'Tired'},
+    {'key': 'angry',   'label': 'Angry'},
+    {'key': 'focused', 'label': 'Focused'},
   ];
+
+  /// Mood tile fill — mode-aware. Light = airy pastel, dark = muted CRUMBS
+  /// shade-4 of the same hue (so "happy" still reads gold, not slate).
+  Color _moodTint(String key) {
+    if (_darkMode) {
+      switch (key) {
+        case 'happy':   return const Color(0xFF3E2F15); // AMBER 4
+        case 'sad':     return const Color(0xFF102A4C); // BLUE 4
+        case 'anxious': return const Color(0xFF3A1F28); // PINK/WINE 4
+        case 'calm':    return const Color(0xFF14331F); // GREEN 4
+        case 'excited': return const Color(0xFF402A15); // ORANGE 4
+        case 'tired':   return const Color(0xFF2E1F45); // PURPLE 4
+        case 'angry':   return const Color(0xFF3E1A1A); // RED 4
+        case 'focused': return const Color(0xFF143125); // SAGE 4
+      }
+      return const Color(0xFF29221D);
+    }
+    switch (key) {
+      case 'happy':   return const Color(0xFFFFF9E0);
+      case 'sad':     return const Color(0xFFE8F0FF);
+      case 'anxious': return const Color(0xFFFFE8EC);
+      case 'calm':    return const Color(0xFFE8FFF0);
+      case 'excited': return const Color(0xFFFFF0E0);
+      case 'tired':   return const Color(0xFFEDE5FF);
+      case 'angry':   return const Color(0xFFFFE0E0);
+      case 'focused': return const Color(0xFFF0FFF0);
+    }
+    return const Color(0xFFFFFBF8);
+  }
 
   @override
   Widget build(BuildContext context) {
+    // Modal surfaces — BROWN 2/3 in dark, near-white cream in light.
+    final modalBg   = _darkMode ? const Color(0xFF1E1A17) : const Color(0xFFFFFBF8);
+    final bodyBg    = _darkMode ? const Color(0xFF1E1A17) : const Color(0xFFFFFBF8);
+    // Header gradient — muted rose in dark mode, original peach in light.
+    final hdrColors = _darkMode
+        ? const [Color(0xFF5C2E2E), Color(0xFF4A2222)]
+        : const [Color(0xFFF0C0B8), Color(0xFFE8A8A0)];
+    final selFill   = _darkMode ? const Color(0xFF4A2433) : const Color(0xFFFFE0E8);
+    final selBorder = _darkMode ? const Color(0xFFE88FA0) : const Color(0xFFE8A8A0);
     return Center(
       child: Material(
         color: Colors.transparent,
         child: Container(
           width: 540,
           decoration: BoxDecoration(
-            color: const Color(0xFFFFFBF8),
+            color: modalBg,
             borderRadius: BorderRadius.circular(28),
-            border: Border.all(color: _outline.withOpacity(0.2), width: 2),
+            border: Border.all(color: _outline.withOpacity(_darkMode ? 0.5 : 0.2), width: 2),
             boxShadow: [
-              BoxShadow(color: _outline.withOpacity(0.08),
+              BoxShadow(color: _outline.withOpacity(_darkMode ? 0.25 : 0.08),
                   offset: const Offset(0, 8), blurRadius: 32),
-              BoxShadow(color: Colors.black.withOpacity(0.06),
+              BoxShadow(color: Colors.black.withOpacity(_darkMode ? 0.4 : 0.06),
                   offset: const Offset(0, 2), blurRadius: 8),
             ],
           ),
@@ -1387,15 +1469,15 @@ class _MoodPopup extends StatelessWidget {
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(vertical: 16),
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [Color(0xFFF0C0B8), Color(0xFFE8A8A0)]),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(colors: hdrColors),
                   ),
                   child: Stack(
                     alignment: Alignment.center,
                     children: [
                       Text('How are you feeling?', style: GoogleFonts.gaegu(
-                          fontSize: 24, fontWeight: FontWeight.w700, color: _brown)),
+                          fontSize: 24, fontWeight: FontWeight.w700,
+                          color: _darkMode ? const Color(0xFFF2E1CA) : _brown)),
                       Positioned(
                         right: 16,
                         child: GestureDetector(
@@ -1403,10 +1485,11 @@ class _MoodPopup extends StatelessWidget {
                           child: Container(
                             width: 28, height: 28,
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.4),
+                              color: _darkMode ? Colors.black.withOpacity(0.35) : _cardFill.withOpacity(0.4),
                               borderRadius: BorderRadius.circular(8),
                             ),
-                            child: Icon(Icons.close_rounded, size: 16, color: _brown.withOpacity(0.6)),
+                            child: Icon(Icons.close_rounded, size: 16,
+                                color: _darkMode ? const Color(0xFFF2E1CA) : _brown.withOpacity(0.6)),
                           ),
                         ),
                       ),
@@ -1414,7 +1497,7 @@ class _MoodPopup extends StatelessWidget {
                   ),
                 ),
                 Container(
-                  color: const Color(0xFFFFFBF8),
+                  color: bodyBg,
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
                   child: GridView.count(
                     shrinkWrap: true,
@@ -1423,10 +1506,10 @@ class _MoodPopup extends StatelessWidget {
                     mainAxisSpacing: 12,
                     crossAxisSpacing: 12,
                     childAspectRatio: 0.85,
-                    children: _moods.map((m) {
+                    children: _moodKeys.map((m) {
                       final key = m['key'] as String;
                       final label = m['label'] as String;
-                      final tileColor = m['color'] as Color;
+                      final tileColor = _moodTint(key);
                       final isSel = selected == key;
                       return GestureDetector(
                         onTap: () => onPick(key),
@@ -1434,10 +1517,10 @@ class _MoodPopup extends StatelessWidget {
                           duration: const Duration(milliseconds: 150),
                           padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
                           decoration: BoxDecoration(
-                            color: isSel ? const Color(0xFFFFE0E8) : tileColor,
+                            color: isSel ? selFill : tileColor,
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(
-                              color: isSel ? const Color(0xFFE8A8A0) : _outline.withOpacity(0.15),
+                              color: isSel ? selBorder : _outline.withOpacity(_darkMode ? 0.35 : 0.15),
                               width: isSel ? 2.5 : 1.5),
                           ),
                           child: Column(
@@ -1500,4 +1583,224 @@ class _PawPrintBg extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter o) => false;
+}
+
+
+//  NOTIFICATION TRAY SHEET
+//  Bottom sheet surfaced when the user taps the bell.
+//  - Lists recent notifications newest-first
+//  - Tap a row to jump to its deep-link (events → calendar)
+//  - "Mark all read" clears the red dot in one go
+//  - Swipe individual rows left to dismiss
+class _NotificationTraySheet extends ConsumerWidget {
+  const _NotificationTraySheet();
+
+  IconData _iconFor(String kind) {
+    switch (kind) {
+      case 'event_reminder': return Icons.alarm_rounded;
+      case 'event_created':  return Icons.event_available_rounded;
+      case 'ai_schedule':    return Icons.auto_awesome_rounded;
+      default:               return Icons.notifications_rounded;
+    }
+  }
+
+  Color _tintFor(String kind) {
+    switch (kind) {
+      case 'event_reminder': return _orange;
+      case 'event_created':  return _greenLt;
+      case 'ai_schedule':    return _pinkLt;
+      default:               return _coral;
+    }
+  }
+
+  String _relativeTime(DateTime then) {
+    final diff = DateTime.now().difference(then);
+    if (diff.inMinutes < 1) return 'just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24)   return '${diff.inHours}h ago';
+    if (diff.inDays < 7)     return '${diff.inDays}d ago';
+    return '${then.month}/${then.day}';
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(notificationsProvider);
+    final notif = ref.read(notificationsProvider.notifier);
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.7,
+      minChildSize: 0.4,
+      maxChildSize: 0.95,
+      expand: false,
+      builder: (ctx, scroll) {
+        return Container(
+          decoration: BoxDecoration(
+            color: _cardFill,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            border: Border.all(color: _outline, width: 2),
+          ),
+          child: Column(
+            children: [
+              // Grab handle
+              Container(
+                margin: const EdgeInsets.only(top: 10, bottom: 4),
+                width: 44, height: 4,
+                decoration: BoxDecoration(
+                  color: _outline.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              // Header
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 16, 12),
+                child: Row(children: [
+                  Icon(Icons.notifications_rounded, color: _outline, size: 22),
+                  const SizedBox(width: 8),
+                  Text('Notifications', style: GoogleFonts.gaegu(
+                    fontSize: 22, fontWeight: FontWeight.w900, color: _brown)),
+                  const Spacer(),
+                  if (state.unreadCount > 0)
+                    TextButton(
+                      onPressed: () => notif.markAllRead(),
+                      child: Text('Mark all read', style: GoogleFonts.nunito(
+                        fontSize: 13, fontWeight: FontWeight.w700, color: _outline)),
+                    ),
+                ]),
+              ),
+              Divider(color: _outline.withOpacity(0.2), height: 1),
+              // Body
+              Expanded(
+                child: state.loading && state.items.isEmpty
+                    ? Center(child: CircularProgressIndicator(color: _coral))
+                    : state.items.isEmpty
+                        ? Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(32),
+                              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                                Icon(Icons.notifications_none_rounded,
+                                    size: 56, color: _outline.withOpacity(0.35)),
+                                const SizedBox(height: 12),
+                                Text("You're all caught up!",
+                                  textAlign: TextAlign.center,
+                                  style: GoogleFonts.gaegu(
+                                    fontSize: 18, fontWeight: FontWeight.w700,
+                                    color: _brown)),
+                                const SizedBox(height: 4),
+                                Text('New events and reminders will show up here.',
+                                  textAlign: TextAlign.center,
+                                  style: GoogleFonts.nunito(
+                                    fontSize: 13, fontWeight: FontWeight.w600,
+                                    color: _brownSoft)),
+                              ]),
+                            ),
+                          )
+                        : RefreshIndicator(
+                            color: _coral,
+                            onRefresh: () => notif.refresh(),
+                            child: ListView.separated(
+                              controller: scroll,
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              itemCount: state.items.length,
+                              separatorBuilder: (_, __) => const SizedBox(height: 8),
+                              itemBuilder: (_, i) {
+                                final n = state.items[i];
+                                return Dismissible(
+                                  key: ValueKey(n.id),
+                                  direction: DismissDirection.endToStart,
+                                  onDismissed: (_) => notif.dismiss(n.id),
+                                  background: Container(
+                                    alignment: Alignment.centerRight,
+                                    padding: const EdgeInsets.only(right: 20),
+                                    decoration: BoxDecoration(
+                                      color: _red.withOpacity(0.85),
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                    child: const Icon(Icons.delete_rounded, color: Colors.white),
+                                  ),
+                                  child: InkWell(
+                                    borderRadius: BorderRadius.circular(14),
+                                    onTap: () async {
+                                      if (!n.read) await notif.markRead(n.id);
+                                      if (!ctx.mounted) return;
+                                      // event_id deep-link → jump to calendar
+                                      if (n.eventId != null) {
+                                        Navigator.pop(ctx);
+                                        context.push('/study/calendar');
+                                      }
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.all(12),
+                                      decoration: BoxDecoration(
+                                        color: n.read
+                                            ? _cardFill
+                                            : _cream.withOpacity(0.75),
+                                        borderRadius: BorderRadius.circular(14),
+                                        border: Border.all(
+                                          color: _outline.withOpacity(n.read ? 0.18 : 0.35),
+                                          width: 1.5,
+                                        ),
+                                      ),
+                                      child: Row(crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Container(
+                                            width: 36, height: 36,
+                                            decoration: BoxDecoration(
+                                              color: _tintFor(n.kind),
+                                              borderRadius: BorderRadius.circular(10),
+                                              border: Border.all(
+                                                color: _outline.withOpacity(0.25), width: 1.5),
+                                            ),
+                                            child: Icon(_iconFor(n.kind),
+                                              size: 18, color: _outline),
+                                          ),
+                                          const SizedBox(width: 10),
+                                          Expanded(
+                                            child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Row(children: [
+                                                  Expanded(
+                                                    child: Text(n.title,
+                                                      style: GoogleFonts.gaegu(
+                                                        fontSize: 15,
+                                                        fontWeight: n.read
+                                                            ? FontWeight.w700
+                                                            : FontWeight.w900,
+                                                        color: _brown)),
+                                                  ),
+                                                  const SizedBox(width: 6),
+                                                  Text(_relativeTime(n.createdAt),
+                                                    style: GoogleFonts.nunito(
+                                                      fontSize: 11,
+                                                      fontWeight: FontWeight.w600,
+                                                      color: _brownSoft)),
+                                                ]),
+                                                const SizedBox(height: 2),
+                                                Text(n.body,
+                                                  style: GoogleFonts.nunito(
+                                                    fontSize: 12, height: 1.4,
+                                                    fontWeight: FontWeight.w600,
+                                                    color: _brownSoft)),
+                                              ]),
+                                          ),
+                                          if (!n.read)
+                                            Container(
+                                              margin: const EdgeInsets.only(left: 8, top: 6),
+                                              width: 8, height: 8,
+                                              decoration: BoxDecoration(
+                                                color: _red, shape: BoxShape.circle),
+                                            ),
+                                        ]),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 }

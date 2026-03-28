@@ -1,3 +1,8 @@
+"""
+CEREBRO - Health Domain Models
+Sleep, Medications, Moods, Symptoms, Exercise
+"""
+
 import uuid
 from datetime import datetime
 from sqlalchemy import (
@@ -18,10 +23,10 @@ class SleepLog(Base):
     date = Column(Date, nullable=False)
     bedtime = Column(DateTime(timezone=True), nullable=False)
     wake_time = Column(DateTime(timezone=True), nullable=False)
-    total_hours = Column(DECIMAL(4, 2))
+    total_hours = Column(DECIMAL(4, 2))  # Calculated in service layer
     quality_rating = Column(Integer)
     notes = Column(Text)
-    source = Column(String(50), default="manual")
+    source = Column(String(50), default="manual")  # manual, google_fit
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
     __table_args__ = (
@@ -29,6 +34,7 @@ class SleepLog(Base):
         CheckConstraint("quality_rating BETWEEN 1 AND 5", name="check_quality_rating"),
     )
 
+    # Relationships
     user = relationship("User", back_populates="sleep_logs")
 
     def __repr__(self):
@@ -51,6 +57,7 @@ class Medication(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
+    # Relationships
     user = relationship("User", back_populates="medications")
     logs = relationship("MedicationLog", back_populates="medication", cascade="all, delete-orphan")
 
@@ -70,6 +77,7 @@ class MedicationLog(Base):
     side_effects = Column(Text)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
+    # Relationships
     medication = relationship("Medication", back_populates="logs")
 
     def __repr__(self):
@@ -77,6 +85,7 @@ class MedicationLog(Base):
 
 
 class MoodDefinition(Base):
+    """Pre-populated table with 8 mood types and their avatar expression assets."""
     __tablename__ = "mood_definitions"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -85,8 +94,9 @@ class MoodDefinition(Base):
     eyes_asset_path = Column(String(200), nullable=False)
     mouth_asset_path = Column(String(200), nullable=False)
     nose_asset_path = Column(String(200))
-    color = Column(String(7))
+    color = Column(String(7))  # Background color for mood sticker
 
+    # Relationships
     entries = relationship("MoodEntry", back_populates="mood")
 
     def __repr__(self):
@@ -102,13 +112,14 @@ class MoodEntry(Base):
     timestamp = Column(DateTime(timezone=True), default=datetime.utcnow)
     note = Column(Text)
     energy_level = Column(Integer)  # 1-5
-    context_tags = Column(ARRAY(String(100)), default=[])
+    context_tags = Column(ARRAY(String(100)), default=[])  # study, exercise, social
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
     __table_args__ = (
         CheckConstraint("energy_level BETWEEN 1 AND 5", name="check_energy_level"),
     )
 
+    # Relationships
     user = relationship("User", back_populates="mood_entries")
     mood = relationship("MoodDefinition", back_populates="entries")
 
@@ -117,15 +128,16 @@ class MoodEntry(Base):
 
 
 class SymptomLog(Base):
+    """Track symptoms with intensity, triggers, and relief methods for pattern detection."""
     __tablename__ = "symptom_logs"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    symptom_type = Column(String(50), nullable=False)
-    intensity = Column(Integer, nullable=False)  # 1-10
-    duration_minutes = Column(Integer)
-    triggers = Column(ARRAY(String(100)), default=[])
-    relief_methods = Column(ARRAY(String(100)), default=[])
+    symptom_type = Column(String(50), nullable=False)  # headache, fatigue, pain, nausea, etc.
+    intensity = Column(Integer, nullable=False)  # 1-10 scale
+    duration_minutes = Column(Integer)  # how long it lasted
+    triggers = Column(ARRAY(String(100)), default=[])  # studying, lack_of_sleep, stress, caffeine, etc.
+    relief_methods = Column(ARRAY(String(100)), default=[])  # rest, medication, water, stretching, etc.
     notes = Column(Text)
     recorded_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
@@ -134,6 +146,7 @@ class SymptomLog(Base):
         CheckConstraint("intensity BETWEEN 1 AND 10", name="check_symptom_intensity"),
     )
 
+    # Relationships
     user = relationship("User", back_populates="symptom_logs")
 
     def __repr__(self):
@@ -141,6 +154,7 @@ class SymptomLog(Base):
 
 
 class WaterLog(Base):
+    """Daily water intake tracking with goal-based progress."""
     __tablename__ = "water_logs"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -155,6 +169,7 @@ class WaterLog(Base):
         UniqueConstraint("user_id", "date", name="unique_water_per_day"),
     )
 
+    # Relationships
     user = relationship("User", back_populates="water_logs")
 
     def __repr__(self):

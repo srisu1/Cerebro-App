@@ -4,7 +4,8 @@ class AppConstants {
   static const String apiBaseUrl = 'http://localhost:8000/api/v1';
   static const int apiTimeout = 30000; // 30 seconds
 
-  // Google OAuth 2.0 — pass via --dart-define at build time
+  // Set this to your Google OAuth 2.0 Client ID from Google Cloud Console.
+  // For macOS, use the iOS client ID type.
   static const String googleClientId = String.fromEnvironment('GOOGLE_CLIENT_ID');
   static const String googleClientSecret = String.fromEnvironment('GOOGLE_CLIENT_SECRET');
 

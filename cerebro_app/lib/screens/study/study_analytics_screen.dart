@@ -1,66 +1,53 @@
-//  CEREBRO — Study Analytics Dashboard  (v3 — Subjects-shell parity)
-//
-//  Same shell as Subjects (contentW 0.94 / 1500, 16 horizontal padding,
-//  stagger animation, mellow palette, _Pill chrome). The 5-tile hero
-//  stats strip was removed — every value it carried is surfaced below
-//  (readiness ring, header chips, trend card, Gaps tab, Schedule tab).
-//  Tabs:
-//
-//    • Overview  — big readiness ring + 30-day sparkline + momentum
-//                  + top subjects + forgetting-risk preview
-//    • Map       — per-subject proficiency cards w/ full topic lists
-//    • Gaps      — weak topics + flagged subjects (severity-coded)
-//    • Coach     — AI-generated narrative briefing + next-move plan
-//    • Schedule  — flashcard reviews + ranked study priorities
-//
-//  Backend powering this: GET /study/analytics  +  GET /study/analytics/ai-coach
+// Study analytics — Overview, Map, Gaps, Coach, Schedule tabs.
 
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:cerebro_app/config/theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:cerebro_app/providers/auth_provider.dart';
 
-const _ombre1 = Color(0xFFFFFBF7);
-const _ombre2 = Color(0xFFFFF8F3);
-const _ombre3 = Color(0xFFFFF3EF);
-const _ombre4 = Color(0xFFFEEDE9);
-const _pawClr = Color(0xFFF8BCD0);
 
-const _outline   = Color(0xFF6E5848);
-const _brown     = Color(0xFF4E3828);
-const _brownLt   = Color(0xFF7A5840);
-const _brownSoft = Color(0xFF9A8070);
+bool get _darkMode =>
+    CerebroTheme.brightnessNotifier.value == Brightness.dark;
 
-const _cardFill = Color(0xFFFFF8F4);
-const _cream    = Color(0xFFFDEFDB);
-
+Color get _ombre1 => _darkMode ? const Color(0xFF191513) : const Color(0xFFFFFBF7);
+Color get _ombre2 => _darkMode ? const Color(0xFF1E1A17) : const Color(0xFFFFF8F3);
+Color get _ombre3 => _darkMode ? const Color(0xFF29221D) : const Color(0xFFFFF3EF);
+Color get _ombre4 => _darkMode ? const Color(0xFF312821) : const Color(0xFFFEEDE9);
+Color get _pawClr => _darkMode ? const Color(0xFF231D18) : const Color(0xFFF8BCD0);
+Color get _outline => _darkMode ? const Color(0xFFAD7F58) : const Color(0xFF6E5848);
+Color get _brown => _darkMode ? const Color(0xFFF2E1CA) : const Color(0xFF4E3828);
+Color get _brownLt => _darkMode ? const Color(0xFFDBB594) : const Color(0xFF7A5840);
+Color get _brownSoft => _darkMode ? const Color(0xFFBD926C) : const Color(0xFF9A8070);
+Color get _cardFill => _darkMode ? const Color(0xFF29221D) : const Color(0xFFFFF8F4);
+Color get _cream => _darkMode ? const Color(0xFF1E1A17) : const Color(0xFFFDEFDB);
 // Mellow palette (primary surfaces)
-const _mTerra  = Color(0xFFD9B5A6);
-const _mSlate  = Color(0xFFB6CBD6);
-const _mSage   = Color(0xFFB5C4A0);
-const _mMint   = Color(0xFFC8DCC2);
-const _mLav    = Color(0xFFC9B8D9);
-const _mButter = Color(0xFFE8D4A0);
-const _mBlush  = Color(0xFFEAD0CE);
-const _mSand   = Color(0xFFE8D9C2);
-
+Color get _mTerra => const Color(0xFFD9B5A6);
+Color get _mSlate => const Color(0xFFB6CBD6);
+Color get _mSage => const Color(0xFFB5C4A0);
+Color get _mMint => const Color(0xFFC8DCC2);
+Color get _mLav => const Color(0xFFC9B8D9);
+Color get _mButter => const Color(0xFFE8D4A0);
+Color get _mBlush => const Color(0xFFEAD0CE);
+Color get _mSand => const Color(0xFFE8D9C2);
 // Accent depths
-const _olive   = Color(0xFF98A869);
-const _oliveDk = Color(0xFF58772F);
-const _coral   = Color(0xFFF7AEAE);
-const _red     = Color(0xFFEF6262);
-const _gold    = Color(0xFFE4BC83);
-
+Color get _olive => const Color(0xFF98A869);
+Color get _oliveDk => const Color(0xFF58772F);
+Color get _coral => const Color(0xFFF7AEAE);
+Color get _red => const Color(0xFFEF6262);
+Color get _gold => const Color(0xFFE4BC83);
 const _bitroad = 'Bitroad';
 
+// Nullable `color` + in-body fallback — `_brown` is a runtime mode-aware
+// getter now, so it can't be a default parameter expression.
 TextStyle _gaegu({double size = 14, FontWeight weight = FontWeight.w600,
-        Color color = _brown, double? h}) =>
-    GoogleFonts.gaegu(fontSize: size, fontWeight: weight, color: color, height: h);
+        Color? color, double? h}) =>
+    GoogleFonts.gaegu(fontSize: size, fontWeight: weight, color: color ?? _brown, height: h);
 TextStyle _nunito({double size = 12, FontWeight weight = FontWeight.w600,
-        Color color = _brown, double? h, double? letter}) =>
-    GoogleFonts.nunito(fontSize: size, fontWeight: weight, color: color,
+        Color? color, double? h, double? letter}) =>
+    GoogleFonts.nunito(fontSize: size, fontWeight: weight, color: color ?? _brown,
         height: h, letterSpacing: letter);
 
 Color _hexColor(String hex) {
@@ -204,7 +191,7 @@ class _StudyAnalyticsScreenState extends ConsumerState<StudyAnalyticsScreen>
     return Material(
       type: MaterialType.transparency,
       child: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft, end: Alignment.bottomRight,
             colors: [_ombre1, _ombre2, _ombre3, _ombre4],
@@ -244,7 +231,7 @@ class _StudyAnalyticsScreenState extends ConsumerState<StudyAnalyticsScreen>
       Expanded(child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Study Analytics',
+          Text('Study Analytics',
             style: TextStyle(fontFamily: _bitroad, fontSize: 26,
                 color: _brown, height: 1.15)),
           const SizedBox(height: 2),
@@ -385,7 +372,7 @@ class _StudyAnalyticsScreenState extends ConsumerState<StudyAnalyticsScreen>
     return Padding(
       padding: const EdgeInsets.only(top: 56),
       child: Column(children: [
-        const CircularProgressIndicator(color: _olive, strokeWidth: 3),
+        CircularProgressIndicator(color: _olive, strokeWidth: 3),
         const SizedBox(height: 14),
         Text('Crunching your study data...',
           style: _gaegu(size: 16, color: _brownSoft, weight: FontWeight.w700)),
@@ -409,10 +396,10 @@ class _StudyAnalyticsScreenState extends ConsumerState<StudyAnalyticsScreen>
             boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
                 offset: const Offset(3, 3), blurRadius: 0)],
           ),
-          child: const Icon(Icons.cloud_off_rounded, size: 36, color: _brown),
+          child: Icon(Icons.cloud_off_rounded, size: 36, color: _brown),
         ),
         const SizedBox(height: 14),
-        const Text("Couldn't load analytics",
+        Text("Couldn't load analytics",
           style: TextStyle(fontFamily: _bitroad, fontSize: 20, color: _brown)),
         const SizedBox(height: 4),
         Text(_error ?? '', textAlign: TextAlign.center,
@@ -438,10 +425,10 @@ class _StudyAnalyticsScreenState extends ConsumerState<StudyAnalyticsScreen>
             boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
                 offset: const Offset(3, 3), blurRadius: 0)],
           ),
-          child: const Icon(Icons.insights_rounded, size: 36, color: _brownLt),
+          child: Icon(Icons.insights_rounded, size: 36, color: _brownLt),
         ),
         const SizedBox(height: 14),
-        const Text('No analytics yet',
+        Text('No analytics yet',
           style: TextStyle(fontFamily: _bitroad, fontSize: 20, color: _brown)),
         const SizedBox(height: 4),
         Text('Log a study session or take a quiz to populate this page.',
@@ -591,7 +578,7 @@ class _ReadinessCard extends StatelessWidget {
             ),
             Column(mainAxisSize: MainAxisSize.min, children: [
               Text('${readiness.toInt()}',
-                style: const TextStyle(fontFamily: _bitroad,
+                style: TextStyle(fontFamily: _bitroad,
                     fontSize: 48, color: _brown, height: 1.0)),
               Text('% READY',
                 style: _nunito(size: 10, weight: FontWeight.w900,
@@ -772,7 +759,7 @@ class _HourlyHeatmap extends StatelessWidget {
                 border: Border.all(color: _mLav, width: 1),
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
-                const Icon(Icons.star_rounded, size: 12, color: _brown),
+                Icon(Icons.star_rounded, size: 12, color: _brown),
                 const SizedBox(width: 4),
                 Text('peak: ${fmtHour(bestHour)}',
                   style: _nunito(size: 10, weight: FontWeight.w800, color: _brown)),
@@ -829,10 +816,15 @@ class _TopSubjectCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = _hexColor(s['color'] ?? '#9DD4F0');
     final prof = _asD(s['proficiency']) ?? 0;
+    // Dark mode: layer the subject tint over the card surface so the card
+    // has body; without this the 0.18 alpha vanishes against the dark bg.
+    final bg = _darkMode
+        ? Color.alphaBlend(color.withOpacity(0.22), const Color(0xFF29221D))
+        : color.withOpacity(0.18);
     return Container(
       width: 180,
       padding: const EdgeInsets.all(12),
-      decoration: _softCard(fill: color.withOpacity(0.18)),
+      decoration: _softCard(fill: bg),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           Container(width: 10, height: 10,
@@ -841,18 +833,20 @@ class _TopSubjectCard extends StatelessWidget {
           const SizedBox(width: 6),
           Expanded(child: Text(s['name']?.toString() ?? '',
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontFamily: _bitroad, fontSize: 15, color: _brown))),
+            style: TextStyle(fontFamily: _bitroad, fontSize: 15, color: _brown))),
         ]),
         const Spacer(),
         Text('${prof.toInt()}%',
-          style: const TextStyle(fontFamily: _bitroad, fontSize: 28, color: _brown, height: 1)),
+          style: TextStyle(fontFamily: _bitroad, fontSize: 28, color: _brown, height: 1)),
         const SizedBox(height: 6),
         ClipRRect(
           borderRadius: BorderRadius.circular(4),
           child: LinearProgressIndicator(
             value: (prof / 100).clamp(0.0, 1.0),
             minHeight: 7,
-            backgroundColor: Colors.white.withOpacity(0.45),
+            backgroundColor: _darkMode
+                ? Colors.black.withOpacity(0.35)
+                : Colors.white.withOpacity(0.45),
             valueColor: AlwaysStoppedAnimation(_heatColor(prof)),
           ),
         ),
@@ -886,7 +880,7 @@ class _ForgettingRow extends StatelessWidget {
         Expanded(child: Column(
           crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(item['topic']?.toString() ?? '',
-            style: const TextStyle(fontFamily: _bitroad, fontSize: 14, color: _brown),
+            style: TextStyle(fontFamily: _bitroad, fontSize: 14, color: _brown),
             maxLines: 1, overflow: TextOverflow.ellipsis),
           const SizedBox(height: 2),
           Text('${item['subject_name'] ?? ''} · ${prof.toInt()}% proficiency · ${days}d ago',
@@ -930,10 +924,10 @@ class _MapTab extends StatelessWidget {
               boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
                   offset: const Offset(3, 3), blurRadius: 0)],
             ),
-            child: const Icon(Icons.grid_view_rounded, size: 36, color: _brownLt),
+            child: Icon(Icons.grid_view_rounded, size: 36, color: _brownLt),
           ),
           const SizedBox(height: 14),
-          const Text('No topics yet',
+          Text('No topics yet',
             style: TextStyle(fontFamily: _bitroad, fontSize: 20, color: _brown)),
           const SizedBox(height: 4),
           Text('Run a quiz or upload notes to seed the knowledge map.',
@@ -1019,9 +1013,9 @@ class _SubjectMapCard extends StatelessWidget {
             ),
             const SizedBox(width: 10),
             Expanded(child: Text(subject['name']?.toString() ?? '',
-              style: const TextStyle(fontFamily: _bitroad, fontSize: 19, color: _brown))),
+              style: TextStyle(fontFamily: _bitroad, fontSize: 19, color: _brown))),
             Text('${displayProf.toInt()}%',
-              style: const TextStyle(fontFamily: _bitroad, fontSize: 24, color: _brown)),
+              style: TextStyle(fontFamily: _bitroad, fontSize: 24, color: _brown)),
             const SizedBox(width: 4),
             Text('avg', style: _nunito(size: 11, color: _brown, weight: FontWeight.w700)),
           ]),
@@ -1139,10 +1133,10 @@ class _GapsTab extends StatelessWidget {
               boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
                   offset: const Offset(3, 3), blurRadius: 0)],
             ),
-            child: const Icon(Icons.check_circle_rounded, size: 36, color: _brown),
+            child: Icon(Icons.check_circle_rounded, size: 36, color: _brown),
           ),
           const SizedBox(height: 14),
-          const Text('No gaps detected!',
+          Text('No gaps detected!',
             style: TextStyle(fontFamily: _bitroad, fontSize: 20, color: _brown)),
           const SizedBox(height: 4),
           Text('Every topic is at fair-or-better proficiency.',
@@ -1221,7 +1215,7 @@ class _GapCard extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Expanded(child: Text(g['topic']?.toString() ?? '',
-                style: const TextStyle(fontFamily: _bitroad, fontSize: 16, color: _brown))),
+                style: TextStyle(fontFamily: _bitroad, fontSize: 16, color: _brown))),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                 decoration: BoxDecoration(
@@ -1251,7 +1245,7 @@ class _GapCard extends StatelessWidget {
                 border: Border.all(color: _mSage.withOpacity(0.5), width: 1),
               ),
               child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Icon(Icons.lightbulb_rounded, size: 14, color: _oliveDk),
+                Icon(Icons.lightbulb_rounded, size: 14, color: _oliveDk),
                 const SizedBox(width: 8),
                 Expanded(child: Text(g['recommended_action']?.toString() ?? '',
                   style: _gaegu(size: 12, color: _brown, weight: FontWeight.w700, h: 1.3))),
@@ -1299,7 +1293,7 @@ class _FlaggedCard extends StatelessWidget {
         Expanded(child: Column(
           crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(f['name']?.toString() ?? '',
-            style: const TextStyle(fontFamily: _bitroad, fontSize: 15, color: _brown)),
+            style: TextStyle(fontFamily: _bitroad, fontSize: 15, color: _brown)),
           const SizedBox(height: 2),
           Text('${current.toInt()}% now · ${target.toInt()}% target',
             style: _gaegu(size: 11, color: _brownSoft, weight: FontWeight.w600)),
@@ -1338,7 +1332,7 @@ class _FlaggedCard extends StatelessWidget {
 }
 
 
-//  TAB 4: AI COACH
+//  TAB 4: COACH
 class _CoachTab extends StatelessWidget {
   final Map<String, dynamic> data;
   final Map<String, dynamic>? coach;
@@ -1358,12 +1352,12 @@ class _CoachTab extends StatelessWidget {
       return Padding(
         padding: const EdgeInsets.only(top: 60),
         child: Column(children: [
-          const CircularProgressIndicator(color: _mLav),
+          CircularProgressIndicator(color: _mLav),
           const SizedBox(height: 14),
           Text('Drafting your coach briefing...',
             style: _gaegu(size: 16, color: _brownSoft, weight: FontWeight.w700)),
           const SizedBox(height: 4),
-          Text('synthesizing your stats with AI',
+          Text('synthesizing your study stats',
             style: _nunito(size: 11, color: _brownSoft)),
         ]),
       );
@@ -1392,12 +1386,12 @@ class _CoachTab extends StatelessWidget {
                     boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
                         offset: const Offset(3, 3), blurRadius: 0)],
                   ),
-                  child: const Icon(Icons.auto_awesome_rounded, size: 22, color: _brown),
+                  child: Icon(Icons.auto_awesome_rounded, size: 22, color: _brown),
                 ),
                 const SizedBox(width: 12),
                 Expanded(child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    const Text('Your AI Coach',
+                    Text('Your Study Coach',
                       style: TextStyle(fontFamily: _bitroad, fontSize: 20, color: _brown)),
                     Text(loading ? 'drafting your briefing…'
                         : 'tap Generate to fetch a fresh briefing',
@@ -1405,7 +1399,7 @@ class _CoachTab extends StatelessWidget {
                   ],
                 )),
                 if (loading)
-                  const SizedBox(width: 18, height: 18,
+                  SizedBox(width: 18, height: 18,
                       child: CircularProgressIndicator(strokeWidth: 2, color: _mLav)),
               ]),
               const SizedBox(height: 12),
@@ -1480,7 +1474,7 @@ class _CoachTab extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.7),
+                  color: _cardFill.withOpacity(0.7),
                   borderRadius: BorderRadius.circular(7),
                   border: Border.all(color: _outline.withOpacity(0.25), width: 1),
                 ),
@@ -1489,7 +1483,7 @@ class _CoachTab extends StatelessWidget {
                       : Icons.auto_awesome_rounded,
                       size: 11, color: _brownLt),
                   const SizedBox(width: 4),
-                  Text(source == 'heuristic' ? 'rule-based' : 'AI · $source',
+                  Text(source == 'heuristic' ? 'rule-based' : 'auto · $source',
                     style: _nunito(size: 9, weight: FontWeight.w800, color: _brownLt)),
                 ]),
               ),
@@ -1499,20 +1493,20 @@ class _CoachTab extends StatelessWidget {
                 child: Container(
                   padding: const EdgeInsets.all(7),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.85),
+                    color: _cardFill.withOpacity(0.85),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: _outline.withOpacity(0.3), width: 1),
                   ),
                   child: loading
-                    ? const SizedBox(width: 14, height: 14,
+                    ? SizedBox(width: 14, height: 14,
                         child: CircularProgressIndicator(strokeWidth: 2, color: _brown))
-                    : const Icon(Icons.refresh_rounded, size: 14, color: _brown),
+                    : Icon(Icons.refresh_rounded, size: 14, color: _brown),
                 ),
               ),
             ]),
             const SizedBox(height: 12),
             Text(headline,
-              style: const TextStyle(fontFamily: _bitroad, fontSize: 22,
+              style: TextStyle(fontFamily: _bitroad, fontSize: 22,
                   color: _brown, height: 1.2)),
             if (narrative.isNotEmpty) ...[
               const SizedBox(height: 8),
@@ -1576,7 +1570,7 @@ class _CoachTab extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: 12),
               decoration: _softCard(fill: _mTerra.withOpacity(0.28)),
               child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                const Icon(Icons.warning_amber_rounded, size: 16, color: _brown),
+                Icon(Icons.warning_amber_rounded, size: 16, color: _brown),
                 const SizedBox(width: 6),
                 Text('See all gaps',
                   style: _gaegu(size: 13, color: _brown, weight: FontWeight.w800)),
@@ -1590,7 +1584,7 @@ class _CoachTab extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: 12),
               decoration: _softCard(fill: _mButter.withOpacity(0.4)),
               child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                const Icon(Icons.calendar_month_rounded, size: 16, color: _brown),
+                Icon(Icons.calendar_month_rounded, size: 16, color: _brown),
                 const SizedBox(width: 6),
                 Text('Open schedule',
                   style: _gaegu(size: 13, color: _brown, weight: FontWeight.w800)),
@@ -1604,11 +1598,7 @@ class _CoachTab extends StatelessWidget {
 }
 
 
-/// Shows a terse, real-data summary in the Coach tab when the AI
-/// briefing hasn't landed yet (or failed). Surfaces exam readiness,
-/// weekly minutes, and gap counts pulled straight from the analytics
-/// payload — so the tab never looks "empty". Reassures the user that
-/// the data is sourced from their sessions/quizzes/flashcards.
+// Fallback summary for Coach tab while the briefing loads.
 class _CoachDataPeek extends StatelessWidget {
   final Map<String, dynamic> data;
   const _CoachDataPeek({required this.data});
@@ -1634,10 +1624,10 @@ class _CoachDataPeek extends StatelessWidget {
               borderRadius: BorderRadius.circular(8),
               border: Border.all(color: _olive.withOpacity(0.5), width: 1),
             ),
-            child: const Icon(Icons.table_chart_rounded, size: 14, color: _brown),
+            child: Icon(Icons.table_chart_rounded, size: 14, color: _brown),
           ),
           const SizedBox(width: 8),
-          const Text('LIVE DATA SNAPSHOT',
+          Text('LIVE DATA SNAPSHOT',
             style: TextStyle(fontFamily: _bitroad, fontSize: 13, color: _brown)),
         ]),
         const SizedBox(height: 4),
@@ -1742,14 +1732,14 @@ class _CoachMoveCard extends StatelessWidget {
             alignment: Alignment.center,
             decoration: BoxDecoration(color: tint),
             child: Text('$rank',
-              style: const TextStyle(fontFamily: _bitroad, fontSize: 28, color: _brown)),
+              style: TextStyle(fontFamily: _bitroad, fontSize: 28, color: _brown)),
           ),
           Expanded(child: Padding(
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min, children: [
               Text(title,
-                style: const TextStyle(fontFamily: _bitroad, fontSize: 16, color: _brown)),
+                style: TextStyle(fontFamily: _bitroad, fontSize: 16, color: _brown)),
               if (why.isNotEmpty) ...[
                 const SizedBox(height: 4),
                 Text(why,
@@ -1812,12 +1802,12 @@ class _ScheduleTab extends StatelessWidget {
                   boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
                       offset: const Offset(3, 3), blurRadius: 0)],
                 ),
-                child: const Icon(Icons.calendar_today_rounded, size: 26, color: _brown),
+                child: Icon(Icons.calendar_today_rounded, size: 26, color: _brown),
               ),
               const SizedBox(width: 14),
               Expanded(child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Text("You're on track!",
+                  Text("You're on track!",
                     style: TextStyle(fontFamily: _bitroad, fontSize: 20, color: _brown)),
                   const SizedBox(height: 2),
                   Text('No gaps flagged, no cards due, no forecasts yet. '
@@ -1872,14 +1862,14 @@ class _ScheduleTab extends StatelessWidget {
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: _outline.withOpacity(0.3), width: 1.2),
                     ),
-                    child: const Icon(Icons.style_rounded, size: 22, color: _brown),
+                    child: Icon(Icons.style_rounded, size: 22, color: _brown),
                   ),
                   const SizedBox(width: 12),
                   Expanded(child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                     Text('Flashcard Review',
-                      style: const TextStyle(fontFamily: _bitroad,
+                      style: TextStyle(fontFamily: _bitroad,
                           fontSize: 17, color: _brown)),
                     Text(
                       '$cardsDue card${cardsDue == 1 ? '' : 's'} due'
@@ -1975,7 +1965,7 @@ class _PriorityCard extends StatelessWidget {
             child: Column(mainAxisAlignment: MainAxisAlignment.center,
                 mainAxisSize: MainAxisSize.min, children: [
               Text('#$rank',
-                style: const TextStyle(fontFamily: _bitroad, fontSize: 22, color: _brown)),
+                style: TextStyle(fontFamily: _bitroad, fontSize: 22, color: _brown)),
               Text('${urgency.toStringAsFixed(1)}',
                 style: _nunito(size: 9, weight: FontWeight.w800, color: _brownLt)),
             ]),
@@ -2008,7 +1998,7 @@ class _PriorityCard extends StatelessWidget {
               ]),
               const SizedBox(height: 6),
               Text(r['topic']?.toString() ?? '',
-                style: const TextStyle(fontFamily: _bitroad, fontSize: 16, color: _brown)),
+                style: TextStyle(fontFamily: _bitroad, fontSize: 16, color: _brown)),
               const SizedBox(height: 2),
               Text(r['reason']?.toString() ?? '',
                 style: _gaegu(size: 11, color: _brownSoft, weight: FontWeight.w600, h: 1.3)),
@@ -2058,7 +2048,7 @@ class _ForecastRow extends StatelessWidget {
             style: _gaegu(size: 13, color: _brown, weight: FontWeight.w800))),
         ])),
         SizedBox(width: 48, child: Text('${cur.toInt()}', textAlign: TextAlign.center,
-          style: const TextStyle(fontFamily: _bitroad, fontSize: 15, color: _brown))),
+          style: TextStyle(fontFamily: _bitroad, fontSize: 15, color: _brown))),
         SizedBox(width: 48, child: Text('${p30.toInt()}', textAlign: TextAlign.center,
           style: TextStyle(fontFamily: _bitroad, fontSize: 15,
               color: trend == 'improving' ? _oliveDk : _brown))),
@@ -2083,13 +2073,13 @@ class _BackPill extends StatelessWidget {
     child: Container(
       width: 40, height: 40,
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.88),
+        color: _cardFill.withOpacity(0.88),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: _outline.withOpacity(0.22), width: 1.5),
         boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
             offset: const Offset(3, 3), blurRadius: 0)],
       ),
-      child: const Icon(Icons.arrow_back_rounded, size: 20, color: _brown),
+      child: Icon(Icons.arrow_back_rounded, size: 20, color: _brown),
     ),
   );
 }
@@ -2150,7 +2140,7 @@ class _SectionHeader extends StatelessWidget {
       const SizedBox(width: 10),
       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(title,
-          style: const TextStyle(fontFamily: _bitroad, fontSize: 18, color: _brown)),
+          style: TextStyle(fontFamily: _bitroad, fontSize: 18, color: _brown)),
         if (subtitle != null && subtitle!.isNotEmpty)
           Text(subtitle!,
             style: _gaegu(size: 11, color: _brownSoft, weight: FontWeight.w600)),
@@ -2193,7 +2183,7 @@ class _MetaPill extends StatelessWidget {
         const SizedBox(width: 6),
         Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
           Text(label,
-            style: const TextStyle(fontFamily: _bitroad, fontSize: 14, color: _brown, height: 1.0)),
+            style: TextStyle(fontFamily: _bitroad, fontSize: 14, color: _brown, height: 1.0)),
           Text(sub,
             style: _nunito(size: 9, color: _brownLt, weight: FontWeight.w800, h: 1.1)),
         ]),
@@ -2203,12 +2193,7 @@ class _MetaPill extends StatelessWidget {
 }
 
 
-/// Meta-chip: renders a small labelled value pill. Does NOT wrap itself
-/// in [Expanded] — callers are expected to wrap it in [Expanded] /
-/// [Flexible] when they want it to share row width. Self-wrapping in
-/// Expanded was causing render crashes when used conditionally inside
-/// Rows (the conditional pattern leaves orphan SizedBox spacers and
-/// breaks intrinsic-size calculations).
+// Small labelled value pill. Callers must wrap in Expanded/Flexible.
 class _MetaChip extends StatelessWidget {
   final String label, value;
   final Color color;
@@ -2225,7 +2210,7 @@ class _MetaChip extends StatelessWidget {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min, children: [
         Text(value,
-          style: const TextStyle(fontFamily: _bitroad, fontSize: 14, color: _brown, height: 1.1),
+          style: TextStyle(fontFamily: _bitroad, fontSize: 14, color: _brown, height: 1.1),
           maxLines: 1, overflow: TextOverflow.ellipsis),
         Text(label,
           style: _nunito(size: 9, weight: FontWeight.w800, color: _brownLt, letter: 0.4)),
@@ -2235,9 +2220,7 @@ class _MetaChip extends StatelessWidget {
 }
 
 
-/// Mini-metric: labelled linear progress bar. Does NOT wrap itself in
-/// [Expanded]; callers supply the [Expanded] / [Flexible] when sharing
-/// a Row's width.
+// Labelled progress bar. Callers must wrap in Expanded/Flexible.
 class _MiniMetric extends StatelessWidget {
   final String label;
   final double value;

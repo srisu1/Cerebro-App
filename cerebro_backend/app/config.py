@@ -1,8 +1,16 @@
+"""
+CEREBRO Backend - Application Configuration
+Loads settings from environment variables / .env file
+"""
+
 from pydantic_settings import BaseSettings
 from typing import List
+import os
 
 
 class Settings(BaseSettings):
+    """Application settings loaded from environment variables."""
+
     APP_NAME: str = "CEREBRO"
     APP_ENV: str = "development"
     DEBUG: bool = True
@@ -20,6 +28,12 @@ class Settings(BaseSettings):
 
     GOOGLE_CLIENT_ID: str = ""  # set via .env or environment variable
 
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""          # your Gmail address, e.g. "you@gmail.com"
+    SMTP_PASSWORD: str = ""      # Gmail App Password (NOT your regular password)
+    SMTP_FROM_NAME: str = "Cerebro"
+
     BACKEND_HOST: str = "0.0.0.0"
     BACKEND_PORT: int = 8000
     CORS_ORIGINS: List[str] = [
@@ -35,4 +49,5 @@ class Settings(BaseSettings):
         extra = "ignore"
 
 
+# Global settings instance
 settings = Settings()

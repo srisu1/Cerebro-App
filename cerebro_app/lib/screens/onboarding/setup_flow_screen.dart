@@ -1,5 +1,4 @@
-// Post-onboarding setup wizard — 8 steps collecting user profile,
-// institution, subjects, study/sleep preferences, daily goals, and mood.
+// Multi-step setup wizard for new users (profile, subjects, goals, health).
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -120,7 +119,7 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
   // The old "pick a goal" chips (Improve GPA / Stay Organized / ...) were
   // removed because they didn't map to any concrete Cerebro feature.
   // We keep only the daily-hours target, which IS wired into the smart
-  // scheduler + AI coach recommendations.
+  // scheduler + coach recommendations.
   double _dailyStudyHours = 3.0;
   bool _studyHoursPersonalised = false;
 
@@ -232,7 +231,7 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
       final nextStep = _currentStep + 1;
       setState(() => _currentStep = nextStep);
       _stepAc.forward(from: 0);
-      // When arriving at subjects step, fetch AI suggestions
+      // When arriving at subjects step, fetch smart suggestions
       if (nextStep == 2 && !_suggestionsLoaded) {
         _fetchSuggestedSubjects();
       }
@@ -541,6 +540,13 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
   //  BUILD
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<Brightness>(
+      valueListenable: CerebroTheme.brightnessNotifier,
+      builder: (context, _, __) => _buildScaffold(context),
+    );
+  }
+
+  Widget _buildScaffold(BuildContext context) {
     return Scaffold(
       backgroundColor: CerebroTheme.creamWarm,
       body: Stack(
@@ -566,7 +572,8 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
                           height: double.infinity,
                           constraints: const BoxConstraints(maxWidth: 1400),
                           decoration: BoxDecoration(
-                            color: Colors.white,
+                            // Game-card surface — swaps to BROWN-1 in dark mode.
+                            color: CerebroTheme.cream,
                             borderRadius: BorderRadius.circular(24),
                             border: Border.all(color: CerebroTheme.text1, width: 3),
                             boxShadow: [
@@ -629,7 +636,7 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
         // Illustration area
         Expanded(
           child: Container(
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment(-0.5, -1.0),
                 end: Alignment(0.5, 1.0),
@@ -664,7 +671,7 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
         // Brand block
         Container(
           width: double.infinity,
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             color: CerebroTheme.creamWarm,
             border: Border(top: BorderSide(color: CerebroTheme.text1, width: 3)),
           ),
@@ -672,7 +679,7 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Setup Wizard',
+              Text('Setup Wizard',
                 style: TextStyle(
                   fontFamily: 'Bitroad',
                   fontSize: 35,
@@ -714,7 +721,7 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
   Widget _progressStrip() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: CerebroTheme.creamWarm,
         border: Border(bottom: BorderSide(color: CerebroTheme.text1, width: 3)),
       ),
@@ -783,7 +790,7 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
             children: [
               // Header
               Text(info.title,
-                style: const TextStyle(
+                style: TextStyle(
                   fontFamily: 'Bitroad',
                   fontSize: 34,
                   color: CerebroTheme.text1,
@@ -830,7 +837,7 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
 
     return Container(
       padding: const EdgeInsets.fromLTRB(32, 14, 32, 18),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         border: Border(top: BorderSide(color: CerebroTheme.text1, width: 3)),
       ),
       child: Row(
@@ -841,7 +848,7 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
               label: 'Back',
               icon: Icons.chevron_left_rounded,
               iconFirst: true,
-              color: Colors.white,
+              color: CerebroTheme.cream,
               textColor: CerebroTheme.text1,
               shadowColor: CerebroTheme.text1,
               onTap: _back,
@@ -860,7 +867,7 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
               child: _GameBtn(
                 label: 'Skip',
                 icon: Icons.keyboard_double_arrow_right_rounded,
-                color: Colors.white,
+                color: CerebroTheme.cream,
                 textColor: CerebroTheme.text3,
                 shadowColor: CerebroTheme.text1,
                 onTap: _isSubmitting ? null : _skip,
@@ -881,12 +888,7 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
     );
   }
 
-  /// Skip the entire wizard — stamp every completion flag as done and
-  /// jump to /home. The user can still edit any of these fields later
-  /// from Profile → Settings. Keeping the button destructive of the
-  /// wizard (rather than just advancing one step) makes the "for now
-  /// the wizard is off" escape hatch easy to find: one button, one tap,
-  /// every step.
+  // Skip wizard entirely — marks all steps complete and jumps to /home.
   Future<void> _skip() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(AppConstants.onboardingCompleteKey, true);
@@ -924,17 +926,17 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
                 duration: const Duration(milliseconds: 200),
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 16),
                 decoration: BoxDecoration(
-                  color: sel ? CerebroTheme.pinkLight : const Color(0xFFFEFDFB),
+                  color: sel ? CerebroTheme.pinkLight : CerebroTheme.inputBg,
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(color: CerebroTheme.text1, width: 2.5),
                   boxShadow: sel
-                      ? [const BoxShadow(color: CerebroTheme.text1, offset: Offset(4, 4), blurRadius: 0)]
+                      ? [BoxShadow(color: CerebroTheme.text1, offset: Offset(4, 4), blurRadius: 0)]
                       : [],
                 ),
                 child: Column(
                   children: [
                     Text(t.icon,
-                      style: const TextStyle(fontFamily: 'Bitroad', fontSize: 26, color: CerebroTheme.text1),
+                      style: TextStyle(fontFamily: 'Bitroad', fontSize: 26, color: CerebroTheme.text1),
                     ),
                     const SizedBox(height: 5),
                     Text(t.label,
@@ -1017,7 +1019,7 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
             padding: const EdgeInsets.only(top: 6),
             child: Row(
               children: [
-                const SizedBox(width: 14, height: 14,
+                SizedBox(width: 14, height: 14,
                   child: CircularProgressIndicator(strokeWidth: 2, color: CerebroTheme.olive)),
                 const SizedBox(width: 8),
                 Text('Searching...', style: GoogleFonts.nunito(fontSize: 13, color: CerebroTheme.text3)),
@@ -1029,10 +1031,10 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
             margin: const EdgeInsets.only(top: 4),
             constraints: const BoxConstraints(maxHeight: 160),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: CerebroTheme.cream,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: CerebroTheme.text1, width: 2),
-              boxShadow: const [BoxShadow(color: CerebroTheme.text1, offset: Offset(3, 3), blurRadius: 0)],
+              boxShadow: [BoxShadow(color: CerebroTheme.text1, offset: Offset(3, 3), blurRadius: 0)],
             ),
             child: ListView.separated(
               shrinkWrap: true,
@@ -1080,7 +1082,7 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
             ),
             child: Row(
               children: [
-                const Icon(Icons.link_rounded, size: 16, color: CerebroTheme.olive),
+                Icon(Icons.link_rounded, size: 16, color: CerebroTheme.olive),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(_selectedAffiliation!,
@@ -1130,11 +1132,11 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
                 duration: const Duration(milliseconds: 200),
                 padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
                 decoration: BoxDecoration(
-                  color: sel ? CerebroTheme.pinkLight : const Color(0xFFFEFDFB),
+                  color: sel ? CerebroTheme.pinkLight : CerebroTheme.inputBg,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: CerebroTheme.text1, width: 2.5),
                   boxShadow: sel
-                      ? [const BoxShadow(color: CerebroTheme.text1, offset: Offset(3, 3), blurRadius: 0)]
+                      ? [BoxShadow(color: CerebroTheme.text1, offset: Offset(3, 3), blurRadius: 0)]
                       : [],
                 ),
                 child: Text(yearOptions[i],
@@ -1165,11 +1167,11 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
           duration: const Duration(milliseconds: 200),
           padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
-            color: sel ? CerebroTheme.pinkLight : const Color(0xFFFEFDFB),
+            color: sel ? CerebroTheme.pinkLight : CerebroTheme.inputBg,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: CerebroTheme.text1, width: 2.5),
             boxShadow: sel
-                ? [const BoxShadow(color: CerebroTheme.text1, offset: Offset(3, 3), blurRadius: 0)]
+                ? [BoxShadow(color: CerebroTheme.text1, offset: Offset(3, 3), blurRadius: 0)]
                 : [],
           ),
           child: Text(label,
@@ -1208,18 +1210,18 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
     }
   }
 
-  //  STEP 3: Subjects (AI Suggestions + Custom)
+  //  STEP 3: Subjects (Smart Suggestions + Custom)
   Widget _step3Subjects() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // AI suggestions section
+        // Smart suggestions section
         if (_loadingSuggestions)
           Padding(
             padding: const EdgeInsets.only(bottom: 16),
             child: Row(
               children: [
-                const SizedBox(
+                SizedBox(
                   width: 16, height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2, color: CerebroTheme.olive),
                 ),
@@ -1257,21 +1259,21 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
                   duration: const Duration(milliseconds: 200),
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                   decoration: BoxDecoration(
-                    color: alreadyAdded ? CerebroTheme.pinkLight : const Color(0xFFFEFDFB),
+                    color: alreadyAdded ? CerebroTheme.pinkLight : CerebroTheme.inputBg,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
                       color: alreadyAdded ? CerebroTheme.pinkAccent : CerebroTheme.text1,
                       width: 2.5,
                     ),
                     boxShadow: alreadyAdded
-                        ? [const BoxShadow(color: CerebroTheme.text1, offset: Offset(3, 3), blurRadius: 0)]
+                        ? [BoxShadow(color: CerebroTheme.text1, offset: Offset(3, 3), blurRadius: 0)]
                         : [],
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       if (alreadyAdded)
-                        const Padding(
+                        Padding(
                           padding: EdgeInsets.only(right: 4),
                           child: Icon(Icons.check, size: 14, color: CerebroTheme.text1),
                         ),
@@ -1347,7 +1349,7 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
                   color: CerebroTheme.olive,
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(color: CerebroTheme.text1, width: 2.5),
-                  boxShadow: const [
+                  boxShadow: [
                     BoxShadow(color: CerebroTheme.text1, offset: Offset(3, 3), blurRadius: 0),
                   ],
                 ),
@@ -1363,7 +1365,7 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
             padding: const EdgeInsets.only(top: 6),
             child: Row(
               children: [
-                const SizedBox(width: 14, height: 14,
+                SizedBox(width: 14, height: 14,
                   child: CircularProgressIndicator(strokeWidth: 2, color: CerebroTheme.olive)),
                 const SizedBox(width: 8),
                 Text('Searching modules...', style: GoogleFonts.nunito(fontSize: 13, color: CerebroTheme.text3)),
@@ -1375,10 +1377,10 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
             margin: const EdgeInsets.only(top: 4),
             constraints: const BoxConstraints(maxHeight: 200),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: CerebroTheme.cream,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: CerebroTheme.text1, width: 2),
-              boxShadow: const [BoxShadow(color: CerebroTheme.text1, offset: Offset(3, 3), blurRadius: 0)],
+              boxShadow: [BoxShadow(color: CerebroTheme.text1, offset: Offset(3, 3), blurRadius: 0)],
             ),
             child: ListView.separated(
               shrinkWrap: true,
@@ -1427,7 +1429,7 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
                               style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w600, color: CerebroTheme.olive)),
                           ),
                         if (alreadyAdded)
-                          const Padding(
+                          Padding(
                             padding: EdgeInsets.only(left: 8),
                             child: Icon(Icons.check_circle, size: 16, color: CerebroTheme.olive),
                           ),
@@ -1544,7 +1546,7 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
         Center(
           child: Text(
             '${_dailyStudyHours.toStringAsFixed(_dailyStudyHours % 1 == 0 ? 0 : 1)} hours',
-            style: const TextStyle(
+            style: TextStyle(
               fontFamily: 'Bitroad',
               fontSize: 26,
               color: CerebroTheme.text1,
@@ -1582,7 +1584,7 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Padding(
+              Padding(
                 padding: EdgeInsets.only(top: 2, right: 8),
                 child: Icon(Icons.lightbulb_outline_rounded, size: 18, color: CerebroTheme.olive),
               ),
@@ -1658,7 +1660,7 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: const Color(0xFFFEFDFB),
+          color: CerebroTheme.inputBg,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: CerebroTheme.text1, width: 2.5),
         ),
@@ -1674,7 +1676,7 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
             ),
             const SizedBox(height: 3),
             Text(value,
-              style: const TextStyle(
+              style: TextStyle(
                 fontFamily: 'Bitroad',
                 fontSize: 22,
                 color: CerebroTheme.text1,
@@ -1870,7 +1872,7 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
                     border: Border.all(color: CerebroTheme.text1, width: 2),
                   ),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    const Icon(Icons.add_rounded, size: 14, color: CerebroTheme.text1),
+                    Icon(Icons.add_rounded, size: 14, color: CerebroTheme.text1),
                     const SizedBox(width: 4),
                     Text(c, style: GoogleFonts.gaegu(
                       fontSize: 15, fontWeight: FontWeight.w700, color: CerebroTheme.text1)),
@@ -1900,7 +1902,7 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
                     Text(c, style: GoogleFonts.gaegu(
                       fontSize: 15, fontWeight: FontWeight.w700, color: CerebroTheme.text1)),
                     const SizedBox(width: 6),
-                    const Icon(Icons.close_rounded, size: 14, color: CerebroTheme.text1),
+                    Icon(Icons.close_rounded, size: 14, color: CerebroTheme.text1),
                   ]),
                 ),
               ))
@@ -1967,7 +1969,7 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
               margin: const EdgeInsets.only(bottom: 8),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
-                color: const Color(0xFFFEFDFB),
+                color: CerebroTheme.inputBg,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: CerebroTheme.text1, width: 2),
               ),
@@ -1979,7 +1981,7 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: CerebroTheme.text1, width: 1.5),
                   ),
-                  child: const Icon(Icons.medication_rounded, size: 18, color: CerebroTheme.text1),
+                  child: Icon(Icons.medication_rounded, size: 18, color: CerebroTheme.text1),
                 ),
                 const SizedBox(width: 10),
                 Expanded(child: Column(
@@ -1993,7 +1995,7 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
                   ],
                 )),
                 IconButton(
-                  icon: const Icon(Icons.close_rounded, size: 18, color: CerebroTheme.text3),
+                  icon: Icon(Icons.close_rounded, size: 18, color: CerebroTheme.text3),
                   onPressed: () => setState(() => _medications.removeAt(i)),
                 ),
               ]),
@@ -2014,10 +2016,10 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
                 color: CerebroTheme.text1, width: 2, style: BorderStyle.solid),
             ),
             child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              const Icon(Icons.add_rounded, size: 20, color: CerebroTheme.text1),
+              Icon(Icons.add_rounded, size: 20, color: CerebroTheme.text1),
               const SizedBox(width: 6),
               Text(_medications.isEmpty ? 'Add a medication' : 'Add another',
-                style: const TextStyle(
+                style: TextStyle(
                   fontFamily: 'Bitroad', fontSize: 16, color: CerebroTheme.text1)),
             ]),
           ),
@@ -2042,8 +2044,9 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
             bottom: MediaQuery.of(ctx).viewInsets.bottom,
           ),
           child: Container(
-            decoration: const BoxDecoration(
-              color: Colors.white,
+            decoration: BoxDecoration(
+              // Modal sheet surface — swaps with theme.
+              color: CerebroTheme.cream,
               borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
               border: Border(
                 top: BorderSide(color: CerebroTheme.text1, width: 3),
@@ -2064,7 +2067,7 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
                   ),
                 )),
                 const SizedBox(height: 14),
-                const Text('Add Medication',
+                Text('Add Medication',
                   style: TextStyle(
                     fontFamily: 'Bitroad', fontSize: 22, color: CerebroTheme.text1)),
                 const SizedBox(height: 12),
@@ -2086,7 +2089,7 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
                         margin: const EdgeInsets.only(right: 8),
                         padding: const EdgeInsets.symmetric(vertical: 10),
                         decoration: BoxDecoration(
-                          color: freq == f ? CerebroTheme.pinkLight : const Color(0xFFFEFDFB),
+                          color: freq == f ? CerebroTheme.pinkLight : CerebroTheme.inputBg,
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(color: CerebroTheme.text1, width: 2),
                         ),
@@ -2114,15 +2117,15 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFFEFDFB),
+                        color: CerebroTheme.inputBg,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: CerebroTheme.text1, width: 2),
                       ),
                       child: Row(children: [
-                        const Icon(Icons.access_time_rounded, size: 18, color: CerebroTheme.text1),
+                        Icon(Icons.access_time_rounded, size: 18, color: CerebroTheme.text1),
                         const SizedBox(width: 10),
                         Text(_formatTime24(time),
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontFamily: 'Bitroad', fontSize: 18, color: CerebroTheme.text1)),
                       ]),
                     ),
@@ -2132,7 +2135,7 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
                 Row(children: [
                   Expanded(child: _GameBtn(
                     label: 'CANCEL',
-                    color: Colors.white,
+                    color: CerebroTheme.cream,
                     textColor: CerebroTheme.text1,
                     onTap: () => Navigator.pop(ctx),
                   )),
@@ -2219,19 +2222,19 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
         hintText: placeholder,
         hintStyle: GoogleFonts.nunito(fontSize: 15, color: CerebroTheme.text3, fontWeight: FontWeight.w400),
         filled: true,
-        fillColor: const Color(0xFFFEFDFB),
+        fillColor: CerebroTheme.inputBg,
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: CerebroTheme.text1, width: 2.5),
+          borderSide: BorderSide(color: CerebroTheme.text1, width: 2.5),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: CerebroTheme.text1, width: 2.5),
+          borderSide: BorderSide(color: CerebroTheme.text1, width: 2.5),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: CerebroTheme.pinkAccent, width: 2.5),
+          borderSide: BorderSide(color: CerebroTheme.pinkAccent, width: 2.5),
         ),
       ),
     );
@@ -2267,18 +2270,18 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 16),
         decoration: BoxDecoration(
-          color: selected ? CerebroTheme.pinkLight : const Color(0xFFFEFDFB),
+          color: selected ? CerebroTheme.pinkLight : CerebroTheme.inputBg,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: CerebroTheme.text1, width: 2.5),
           boxShadow: selected
-              ? [const BoxShadow(color: CerebroTheme.text1, offset: Offset(4, 4), blurRadius: 0)]
+              ? [BoxShadow(color: CerebroTheme.text1, offset: Offset(4, 4), blurRadius: 0)]
               : [],
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(icon,
-              style: const TextStyle(
+              style: TextStyle(
                 fontFamily: 'Bitroad',
                 fontSize: 20,
                 color: CerebroTheme.text1,
@@ -2306,11 +2309,11 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
         decoration: BoxDecoration(
-          color: selected ? CerebroTheme.pinkLight : const Color(0xFFFEFDFB),
+          color: selected ? CerebroTheme.pinkLight : CerebroTheme.inputBg,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: CerebroTheme.text1, width: 2.5),
           boxShadow: selected
-              ? [const BoxShadow(color: CerebroTheme.text1, offset: Offset(3, 3), blurRadius: 0)]
+              ? [BoxShadow(color: CerebroTheme.text1, offset: Offset(3, 3), blurRadius: 0)]
               : [],
         ),
         child: Row(
@@ -2347,11 +2350,11 @@ class _SetupFlowScreenState extends ConsumerState<SetupFlowScreen>
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 12),
         decoration: BoxDecoration(
-          color: selected ? CerebroTheme.greenPale : const Color(0xFFFEFDFB),
+          color: selected ? CerebroTheme.greenPale : CerebroTheme.inputBg,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: CerebroTheme.text1, width: 2.5),
           boxShadow: selected
-              ? [const BoxShadow(color: CerebroTheme.text1, offset: Offset(4, 4), blurRadius: 0)]
+              ? [BoxShadow(color: CerebroTheme.text1, offset: Offset(4, 4), blurRadius: 0)]
               : [],
         ),
         child: Column(
@@ -2450,17 +2453,18 @@ class _GameBtn extends StatefulWidget {
   final bool iconFirst;
   final Color color;
   final Color textColor;
-  final Color shadowColor;
+  // Nullable; resolved to CerebroTheme.text1 at runtime when null.
+  final Color? shadowColor;
   final VoidCallback? onTap;
   final bool isLoading;
 
-  const _GameBtn({
+  _GameBtn({
     required this.label,
     this.icon,
     this.iconFirst = false,
     required this.color,
     this.textColor = Colors.white,
-    this.shadowColor = CerebroTheme.text1,
+    this.shadowColor,
     this.onTap,
     this.isLoading = false,
   });
@@ -2494,7 +2498,9 @@ class _GameBtnState extends State<_GameBtn> {
           boxShadow: [
             if (!_p)
               BoxShadow(
-                color: widget.shadowColor,
+                // Fall back to the mode-aware outline color when no
+                // explicit shadowColor was supplied.
+                color: widget.shadowColor ?? CerebroTheme.text1,
                 offset: const Offset(3, 3),
                 blurRadius: 0,
               ),

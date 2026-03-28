@@ -1,34 +1,35 @@
-/// Shows all achievements in a categorised grid.
-/// Unlocked achievements glow, locked ones are greyed out.
-/// Tap any badge for a detail bottom-sheet.
-/// Calls POST /gamification/achievements/check on load.
+// Achievements screen — categorised grid, tap for detail sheet.
 
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:cerebro_app/config/theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cerebro_app/providers/auth_provider.dart';
 import 'package:cerebro_app/services/api_service.dart';
 
-const _ombre1  = Color(0xFFFFFBF7);
-const _ombre2  = Color(0xFFFFF8F3);
-const _ombre3  = Color(0xFFFFF3EF);
-const _ombre4  = Color(0xFFFEEDE9);
-const _brown   = Color(0xFF5C3D2E);
-const _brownLt = Color(0xFF7A5840);
-const _outline = Color(0xFFB89880);
-const _cardFill= Color(0xFFFFFCF8);
-const _goldHdr = Color(0xFFE8C840);
-const _goldDk  = Color(0xFFC8A830);
-const _goldLt  = Color(0xFFFFF8E0);
-const _greenHdr= Color(0xFF88C888);
-const _greenLt = Color(0xFFE0F8E0);
-const _purpleHdr=Color(0xFF9D8AD4);
-const _purpleLt= Color(0xFFE8E0F8);
-const _coralHdr= Color(0xFFD89080);
-const _pinkHdr = Color(0xFFE8A8A0);
-const _skyHdr  = Color(0xFF80B8D0);
 
+bool get _darkMode =>
+    CerebroTheme.brightnessNotifier.value == Brightness.dark;
+
+Color get _ombre1 => _darkMode ? const Color(0xFF191513) : const Color(0xFFFFFBF7);
+Color get _ombre2 => _darkMode ? const Color(0xFF1E1A17) : const Color(0xFFFFF8F3);
+Color get _ombre3 => _darkMode ? const Color(0xFF29221D) : const Color(0xFFFFF3EF);
+Color get _ombre4 => _darkMode ? const Color(0xFF312821) : const Color(0xFFFEEDE9);
+Color get _brown => const Color(0xFF5C3D2E);
+Color get _brownLt => _darkMode ? const Color(0xFFDBB594) : const Color(0xFF7A5840);
+Color get _outline => const Color(0xFFB89880);
+Color get _cardFill => const Color(0xFFFFFCF8);
+Color get _goldHdr => const Color(0xFFE8C840);
+Color get _goldDk => const Color(0xFFC8A830);
+Color get _goldLt => const Color(0xFFFFF8E0);
+Color get _greenHdr => const Color(0xFF88C888);
+Color get _greenLt => const Color(0xFFE0F8E0);
+Color get _purpleHdr => const Color(0xFF9D8AD4);
+Color get _purpleLt => const Color(0xFFE8E0F8);
+Color get _coralHdr => const Color(0xFFD89080);
+Color get _pinkHdr => const Color(0xFFE8A8A0);
+Color get _skyHdr => const Color(0xFF80B8D0);
 IconData _iconFromString(String? name) {
   const map = {
     'school': Icons.school_rounded,
@@ -208,7 +209,7 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen>
       body: Stack(children: [
         // Background
         Positioned.fill(child: Container(
-          decoration: const BoxDecoration(gradient: LinearGradient(
+          decoration: BoxDecoration(gradient: LinearGradient(
             begin: Alignment.topCenter, end: Alignment.bottomCenter,
             colors: [_ombre1, _ombre2, _ombre3, _ombre4],
             stops: [0.0, 0.3, 0.6, 1.0],

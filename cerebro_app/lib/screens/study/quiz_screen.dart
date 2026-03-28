@@ -5,6 +5,7 @@
 import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:cerebro_app/config/theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
@@ -15,27 +16,32 @@ import 'package:cerebro_app/providers/auth_provider.dart';
 import 'package:cerebro_app/config/router.dart';
 import 'package:cerebro_app/widgets/upload_notes_modal.dart';
 
-const _ombre1   = Color(0xFFFFFBF7);
-const _ombre2   = Color(0xFFFFF8F3);
-const _ombre3   = Color(0xFFFFF3EF);
-const _ombre4   = Color(0xFFFEEDE9);
-const _cardFill = Color(0xFFFFF8F4);
-const _outline  = Color(0xFF6E5848);
-const _brown    = Color(0xFF4E3828);
-const _brownLt  = Color(0xFF7A5840);
+
+bool get _darkMode =>
+    CerebroTheme.brightnessNotifier.value == Brightness.dark;
+
+Color get _ombre1 => _darkMode ? const Color(0xFF191513) : const Color(0xFFFFFBF7);
+Color get _ombre2 => _darkMode ? const Color(0xFF1E1A17) : const Color(0xFFFFF8F3);
+Color get _ombre3 => _darkMode ? const Color(0xFF29221D) : const Color(0xFFFFF3EF);
+Color get _ombre4 => _darkMode ? const Color(0xFF312821) : const Color(0xFFFEEDE9);
+Color get _cardFill => _darkMode ? const Color(0xFF29221D) : const Color(0xFFFFF8F4);
+Color get _outline => _darkMode ? const Color(0xFFAD7F58) : const Color(0xFF6E5848);
+Color get _brown => _darkMode ? const Color(0xFFF2E1CA) : const Color(0xFF4E3828);
+Color get _brownLt => _darkMode ? const Color(0xFFDBB594) : const Color(0xFF7A5840);
 const _coralHdr = Color(0xFFE8B8A8); // softer terracotta
-const _coralLt  = Color(0xFFF2CFC2);
-const _coralDk  = Color(0xFFC8997F);
+Color get _coralLt => const Color(0xFFF2CFC2);
+Color get _coralDk => const Color(0xFFC8997F);
 const _greenHdr = Color(0xFFB5C4A0); // muted sage
-const _greenLt  = Color(0xFFCCD8B8);
-const _greenDk  = Color(0xFF98A869);
+Color get _greenLt => const Color(0xFFCCD8B8);
+Color get _greenDk => const Color(0xFF98A869);
 const _goldHdr  = Color(0xFFE8D4A0); // muted butter
-const _goldLt   = Color(0xFFF4E6BE);
+Color get _goldLt => const Color(0xFFF4E6BE);
 const _purpleHdr = Color(0xFFC9B8D9); // muted lav
-const _purpleLt = Color(0xFFDCCEE6);
+Color get _purpleLt => const Color(0xFFDCCEE6);
 const _skyHdr   = Color(0xFFB6CBD6); // muted slate
-const _skyLt    = Color(0xFFCCDCE4);
-const _pawClr   = Color(0xFFEAD0CE); // muted blush
+Color get _skyLt => const Color(0xFFCCDCE4);
+// _pawClr — mode-aware: pink in light, barely-lifted BROWN-2 in dark
+Color get _pawClr => _darkMode ? const Color(0xFF231D18) : const Color(0xFFEAD0CE); // muted blush
 
 class QuizScreen extends ConsumerStatefulWidget {
   const QuizScreen({super.key});
@@ -171,13 +177,13 @@ class _QuizScreenState extends ConsumerState<QuizScreen>
             child: Container(
               width: 40, height: 40,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.88),
+                color: _cardFill.withOpacity(0.88),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: _outline.withOpacity(0.22), width: 1.5),
                 boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
                     offset: const Offset(3, 3), blurRadius: 0)],
               ),
-              child: const Icon(Icons.arrow_back_rounded, size: 20, color: _brown),
+              child: Icon(Icons.arrow_back_rounded, size: 20, color: _brown),
             ),
           ),
           const SizedBox(width: 12),
@@ -185,7 +191,7 @@ class _QuizScreenState extends ConsumerState<QuizScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Quiz Hub',
+                Text('Quiz Hub',
                   style: TextStyle(fontFamily: 'Bitroad', fontSize: 26,
                       color: _brown, height: 1.15)),
                 const SizedBox(height: 2),
@@ -206,7 +212,7 @@ class _QuizScreenState extends ConsumerState<QuizScreen>
                   offset: const Offset(3, 3), blurRadius: 0)],
             ),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
-              const Icon(Icons.check_circle_rounded, size: 14, color: _brown),
+              Icon(Icons.check_circle_rounded, size: 14, color: _brown),
               const SizedBox(width: 4),
               Text('$doneCount done',
                 style: GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w800, color: _brown)),
@@ -373,10 +379,10 @@ class _QuizzesTab extends StatelessWidget {
             border: Border.all(color: _outline.withOpacity(0.4), width: 2),
             boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
               offset: const Offset(3, 3), blurRadius: 0)]),
-          child: const Icon(Icons.quiz_outlined, size: 48, color: _brown),
+          child: Icon(Icons.quiz_outlined, size: 48, color: _brown),
         ),
         const SizedBox(height: 14),
-        const Text('No quizzes yet~',
+        Text('No quizzes yet~',
           style: TextStyle(fontFamily: 'Bitroad', fontSize: 22, color: _brown, height: 1.15)),
         const SizedBox(height: 4),
         Text('add materials and generate a quiz',
@@ -428,7 +434,7 @@ class _QuizzesTab extends StatelessWidget {
                         border: Border.all(color: _outline.withOpacity(0.4), width: 1.5),
                       ),
                       child: Center(child: isCompleted
-                        ? Text(_gradeLabel(pct), style: const TextStyle(
+                        ? Text(_gradeLabel(pct), style: TextStyle(
                             fontFamily: 'Bitroad', fontSize: 20, color: _brown, height: 1.0))
                         : Icon(
                             q['status'] == 'in_progress' ? Icons.play_arrow_rounded : Icons.edit_note_rounded,
@@ -447,7 +453,7 @@ class _QuizzesTab extends StatelessWidget {
                         Wrap(spacing: 6, runSpacing: 4, children: [
                           _miniChip(subjectName(q['subject_id']), subColor),
                           _miniChip('$totalQ questions', _skyHdr),
-                          _miniChip(q['source'] == 'ai' ? 'AI' : 'Auto',
+                          _miniChip(q['source'] == 'ai' ? 'Auto' : 'Auto',
                             q['source'] == 'ai' ? _purpleHdr : _goldHdr),
                         ]),
                         if (topics.isNotEmpty) ...[
@@ -844,7 +850,7 @@ class _MaterialsTabState extends ConsumerState<_MaterialsTab> {
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   gradient: LinearGradient(colors: [_purpleLt, _purpleHdr]),
                   borderRadius: BorderRadius.only(
                     topLeft: Radius.circular(20), topRight: Radius.circular(20))),
@@ -888,7 +894,7 @@ class _MaterialsTabState extends ConsumerState<_MaterialsTab> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       decoration: BoxDecoration(
-                        gradient: const LinearGradient(colors: [_purpleLt, _purpleHdr]),
+                        gradient: LinearGradient(colors: [_purpleLt, _purpleHdr]),
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(color: _purpleHdr.withOpacity(0.4), width: 2),
                         boxShadow: [BoxShadow(color: _purpleHdr.withOpacity(0.25),
@@ -966,7 +972,7 @@ class _MaterialsTabState extends ConsumerState<_MaterialsTab> {
       backgroundColor: Colors.transparent,
       builder: (ctx) => Container(
         constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.75),
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           color: _cardFill,
           borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -1023,7 +1029,7 @@ class _MaterialsTabState extends ConsumerState<_MaterialsTab> {
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   gradient: LinearGradient(colors: [_skyLt, _skyHdr]),
                   borderRadius: BorderRadius.only(
                     topLeft: Radius.circular(20), topRight: Radius.circular(20))),
@@ -1077,7 +1083,7 @@ class _MaterialsTabState extends ConsumerState<_MaterialsTab> {
                         borderSide: BorderSide(color: _outline.withOpacity(0.12))),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
-                        borderSide: const BorderSide(color: _skyHdr, width: 1.5)),
+                        borderSide: BorderSide(color: _skyHdr, width: 1.5)),
                     ),
                   ),
                   const SizedBox(height: 10),
@@ -1119,7 +1125,7 @@ class _MaterialsTabState extends ConsumerState<_MaterialsTab> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       decoration: BoxDecoration(
-                        gradient: const LinearGradient(colors: [_skyLt, _skyHdr]),
+                        gradient: LinearGradient(colors: [_skyLt, _skyHdr]),
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(color: _skyHdr.withOpacity(0.4), width: 2),
                         boxShadow: [BoxShadow(color: _skyHdr.withOpacity(0.25),
@@ -1278,7 +1284,7 @@ class _MaterialsTabState extends ConsumerState<_MaterialsTab> {
       enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
         borderSide: BorderSide(color: _outline.withOpacity(0.12))),
       focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: _skyHdr, width: 1.5)),
+        borderSide: BorderSide(color: _skyHdr, width: 1.5)),
     ),
   );
 }
@@ -1468,10 +1474,10 @@ class _ScheduleTabState extends State<_ScheduleTab> {
         Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.85),
+            color: _cardFill.withOpacity(0.85),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(color: _outline.withOpacity(0.18))),
-          child: const Icon(Icons.quiz_rounded, size: 22, color: _coralDk),
+          child: Icon(Icons.quiz_rounded, size: 22, color: _coralDk),
         ),
         const SizedBox(width: 12),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1676,10 +1682,10 @@ class _ScheduleTabState extends State<_ScheduleTab> {
         ),
         child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
           if (_generating)
-            const SizedBox(width: 16, height: 16,
+            SizedBox(width: 16, height: 16,
               child: CircularProgressIndicator(strokeWidth: 2, color: _coralDk))
           else
-            const Icon(Icons.bolt_rounded, color: _coralDk, size: 18),
+            Icon(Icons.bolt_rounded, color: _coralDk, size: 18),
           const SizedBox(width: 8),
           Text(_generating ? 'Generating…' : 'Generate a smart quiz now',
             style: GoogleFonts.nunito(
