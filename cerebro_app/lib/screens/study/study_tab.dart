@@ -1,7 +1,8 @@
-// Study hub main tab — quick actions, weekly activity, and session overview
+// Study tab — hero timer, quick actions, weekly activity, resource teasers.
 
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:cerebro_app/config/theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -13,42 +14,42 @@ import 'package:cerebro_app/providers/study_session_provider.dart';
 import 'package:cerebro_app/services/api_service.dart';
 import 'package:cerebro_app/screens/home/home_screen.dart';
 
-const _ombre1  = Color(0xFFFFFBF7);
-const _ombre2  = Color(0xFFFFF8F3);
-const _ombre3  = Color(0xFFFFF3EF);
-const _ombre4  = Color(0xFFFEEDE9);
-const _pawClr  = Color(0xFFF8BCD0);
 
+bool get _darkMode =>
+    CerebroTheme.brightnessNotifier.value == Brightness.dark;
+
+Color get _ombre1 => _darkMode ? const Color(0xFF191513) : const Color(0xFFFFFBF7);
+Color get _ombre2 => _darkMode ? const Color(0xFF1E1A17) : const Color(0xFFFFF8F3);
+Color get _ombre3 => _darkMode ? const Color(0xFF29221D) : const Color(0xFFFFF3EF);
+Color get _ombre4 => _darkMode ? const Color(0xFF312821) : const Color(0xFFFEEDE9);
+Color get _pawClr => _darkMode ? const Color(0xFF231D18) : const Color(0xFFF8BCD0);
 const _outline = Color(0xFF6E5848);   // --bdr / --ink-mid
 const _brown   = Color(0xFF4E3828);   // --ink / --bdr-dk
-const _brownLt = Color(0xFF7A5840);
+Color get _brownLt => _darkMode ? const Color(0xFFDBB594) : const Color(0xFF7A5840);
 const _inkSoft = Color(0xFF9A8070);   // --ink-soft — HTML wb-day, t-sub, tc-sub
 
-const _cardFill = Color(0xFFFFF8F4);
-const _goldGlow = Color(0xFFF8E080);
-
-const _skyHdr   = Color(0xFF9DD4F0);
-const _skyDk    = Color(0xFF6BB8E0);
-const _pinkHdr  = Color(0xFFE8B0A8);
-const _pinkLt   = Color(0xFFF0C0B8);
-const _greenHdr = Color(0xFFA8D5A3);
-const _greenLt  = Color(0xFFC2E8BC);
-const _greenDk  = Color(0xFF88B883);
-const _purpleHdr = Color(0xFFCDA8D8);
-const _purpleLt = Color(0xFFD8C0E8);
-const _purpleDk = Color(0xFFAA88C0);
-const _coralHdr = Color(0xFFF0A898);
-const _coralLt  = Color(0xFFF8C0B0);
-const _goldHdr  = Color(0xFFF0D878);
-const _goldDk   = Color(0xFFD4B850);
-const _sageHdr  = Color(0xFF90C8A0);
-const _sageLt   = Color(0xFFB0D8B8);
-const _sageDk   = Color(0xFF70A880);
-
+Color get _cardFill => _darkMode ? const Color(0xFF29221D) : const Color(0xFFFFF8F4);
+Color get _goldGlow => const Color(0xFFF8E080);
+Color get _skyHdr => const Color(0xFF9DD4F0);
+Color get _skyDk => const Color(0xFF6BB8E0);
+Color get _pinkHdr => const Color(0xFFE8B0A8);
+Color get _pinkLt => const Color(0xFFF0C0B8);
+Color get _greenHdr => const Color(0xFFA8D5A3);
+Color get _greenLt => _darkMode ? const Color(0xFF143125) : const Color(0xFFC2E8BC);
+Color get _greenDk => const Color(0xFF88B883);
+Color get _purpleHdr => const Color(0xFFCDA8D8);
+Color get _purpleLt => const Color(0xFFD8C0E8);
+Color get _purpleDk => const Color(0xFFAA88C0);
+Color get _coralHdr => const Color(0xFFF0A898);
+Color get _coralLt => const Color(0xFFF8C0B0);
+Color get _goldHdr => const Color(0xFFF0D878);
+Color get _goldDk => const Color(0xFFD4B850);
+Color get _sageHdr => const Color(0xFF90C8A0);
+Color get _sageLt => const Color(0xFFB0D8B8);
+Color get _sageDk => const Color(0xFF70A880);
 // Olive — matches prototype --olive / --olive-dk
-const _olive   = Color(0xFF98A869);
-const _oliveDk = Color(0xFF58772F);
-
+Color get _olive => const Color(0xFF98A869);
+Color get _oliveDk => const Color(0xFF58772F);
 //  STUDY DATA MODEL + PROVIDER
 class StudyData {
   final int todayMinutes, todaySessions, avgFocus;
@@ -105,15 +106,7 @@ class StudyData {
   );
 }
 
-/// Defensive numeric coercion.
-///
-/// Backend serializes SQLAlchemy `Decimal` columns (current_proficiency,
-/// target_proficiency, quiz `score_achieved`, etc.) as JSON *strings*
-/// ("80.0"), not floats. Calling `.toDouble()` on a String throws
-/// `NoSuchMethodError`, and because the per-endpoint blocks below are
-/// wrapped in `try { ... } catch (_) {}`, a single bad row used to
-/// silently empty the whole subjects list (→ "0 subjects") and zero out
-/// avgQuizScore (→ "0% avg"). This helper accepts num *or* String.
+// Coerce num or String to double (backend sends Decimals as strings).
 double _asDoubleAny(dynamic v, [double fallback = 0.0]) {
   if (v == null) return fallback;
   if (v is num) return v.toDouble();
@@ -328,7 +321,7 @@ class _StudyTabState extends ConsumerState<StudyTab>
     return Stack(fit: StackFit.expand, children: [
       // Pawprint ombré background (fills full screen incl. under nav)
       Container(
-        decoration: const BoxDecoration(gradient: LinearGradient(
+        decoration: BoxDecoration(gradient: LinearGradient(
           begin: Alignment.topCenter, end: Alignment.bottomCenter,
           colors: [_ombre1, _ombre2, _ombre3, _ombre4],
           stops: [0.0, 0.3, 0.6, 1.0],
@@ -466,7 +459,7 @@ class _StudyTabState extends ConsumerState<StudyTab>
     return Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
       _backButton(),
       const SizedBox(width: 10),
-      Expanded(child: Text('Study Hub', style: const TextStyle(
+      Expanded(child: Text('Study Hub', style: TextStyle(
         fontFamily: 'Bitroad', fontSize: 24, color: _brown))),
       _TopChip(icon: Icons.timer_rounded, label: _fmt(s.todayMinutes),
         bgColor: const Color(0xFFF7AEAE)),
@@ -485,7 +478,7 @@ class _StudyTabState extends ConsumerState<StudyTab>
     return Row(mainAxisSize: MainAxisSize.min, children: [
       _backButton(),
       const SizedBox(width: 10),
-      Text('Study Hub', style: const TextStyle(
+      Text('Study Hub', style: TextStyle(
         fontFamily: 'Bitroad', fontSize: 26, color: _brown)),
     ]);
   }
@@ -497,7 +490,7 @@ class _StudyTabState extends ConsumerState<StudyTab>
       child: Container(
         width: 34, height: 34,
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: _cardFill,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(color: _outline.withOpacity(0.35), width: 1.5),
           boxShadow: [BoxShadow(
@@ -650,9 +643,7 @@ class _StudyTabState extends ConsumerState<StudyTab>
     );
   }
 
-  /// Format elapsed seconds for the live hero timer.
-  ///   < 1h  →  MM:SS
-  ///   ≥ 1h  →  H:MM:SS
+  // Format elapsed seconds as MM:SS or H:MM:SS.
   String _formatLiveTime(int sec) {
     final h = sec ~/ 3600;
     final m = (sec % 3600) ~/ 60;
@@ -662,14 +653,8 @@ class _StudyTabState extends ConsumerState<StudyTab>
     return '${two(m)}:${two(s)}';
   }
 
-  /// Send the user to the full Wrapped rating screen when they tap Stop.
-  ///
-  /// Ending a session is no longer a one-tap-and-done action — we want
-  /// users to consciously rate focus, add notes, and pick topics before
-  /// the row is finalized. We:
-  ///   1) Flip the provider's `endRequested` flag + pause the clock.
-  ///   2) Push the full session screen. Its adoption logic picks up the
-  ///      flag and jumps straight to its completion / rating phase.
+  // Pause the clock, flag endRequested, and push the full session screen
+  // so the user can rate focus / add notes before finalizing.
   Future<void> _requestWrapUp() async {
     ref.read(studySessionProvider.notifier).requestEnd();
     if (!mounted) return;
@@ -697,10 +682,7 @@ class _StudyTabState extends ConsumerState<StudyTab>
 
   //  RIGHT COLUMN (desktop) — Weekly (stretches) + Teasers + Tip
   Widget _buildRightColumnDesktop(StudyData s) {
-    // Weekly Activity card flexes to fill leftover space, but a LayoutBuilder
-    // caps it at 280px so the AI tip card never gets pushed off screen on
-    // tall viewports. Any surplus vertical space becomes a gentle bottom
-    // gap rather than inflating the chart.
+    // Weekly Activity card flexes but caps at 280px so the tip card stays visible.
     return LayoutBuilder(
       builder: (ctx, c) {
         // Teasers (~48px each) + tip (~50px) + 3 gaps (14px) = ~200px fixed
@@ -735,7 +717,7 @@ class _StudyTabState extends ConsumerState<StudyTab>
         Icon(icon, size: 16, color: _oliveDk),
         const SizedBox(width: 7),
         // .sec-t h3: font-family:'Bitroad'; font-size:1rem (16px)
-        Text(label, style: const TextStyle(
+        Text(label, style: TextStyle(
           fontFamily: 'Bitroad', fontSize: 16, color: _brown)),
         if (trailing != null) ...[const Spacer(), trailing],
       ]),
@@ -921,14 +903,14 @@ class _StudyTabState extends ConsumerState<StudyTab>
             Container(
               width: 28, height: 28,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.75),
+                color: _cardFill.withOpacity(0.75),
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: _outline.withOpacity(0.1), width: 1)),
               child: Icon(icon, size: 14, color: _brownLt),
             ),
             const SizedBox(height: 6),
             // peek-val: Bitroad 1.25rem (20px)
-            Text(value, style: const TextStyle(
+            Text(value, style: TextStyle(
               fontFamily: 'Bitroad', fontSize: 20,
               color: _brown, height: 1.0)),
             const SizedBox(height: 2),
@@ -1023,7 +1005,7 @@ class _StudyTabState extends ConsumerState<StudyTab>
     final card = Container(
       decoration: BoxDecoration(
         // .card: background rgba(255,255,255,.88); border:1.5px; shadow:3px 3px 0
-        color: Colors.white.withOpacity(0.88),
+        color: _cardFill.withOpacity(0.88),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: _outline.withOpacity(0.22), width: 1.5),
         boxShadow: [BoxShadow(
@@ -1038,7 +1020,7 @@ class _StudyTabState extends ConsumerState<StudyTab>
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 11, 14, 11),
             child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-              Text(_fmt(s.weeklyMinutes), style: const TextStyle(
+              Text(_fmt(s.weeklyMinutes), style: TextStyle(
                 fontFamily: 'Bitroad', fontSize: 22, color: _brown)),
               const SizedBox(width: 9),
               Text(
@@ -1101,7 +1083,7 @@ class _StudyTabState extends ConsumerState<StudyTab>
               color: const Color(0xFFE4BC83).withOpacity(0.5),
               borderRadius: BorderRadius.circular(8),
               border: Border.all(color: _outline.withOpacity(0.2), width: 1.5)),
-            child: const Icon(Icons.auto_stories_rounded,
+            child: Icon(Icons.auto_stories_rounded,
               size: 14, color: _brownLt),
           ),
           const SizedBox(width: 10),
@@ -1138,7 +1120,7 @@ class _StudyTabState extends ConsumerState<StudyTab>
               color: const Color(0xFFDDF6FF).withOpacity(0.7),
               borderRadius: BorderRadius.circular(8),
               border: Border.all(color: _outline.withOpacity(0.2), width: 1.5)),
-            child: const Icon(Icons.calendar_month_rounded,
+            child: Icon(Icons.calendar_month_rounded,
               size: 14, color: _brownLt),
           ),
           const SizedBox(width: 10),
@@ -1187,7 +1169,7 @@ class _StudyTabState extends ConsumerState<StudyTab>
         Container(
           width: 24, height: 24,
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: _cardFill,
             shape: BoxShape.circle,
             border: Border.all(color: _outline.withOpacity(0.3), width: 1.5)),
           child: Icon(ic, size: 12, color: iClr),

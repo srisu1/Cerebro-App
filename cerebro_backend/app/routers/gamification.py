@@ -21,7 +21,7 @@ def _calculate_level(total_xp: int) -> int:
     return max(1, total_xp // XP_PER_LEVEL + 1)
 
 
-# --- stats ---
+# STATS
 
 @router.get("/stats")
 def get_stats(
@@ -32,6 +32,7 @@ def get_stats(
     xp_in_current_level = current_user.total_xp % XP_PER_LEVEL
     xp_for_next_level = XP_PER_LEVEL
 
+    # Recent XP transactions (last 20)
     recent_xp = (
         db.query(XPTransaction)
         .filter(XPTransaction.user_id == current_user.id)
@@ -40,6 +41,7 @@ def get_stats(
         .all()
     )
 
+    # Count unlocked achievements
     unlocked_count = (
         db.query(UserAchievement)
         .filter(
@@ -73,7 +75,7 @@ def get_stats(
     }
 
 
-# --- achievements ---
+# ACHIEVEMENTS
 
 @router.get("/achievements")
 def get_achievements(
@@ -82,6 +84,7 @@ def get_achievements(
 ):
     all_achievements = db.query(Achievement).order_by(Achievement.category, Achievement.name).all()
 
+    # Get user's progress on each
     user_achievements = {
         str(ua.achievement_id): ua
         for ua in db.query(UserAchievement)
@@ -122,6 +125,7 @@ def check_achievements(
     newly_unlocked = []
 
     for ach in all_achievements:
+        # Check if already unlocked
         ua = (
             db.query(UserAchievement)
             .filter(
@@ -132,11 +136,12 @@ def check_achievements(
         )
 
         if ua and ua.is_unlocked:
-            continue
+            continue  # Already unlocked
 
         progress = _compute_achievement_progress(current_user, ach, db)
 
         if progress >= ach.condition_value:
+            # Unlock!
             if not ua:
                 ua = UserAchievement(
                     user_id=current_user.id,
@@ -148,10 +153,12 @@ def check_achievements(
             ua.progress = progress
             ua.unlocked_at = datetime.utcnow()
 
+            # Award XP and coins
             current_user.total_xp += ach.xp_reward
             current_user.coins += ach.coin_reward
             current_user.level = _calculate_level(current_user.total_xp)
 
+            # Log XP transaction
             db.add(XPTransaction(
                 user_id=current_user.id,
                 amount=ach.xp_reward,
@@ -169,6 +176,7 @@ def check_achievements(
                 "icon": ach.icon,
             })
         else:
+            # Update progress
             if not ua:
                 ua = UserAchievement(
                     user_id=current_user.id,
@@ -195,18 +203,21 @@ def check_achievements(
 
 def _compute_achievement_progress(user: User, achievement: Achievement, db: Session) -> int:
     field = achievement.condition_field or ""
+    ctype = achievement.condition_type
 
     try:
         if "study_sessions.count" in field:
             return db.query(StudySession).filter(StudySession.user_id == user.id).count()
 
         elif "study_sessions.duration" in field:
+            # Max single session duration in minutes
             result = db.query(func.max(StudySession.duration_minutes)).filter(
                 StudySession.user_id == user.id
             ).scalar()
             return result or 0
 
         elif "quizzes.percentage" in field:
+            # Best quiz percentage
             from app.models.quiz_engine import GeneratedQuiz
             result = db.query(func.max(GeneratedQuiz.score_achieved)).filter(
                 GeneratedQuiz.user_id == user.id,
@@ -230,6 +241,7 @@ def _compute_achievement_progress(user: User, achievement: Achievement, db: Sess
             return _count_consecutive_med_days(user.id, db)
 
         elif "habits.streak" in field:
+            # Best habit streak
             result = db.query(func.max(HabitEntry.streak_days)).filter(
                 HabitEntry.user_id == user.id
             ).scalar()
@@ -317,7 +329,55 @@ def _count_consecutive_med_days(user_id, db) -> int:
     return streak
 
 
-# --- xp history ---
+# XP ↔ COIN EXCHANGE
+
+# Exchange rate — 20 XP = 1 coin. Mirrors the frontend `xpPerCash` constant
+# in providers/dashboard_provider.dart so both sides agree on the price.
+XP_PER_COIN = 20
+
+
+@router.post("/exchange")
+def exchange_xp_for_coins(
+    payload: dict,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        coins_requested = int(payload.get("coins", 0))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Invalid coin amount")
+
+    if coins_requested <= 0:
+        raise HTTPException(status_code=400, detail="Coin amount must be > 0")
+
+    xp_cost = coins_requested * XP_PER_COIN
+    if (current_user.total_xp or 0) < xp_cost:
+        raise HTTPException(status_code=400, detail="Not enough XP")
+
+    current_user.total_xp = (current_user.total_xp or 0) - xp_cost
+    current_user.coins = (current_user.coins or 0) + coins_requested
+    current_user.level = _calculate_level(current_user.total_xp)
+
+    # Ledger entry so the user's XP History screen shows the debit.
+    db.add(XPTransaction(
+        user_id=current_user.id,
+        amount=-xp_cost,
+        source="exchange",
+        description=f"Exchanged {xp_cost} XP for {coins_requested} coins",
+    ))
+
+    db.commit()
+
+    return {
+        "total_xp": current_user.total_xp,
+        "level": current_user.level,
+        "coins": current_user.coins,
+        "xp_spent": xp_cost,
+        "coins_gained": coins_requested,
+    }
+
+
+# XP HISTORY
 
 @router.get("/xp-history")
 def get_xp_history(
@@ -345,7 +405,7 @@ def get_xp_history(
     ]
 
 
-# --- avatar ---
+# AVATAR
 
 @router.post("/avatar")
 def create_or_update_avatar(
@@ -359,6 +419,7 @@ def create_or_update_avatar(
         avatar = UserAvatar(user_id=current_user.id)
         db.add(avatar)
 
+    # Update fields
     for field in [
         "gender", "skin_tone", "base_image",
         "hair_style", "hair_color", "facial_hair",
@@ -391,6 +452,7 @@ def get_avatar_expression(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    # Check latest mood entry (today)
     latest_mood = (
         db.query(MoodEntry)
         .filter(
@@ -410,6 +472,7 @@ def get_avatar_expression(
         }
         expression = mood_to_expression.get(mood_name, "neutral")
     else:
+        # Infer from data
         latest_sleep = (
             db.query(SleepLog)
             .filter(SleepLog.user_id == current_user.id)
@@ -421,6 +484,7 @@ def get_avatar_expression(
         elif latest_sleep and latest_sleep.total_hours and latest_sleep.total_hours >= 8:
             expression = "happy"
         else:
+            # Time-based default
             hour = datetime.now().hour
             if 5 <= hour < 12:
                 expression = "happy"
@@ -431,6 +495,7 @@ def get_avatar_expression(
             else:
                 expression = "sleepy"
 
+    # Update avatar's current expression
     avatar = db.query(UserAvatar).filter(UserAvatar.user_id == current_user.id).first()
     if avatar:
         avatar.current_expression = expression
@@ -462,10 +527,10 @@ def _avatar_response(avatar: UserAvatar) -> dict:
     }
 
 
-# --- store ---
+# STORE
 
+# Store item catalog — exclusive items not in avatar customization
 STORE_ITEMS = [
-    # clothing
     {"id": "clothes_sweater_babypink", "name": "Pink Sweater", "category": "clothes", "price": 15, "rarity": "uncommon", "asset_key": "sweater-babypink"},
     {"id": "clothes_sweater_brown", "name": "Brown Sweater", "category": "clothes", "price": 12, "rarity": "common", "asset_key": "sweater-brown"},
     {"id": "clothes_cneck_brown", "name": "Brown C-Neck", "category": "clothes", "price": 10, "rarity": "common", "asset_key": "c-neck-brown"},
@@ -477,23 +542,18 @@ STORE_ITEMS = [
     {"id": "clothes_tanktop_brown", "name": "Brown Tank Top", "category": "clothes", "price": 8, "rarity": "common", "asset_key": "tank-top-brown"},
     {"id": "clothes_vneck_brown", "name": "Brown V-Neck", "category": "clothes", "price": 12, "rarity": "common", "asset_key": "v-neck-sweater-brown"},
     {"id": "clothes_vneck_olive", "name": "Olive V-Neck", "category": "clothes", "price": 15, "rarity": "uncommon", "asset_key": "v-neck-sweater-olive"},
-    # hair dyes
     {"id": "hair_pink", "name": "Pink Hair Dye", "category": "hair", "price": 25, "rarity": "rare", "asset_key": "pink"},
     {"id": "hair_silver", "name": "Silver Hair Dye", "category": "hair", "price": 25, "rarity": "rare", "asset_key": "silver"},
     {"id": "hair_darkblue", "name": "Blue Hair Dye", "category": "hair", "price": 30, "rarity": "rare", "asset_key": "darkblue"},
-    # glasses
     {"id": "glasses_star", "name": "Star Glasses", "category": "accessories", "price": 20, "rarity": "rare", "asset_key": "star-glasses"},
     {"id": "glasses_heart", "name": "Heart Glasses", "category": "accessories", "price": 20, "rarity": "rare", "asset_key": "heart-glasses"},
     {"id": "sunglasses", "name": "Cool Sunglasses", "category": "accessories", "price": 25, "rarity": "rare", "asset_key": "sunglasses"},
-    # hats
     {"id": "hat_magician", "name": "Magician Hat", "category": "accessories", "price": 40, "rarity": "epic", "asset_key": "magician-hat-blue"},
     {"id": "hat_french", "name": "French Beret", "category": "accessories", "price": 30, "rarity": "rare", "asset_key": "french-cap-blue"},
     {"id": "winter_cap", "name": "Winter Cap", "category": "accessories", "price": 15, "rarity": "uncommon", "asset_key": "winter-cap-red"},
-    # accessories
     {"id": "tie_bowtie", "name": "Bow Tie", "category": "accessories", "price": 10, "rarity": "common", "asset_key": "boy-tie-green"},
     {"id": "flower_red", "name": "Red Flower", "category": "accessories", "price": 8, "rarity": "common", "asset_key": "flower-red"},
     {"id": "hairband_blue", "name": "Blue Hairband", "category": "accessories", "price": 12, "rarity": "common", "asset_key": "hairband1-blue"},
-    # boosts
     {"id": "boost_2x_xp", "name": "2x XP", "category": "boosts", "price": 30, "rarity": "epic", "asset_key": ""},
     {"id": "boost_focus", "name": "Focus Boost", "category": "boosts", "price": 20, "rarity": "rare", "asset_key": ""},
     {"id": "boost_streak", "name": "Streak Shield", "category": "boosts", "price": 35, "rarity": "epic", "asset_key": ""},
@@ -529,6 +589,7 @@ def purchase_item(
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
 
+    # Check if already owned
     avatar = db.query(UserAvatar).filter(UserAvatar.user_id == current_user.id).first()
     if not avatar:
         raise HTTPException(status_code=400, detail="Create an avatar first")
@@ -537,13 +598,27 @@ def purchase_item(
     if item_id in owned:
         raise HTTPException(status_code=400, detail="Item already owned")
 
+    # Check coins
     if current_user.coins < item["price"]:
         raise HTTPException(status_code=400, detail="Not enough coins")
 
+    # Deduct coins and add item. We assign a brand-new list to
+    # ``avatar.unlocked_items`` instead of mutating the existing list in
+    # place. The column is wrapped with ``MutableList.as_mutable(JSONB)``
+    # at the model layer, so in-place mutations ARE now tracked — but
+    # brand-new list assignment is the most unambiguous signal and also
+    # works against legacy sessions where the column happened to be
+    # loaded before the MutableList wrapper was applied.
     current_user.coins -= item["price"]
-    owned.append(item_id)
-    avatar.unlocked_items = owned
+    avatar.unlocked_items = [*owned, item_id]
+    # Belt-and-suspenders: explicitly flag the JSONB column dirty so the
+    # change flushes even if the list identity happens to match. This
+    # was the root cause of the "items disappear after I log back in"
+    # bug the user reported.
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(avatar, "unlocked_items")
 
+    # Log transaction
     db.add(XPTransaction(
         user_id=current_user.id,
         amount=-item["price"],
@@ -552,11 +627,13 @@ def purchase_item(
     ))
 
     db.commit()
+    db.refresh(avatar)
 
     return {
         "success": True,
         "item": item,
         "coins_remaining": current_user.coins,
+        "unlocked_items": list(avatar.unlocked_items or []),
     }
 
 

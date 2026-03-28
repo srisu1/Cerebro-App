@@ -1,4 +1,4 @@
-// Register screen with split layout matching the login screen style.
+// Registration screen — split layout with branded panel.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -81,7 +81,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
   }
 
   Color _strengthColor(int s) {
-    const colors = [
+    // Was a `const colors = [...]` but the CerebroTheme accent getters
+    // became runtime-resolved once dark mode landed, so this list can't
+    // be const-evaluated anymore. Plain `final` is the drop-in.
+    final colors = [
       CerebroTheme.creamDark,
       CerebroTheme.coral,
       CerebroTheme.gold,
@@ -178,23 +181,23 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
       border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide:
-              const BorderSide(color: CerebroTheme.creamDark, width: 2)),
+              BorderSide(color: CerebroTheme.creamDark, width: 2)),
       enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide:
-              const BorderSide(color: CerebroTheme.creamDark, width: 2)),
+              BorderSide(color: CerebroTheme.creamDark, width: 2)),
       focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide:
-              const BorderSide(color: CerebroTheme.sage, width: 2.5)),
+              BorderSide(color: CerebroTheme.sage, width: 2.5)),
       errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide:
-              const BorderSide(color: CerebroTheme.coral, width: 2)),
+              BorderSide(color: CerebroTheme.coral, width: 2)),
       focusedErrorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide:
-              const BorderSide(color: CerebroTheme.coral, width: 2.5)),
+              BorderSide(color: CerebroTheme.coral, width: 2.5)),
     );
   }
 
@@ -430,7 +433,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
                               blurRadius: 0),
                         ],
                       ),
-                      child: const Icon(Icons.arrow_back_rounded,
+                      child: Icon(Icons.arrow_back_rounded,
                           color: CerebroTheme.brown, size: 20),
                     ),
                   ),
@@ -464,7 +467,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
                   const SizedBox(height: 20),
 
                   Row(children: [
-                    const Expanded(
+                    Expanded(
                         child: Divider(
                             color: CerebroTheme.creamDark,
                             thickness: 1.5)),
@@ -477,7 +480,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
                               fontSize: 13,
                               fontWeight: FontWeight.w600)),
                     ),
-                    const Expanded(
+                    Expanded(
                         child: Divider(
                             color: CerebroTheme.creamDark,
                             thickness: 1.5)),
@@ -762,7 +765,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
                             width: 1.5),
                       ),
                       child: Row(children: [
-                        const Icon(Icons.info_outline,
+                        Icon(Icons.info_outline,
                             color: CerebroTheme.coral,
                             size: 18),
                         const SizedBox(width: 10),

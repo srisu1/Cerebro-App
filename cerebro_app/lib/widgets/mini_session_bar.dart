@@ -1,13 +1,7 @@
-// Floating session bar shown above the bottom nav when a study session is active.
-// Shows timer, subject name, and pause/stop controls.
-// Tapping the bar navigates to the full session screen.
-///   • ⏹ opens the End Session bottom sheet (the same sheet the hero
-///     uses) — Save / Discard / Cancel.
-///
-/// The widget is intentionally a `ConsumerWidget` (no local state) so it
-/// rebuilds on every provider tick, advancing the live timer.
+// Floating mini session bar — shows above nav when a study session is live.
 
 import 'package:flutter/material.dart';
+import 'package:cerebro_app/config/theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -16,13 +10,16 @@ import 'package:cerebro_app/config/router.dart';
 import 'package:cerebro_app/providers/study_session_provider.dart';
 
 // Palette — matches the Study tab's cream/outline tokens.
-const _cardFill = Color(0xFFFFF8F4);
-const _outline  = Color(0xFF6E5848);
-const _brown    = Color(0xFF4E3828);
-const _inkSoft  = Color(0xFF9A8070);
-const _olive    = Color(0xFF98A869);
-const _oliveDk  = Color(0xFF58772F);
 
+bool get _darkMode =>
+    CerebroTheme.brightnessNotifier.value == Brightness.dark;
+
+Color get _cardFill => _darkMode ? const Color(0xFF29221D) : const Color(0xFFFFF8F4);
+Color get _outline => _darkMode ? const Color(0xFFAD7F58) : const Color(0xFF6E5848);
+Color get _brown => _darkMode ? const Color(0xFFF2E1CA) : const Color(0xFF4E3828);
+Color get _inkSoft => _darkMode ? const Color(0xFFBD926C) : const Color(0xFF9A8070);
+Color get _olive => const Color(0xFF98A869);
+Color get _oliveDk => const Color(0xFF58772F);
 /// Render the mini bar directly. Caller is responsible for visibility logic
 /// (typically: show only when `isSessionLiveProvider` is true).
 class MiniSessionBar extends ConsumerWidget {
@@ -133,16 +130,7 @@ class MiniSessionBar extends ConsumerWidget {
     return '${two(m)}:${two(s)}';
   }
 
-  /// Send the user to the full Wrapped rating screen.
-  ///
-  /// Replaces the old "Save / Discard / Cancel" bottom sheet. Ending a
-  /// session is no longer a one-tap-away action — users should rate
-  /// focus, add notes, and pick topics first. We:
-  ///   1) Pause the timer via provider.requestEnd() so the elapsed display
-  ///      stops inflating while the user rates.
-  ///   2) Push the full session screen, which (re-)adopts the live row
-  ///      from the provider and notices the `endRequested` flag,
-  ///      jumping straight to its completion phase.
+  // Navigate to the full session wrap-up screen.
   Future<void> _requestWrapUp(BuildContext context, WidgetRef ref) async {
     // ignore: discarded_futures
     ref.read(studySessionProvider.notifier).requestEnd();

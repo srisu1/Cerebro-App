@@ -1,4 +1,4 @@
-// Head-only mood sticker using AliveAvatar in headOnly mode
+// Head-only mood sticker — wraps AliveAvatar in headOnly mode.
 
 import 'package:flutter/material.dart';
 import 'package:cerebro_app/models/avatar_config.dart';
@@ -10,18 +10,10 @@ class MoodSticker extends StatelessWidget {
   final String mood;
   final double size;
 
-  /// Optional zoom factor applied uniformly around the centered head.
-  /// Default 0.42 → the head sits comfortably inside the sticker box
-  /// with breathing room on all sides (no hair clip, no chin clip).
-  /// Bump up toward 1.0+ if a caller wants the face to fill the frame.
+  /// Zoom factor around the centered head. Default 0.42 fits comfortably.
   final double zoom;
 
-  /// Scale origin for the zoom transform. Defaults to [Alignment.center]
-  /// so the head sits centered in the frame. Passing something like
-  /// [Alignment(0, 0.5)] biases the origin below center, which visually
-  /// shifts the scaled head downward inside the sticker box — useful
-  /// when a caller wants the face to hug the label below it instead of
-  /// floating in the middle with a big empty gap underneath.
+  /// Scale origin for zoom. Adjust to shift the head within the box.
   final Alignment scaleAlignment;
 
   const MoodSticker({

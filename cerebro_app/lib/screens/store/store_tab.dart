@@ -1,7 +1,8 @@
-// In-app store with tabbed categories for avatar items.
+// Store tab — avatar item shop with scallop tabs and kawaii bag.
 
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:cerebro_app/config/theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -26,54 +27,70 @@ import 'package:cerebro_app/providers/dashboard_provider.dart';
 // are kept intentionally — user asked to preserve the purple
 // accent (shopping bag, ads banner, store header).
 
-// Background ombré — MATCHES the main dashboard (dashboard_tab.dart)
-// so the store feels continuous with the rest of the app.
-const _ombre1    = Color(0xFFFFFBF7);  // dashboard ombre 1
-const _ombre2    = Color(0xFFFFF8F3);  // dashboard ombre 2
-const _ombre3    = Color(0xFFFFF3EF);  // dashboard ombre 3
-const _ombre4    = Color(0xFFFEEDE9);  // dashboard ombre 4 (bottom)
-const _pawClr    = Color(0xFFFFD5F5);  // palette pink-lt — pawprints
+// Dark-mode detection — single source of truth for which palette
+// to serve. All surface/background tokens below flip based on
+// this, while accent hues (sage, rose, gold, purple) stay the
+// same (CRUMBS-UI shade-9 rule) so stickers keep their character.
+bool get _darkMode =>
+    CerebroTheme.brightnessNotifier.value == Brightness.dark;
 
-// Outlines & text — structural browns, untouched.
-const _outline   = Color(0xFF6E5848);
-const _brown     = Color(0xFF4E3828);
-const _brownLt   = Color(0xFF7A5840);
+// Background ombré — MATCHES the main dashboard in light mode.
+// Dark mode uses CRUMBS-UI BROWN shade 1→4 (coffee charcoals) so
+// the store feels "cozy cabin at dusk" instead of generic black.
+Color get _ombre1 => _darkMode ? const Color(0xFF191513) : const Color(0xFFFFFBF7);
+Color get _ombre2 => _darkMode ? const Color(0xFF1E1A17) : const Color(0xFFFFF8F3);
+Color get _ombre3 => _darkMode ? const Color(0xFF29221D) : const Color(0xFFFFF3EF);
+Color get _ombre4 => _darkMode ? const Color(0xFF312821) : const Color(0xFFFEEDE9);
+// _pawClr — mode-aware: pink in light, barely-lifted BROWN-2 in dark
+Color get _pawClr => _darkMode ? const Color(0xFF231D18) : const Color(0xFFFFD5F5);
+
+// Outlines & text — flip from dark-brown strokes (light) to warm
+// sticker-cream strokes (dark) so cards still read as drawn.
+Color get _outline => _darkMode ? const Color(0xFFAD7F58) : const Color(0xFF6E5848);
+Color get _brown   => _darkMode ? const Color(0xFFF2E1CA) : const Color(0xFF4E3828);
+Color get _brownLt => _darkMode ? const Color(0xFFDBB594) : const Color(0xFF7A5840);
 
 // Scallop tabs — rose pink (palette) against cream white.
-const _scWhite   = Color(0xFFFFF8F4);  // inactive white (even)
-const _scPink    = Color(0xFFF7AEAE);  // palette rose (odd tabs)
-const _scAct     = Color(0xFFFFF6F0);  // active fill
-const _scBdr     = Color(0xFFAA8078);  // scallop border (brown)
+// In dark mode: BROWN 2/3 for the "white" / active fills, BROWN 9 for border.
+// Scallop tabs — in dark mode we lift the "white" tabs to BROWN-5 so they
+// still read as tabs against the dark gradient, drop the pink tab to CRUMBS
+// ROSE-6 (muted rose) so it isn't a neon blob, and use a warmer highlight
+// for the active tab so it clearly stands out.
+Color get _scWhite => _darkMode ? const Color(0xFF3D3028) : const Color(0xFFFFF8F4);
+Color get _scPink  => _darkMode ? const Color(0xFFA35260) : const Color(0xFFF7AEAE);
+Color get _scAct   => _darkMode ? const Color(0xFF4F3E33) : const Color(0xFFFFF6F0);
+Color get _scBdr   => _darkMode ? const Color(0xFFC89970) : const Color(0xFFAA8078);
 
 // Cards & panel
 // NOTE: `_purpleHdr` + `_bagPurp` + `_adBg` + `_adBdr` stay purple
 // per explicit user request ("keep the purple thats there").
-const _purpleHdr = Color(0xFFCDA8D8);
-const _white     = Color(0xFFFFF8F4);
-const _panelBg   = Color(0xFFFFF6EE);
-const _panelBdr  = Color(0xFF8A7060);
+Color get _purpleHdr => const Color(0xFFCDA8D8);
+// Store card fill — in dark mode we lift this to BROWN-5 (one shade brighter
+// than the page gradient) so each card is a clearly separated warm panel
+// instead of blending into the background.
+Color get _white    => _darkMode ? const Color(0xFF3D3028) : const Color(0xFFFFF8F4);
+Color get _panelBg  => _darkMode ? const Color(0xFF1E1A17) : const Color(0xFFFFF6EE);
+Color get _panelBdr => _darkMode ? const Color(0xFFAD7F58) : const Color(0xFF8A7060);
 
-// Currency greens — now pulled from the sage family so the cash
-// pills match the rest of the app instead of a separate avatar
-// mint green.
-const _greenLt   = Color(0xFFC8D9A8);  // sage tinted lighter
-const _green     = Color(0xFF98A869);  // palette sage
-const _greenDk   = Color(0xFF58772F);  // palette olive-dk
-const _billFill  = Color(0xFF98A869);  // palette sage (bill body) — brighter, matches price pill
-const _billTx    = Color(0xFFF9FDEC);  // palette cream-yellow ("$")
+// Currency greens — sage family keeps its hue in both modes;
+// only the "lighter tint" (used as pill bg) flips to GREEN shade 4.
+Color get _greenLt  => _darkMode ? const Color(0xFF143125) : const Color(0xFFC8D9A8);
+Color get _green    => _darkMode ? const Color(0xFF35B979) : const Color(0xFF98A869);
+Color get _greenDk  => _darkMode ? const Color(0xFF2C8C5E) : const Color(0xFF58772F);
+Color get _billFill => _darkMode ? const Color(0xFF35B979) : const Color(0xFF98A869);
+Color get _billTx   => _darkMode ? const Color(0xFFF2E1CA) : const Color(0xFFF9FDEC);
 
-// Misc UI
-const _closeBg   = Color(0xFFF7AEAE);  // palette rose (close btn bg)
-const _adBg      = Color(0xFF7878A8);  // KEEP purple (ads banner)
-const _adBdr     = Color(0xFF5C5C88);  // KEEP purple (ads border)
-const _goldGlow  = Color(0xFFE4BC83);  // palette warm gold
-const _bagPurp   = Color(0xFFD8B0E0);  // KEEP purple (shopping bag)
+// Misc UI — accents stay the same; only dark-banner purple gets a
+// slight deepening in dark so it doesn't vibrate against BROWN 2.
+Color get _closeBg => const Color(0xFFF7AEAE);  // palette rose (close btn bg)
+Color get _adBg    => _darkMode ? const Color(0xFF4F4A6E) : const Color(0xFF7878A8);
+Color get _adBdr   => _darkMode ? const Color(0xFF3B3654) : const Color(0xFF5C5C88);
+Color get _goldGlow => const Color(0xFFE4BC83);  // palette warm gold
+Color get _bagPurp  => const Color(0xFFD8B0E0);  // KEEP purple (shopping bag)
 
 // Deeper warm-gold shade used where `_goldGlow` needs a darker
-// companion (borders, shadows). Derived from palette gold, not
-// the old yellow.
-const _goldDk    = Color(0xFF8B7248);
-
+// companion (borders, shadows). Derived from palette gold.
+Color get _goldDk => _darkMode ? const Color(0xFFBD926C) : const Color(0xFF8B7248);
 enum _TabIcon { shirt, scissors, glasses, hat, sparkle, bolt }
 const _tabDefs = <_TabDef>[
   _TabDef('Clothing', _TabIcon.shirt),
@@ -123,10 +140,7 @@ class _StoreTabState extends ConsumerState<StoreTab>
     _loadOwnedItems();
   }
 
-  /// Resolve a user-scoped storage key. Different accounts on the
-  /// same device MUST NOT share store inventory in local cache,
-  /// otherwise newly signed-up users see items pre-owned that they
-  /// never bought.
+  // User-scoped storage key so accounts don't share cached inventory.
   Future<String> _ownedKey() async {
     final prefs = await SharedPreferences.getInstance();
     var userId = prefs.getString(AppConstants.userIdKey);
@@ -146,9 +160,7 @@ class _StoreTabState extends ConsumerState<StoreTab>
         : 'store_owned__$userId';
   }
 
-  /// Load owned items from backend inventory + local cache.
-  /// Backend is the source of truth; local cache is used only to
-  /// avoid a blank-UI flicker while the network call is in flight.
+  // Load owned items from backend (source of truth) with local cache fallback.
   Future<void> _loadOwnedItems() async {
     final prefs = await SharedPreferences.getInstance();
     final key = await _ownedKey();
@@ -283,7 +295,7 @@ class _StoreTabState extends ConsumerState<StoreTab>
     final cat = _cats[_sel];
     return Stack(children: [
       Positioned.fill(child: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter, end: Alignment.bottomCenter,
             colors: [_ombre1, _ombre2, _ombre3, _ombre4],
@@ -400,9 +412,9 @@ class _StoreTabState extends ConsumerState<StoreTab>
       child: Container(
         width: 50, height: 50,
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
+          gradient: LinearGradient(
             begin: Alignment.topCenter, end: Alignment.bottomCenter,
-            colors: [Color(0xFFFAD0D0), _closeBg], // 3D highlight
+            colors: [const Color(0xFFFAD0D0), _closeBg], // 3D highlight
           ),
           shape: BoxShape.circle,
           border: Border.all(color: _outline, width: 3),
@@ -459,7 +471,7 @@ class _StoreTabState extends ConsumerState<StoreTab>
   Widget _panel(_Cat cat) {
     return Container(
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
+        gradient: LinearGradient(
           begin: Alignment.topCenter, end: Alignment.bottomCenter,
           colors: [Color(0xFFFFFAF4), _panelBg], // 3D highlight at top
         ),
@@ -681,7 +693,10 @@ class _StoreTabState extends ConsumerState<StoreTab>
                   top: 130, left: 0, right: 0, bottom: 0,
                   child: Container(
                     decoration: BoxDecoration(
-                      color: const Color(0xFFFFF8E8),
+                      // Cream card in light, BROWN-3 card in dark so the
+                      // purchase-confirm modal reads as part of the dusk
+                      // palette instead of a bright white block.
+                      color: _darkMode ? _panelBg : const Color(0xFFFFF8E8),
                       borderRadius: BorderRadius.circular(28),
                       border: Border.all(color: _outline, width: 3.5),
                       boxShadow: [BoxShadow(color: _outline.withOpacity(0.3),
@@ -712,7 +727,7 @@ class _StoreTabState extends ConsumerState<StoreTab>
                             child: Container(
                               padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 48),
                               decoration: BoxDecoration(
-                                gradient: const LinearGradient(
+                                gradient: LinearGradient(
                                   begin: Alignment.topCenter, end: Alignment.bottomCenter,
                                   colors: [Color(0xFFF9FDEC), _green]),
                                 borderRadius: BorderRadius.circular(18),
@@ -784,9 +799,9 @@ class _StoreTabState extends ConsumerState<StoreTab>
                     child: Container(
                       width: 44, height: 44,
                       decoration: BoxDecoration(
-                        gradient: const LinearGradient(
+                        gradient: LinearGradient(
                           begin: Alignment.topCenter, end: Alignment.bottomCenter,
-                          colors: [Color(0xFFFAD0D0), _closeBg]),
+                          colors: [const Color(0xFFFAD0D0), _closeBg]),
                         shape: BoxShape.circle,
                         border: Border.all(color: _outline, width: 3),
                         boxShadow: [BoxShadow(color: _outline.withOpacity(0.3),
@@ -1097,7 +1112,7 @@ class _CurPill extends StatelessWidget {
       pillGrad = const [Color(0xFFF9FDEC), Color(0xFFE4BC83)];
       pillBorder = const Color(0xFF8B7248);
     } else {
-      pillGrad = const [Color(0xFFF9FDEC), _green];
+      pillGrad = [const Color(0xFFF9FDEC), _green];
       pillBorder = _greenDk;
     }
 
@@ -1145,7 +1160,7 @@ class _CurPill extends StatelessWidget {
           child: Container(
             width: 28, height: 28,
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
+              gradient: LinearGradient(
                 begin: Alignment.topCenter, end: Alignment.bottomCenter,
                 colors: [Color(0xFFF9FDEC), _goldGlow],
               ),
@@ -1234,7 +1249,7 @@ class _CardS extends State<_Card> {
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 6),
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topCenter, end: Alignment.bottomCenter,
                     colors: [Color(0xFFDDBDE8), _purpleHdr],
@@ -1270,7 +1285,7 @@ class _CardS extends State<_Card> {
                 child: Container(
                   height: 30,
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
+                    gradient: LinearGradient(
                       begin: Alignment.topCenter, end: Alignment.bottomCenter,
                       colors: [Color(0xFFF9FDEC), _green]),
                     borderRadius: BorderRadius.circular(10),

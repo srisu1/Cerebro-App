@@ -1,3 +1,8 @@
+"""
+CEREBRO - Gamification Models
+Avatar System, XP, Levels, Achievements, Store
+"""
+
 import uuid
 from datetime import datetime
 from sqlalchemy import (
@@ -5,23 +10,23 @@ from sqlalchemy import (
     ForeignKey, DECIMAL, ARRAY
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy.ext.mutable import MutableList
 from sqlalchemy.orm import relationship
 
 from app.database import Base
 
 
 class UserAvatar(Base):
+    """Parametric avatar configuration per user."""
     __tablename__ = "user_avatars"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False)
 
-    # avatar identity
     gender = Column(String(20), nullable=False)  # male, female
     skin_tone = Column(String(20), nullable=False)  # light, medium, dark
-    base_image = Column(String(200), nullable=False)
+    base_image = Column(String(200), nullable=False)  # Path to base PNG
 
-    # customization layers
     hair_style = Column(String(100))
     hair_color = Column(String(7))
     facial_hair = Column(String(100))  # male only
@@ -32,14 +37,21 @@ class UserAvatar(Base):
     accessory_1 = Column(String(100))  # glasses, hat, etc.
     accessory_2 = Column(String(100))
 
-    # unlocked items from xp store
-    unlocked_items = Column(JSONB, default=[])
+    # Wrap in MutableList so in-place mutations (append / remove) are
+    # tracked by SQLAlchemy. Without this, ``avatar.unlocked_items.append(x);
+    # db.commit()`` silently loses the change on the next request — which
+    # was the "bought items disappear after logout / login" bug.
+    unlocked_items = Column(
+        MutableList.as_mutable(JSONB),
+        default=list,
+    )
 
     current_expression = Column(String(50), default="neutral")
 
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    # Relationships
     user = relationship("User", back_populates="avatar")
 
     def __repr__(self):
@@ -47,6 +59,7 @@ class UserAvatar(Base):
 
 
 class Achievement(Base):
+    """Pre-defined achievements that users can unlock."""
     __tablename__ = "achievements"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -57,7 +70,6 @@ class Achievement(Base):
     xp_reward = Column(Integer, default=50)
     coin_reward = Column(Integer, default=10)
 
-    # unlock condition
     condition_type = Column(String(50), nullable=False)  # streak, count, score, milestone
     condition_value = Column(Integer, nullable=False)  # e.g., 7 for "7-day streak"
     condition_field = Column(String(100))  # e.g., "study_sessions.count"
@@ -65,6 +77,7 @@ class Achievement(Base):
     rarity = Column(String(20), default="common")  # common, rare, epic, legendary
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
+    # Relationships
     user_achievements = relationship("UserAchievement", back_populates="achievement")
 
     def __repr__(self):
@@ -72,15 +85,17 @@ class Achievement(Base):
 
 
 class UserAchievement(Base):
+    """Tracks which achievements each user has unlocked."""
     __tablename__ = "user_achievements"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     achievement_id = Column(UUID(as_uuid=True), ForeignKey("achievements.id"), nullable=False)
     unlocked_at = Column(DateTime(timezone=True), default=datetime.utcnow)
-    progress = Column(Integer, default=0)
+    progress = Column(Integer, default=0)  # Current progress toward unlock
     is_unlocked = Column(Boolean, default=False)
 
+    # Relationships
     user = relationship("User", back_populates="achievements")
     achievement = relationship("Achievement", back_populates="user_achievements")
 
@@ -89,16 +104,18 @@ class UserAchievement(Base):
 
 
 class XPTransaction(Base):
+    """Ledger of all XP gains and spends."""
     __tablename__ = "xp_transactions"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    amount = Column(Integer, nullable=False)  # positive = gain, negative = spend
+    amount = Column(Integer, nullable=False)  # Positive = gain, negative = spend
     source = Column(String(100), nullable=False)  # study_session, quiz, habit, achievement, store
     description = Column(Text)
-    reference_id = Column(UUID(as_uuid=True))
+    reference_id = Column(UUID(as_uuid=True))  # ID of the source record
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
+    # Relationships
     user = relationship("User", back_populates="xp_transactions")
 
     def __repr__(self):

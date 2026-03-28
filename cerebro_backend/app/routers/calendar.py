@@ -9,11 +9,12 @@ from app.database import get_db
 from app.models.user import User
 from app.models.calendar import StudyEvent, GoogleCalendarToken
 from app.utils.auth import get_current_user
+from app.routers.notifications import create_event_notification
 
 router = APIRouter(prefix="/study/calendar", tags=["study-calendar"])
 
 
-# schemas
+#  SCHEMAS
 
 class EventCreate(BaseModel):
     title: str
@@ -43,7 +44,7 @@ class EventUpdate(BaseModel):
     recurrence_rule: Optional[str] = None
 
 
-# crud endpoints
+#  CRUD ENDPOINTS
 
 @router.get("/events")
 def list_events(
@@ -98,7 +99,15 @@ def create_event(
     db.commit()
     db.refresh(event)
 
-    # sync to google calendar if connected
+    # In-app notification — lets the dashboard bell pick up the new event
+    # the next time it polls. `from_ai=False` here because this endpoint
+    # is what the schedule page calls for manual adds.
+    try:
+        create_event_notification(db, current_user, event, from_ai=False)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[CALENDAR] Failed to create event notification: {exc}")
+
+    # Sync to Google Calendar if connected
     _try_gcal_push(current_user, event, db)
 
     return _event_to_dict(event)
@@ -149,6 +158,7 @@ def delete_event(
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
 
+    # Remove from Google Calendar if synced
     if event.gcal_event_id:
         _try_gcal_delete(current_user, event, db)
 
@@ -156,8 +166,6 @@ def delete_event(
     db.commit()
     return {"deleted": True}
 
-
-# ai smart schedule
 
 @router.post("/generate-schedule")
 def generate_smart_schedule(
@@ -182,13 +190,15 @@ def generate_smart_schedule(
     now = datetime.now(timezone.utc)
     events_created = []
 
+    # Distribute recommendations across the next N days
+    # Prefer morning/afternoon slots, avoid weekends for heavy sessions
     study_hours = [9, 11, 14, 16]  # preferred start hours
 
     for day_offset in range(days):
         day = now + timedelta(days=day_offset)
-        day_of_week = day.weekday()
+        day_of_week = day.weekday()  # 0=Mon, 6=Sun
 
-        # fewer sessions on weekends
+        # Fewer sessions on weekends
         max_sessions = 2 if day_of_week >= 5 else 3
         day_recs = recs[:max_sessions]
 
@@ -198,6 +208,7 @@ def generate_smart_schedule(
             duration = rec.get("recommended_mins", 45)
             end = start + timedelta(minutes=duration)
 
+            # Check for existing events at this time
             existing = (
                 db.query(StudyEvent)
                 .filter(
@@ -208,7 +219,7 @@ def generate_smart_schedule(
                 .first()
             )
             if existing:
-                continue
+                continue  # skip — slot occupied
 
             event = StudyEvent(
                 user_id=current_user.id,
@@ -226,13 +237,40 @@ def generate_smart_schedule(
             db.add(event)
             events_created.append(event)
 
+        # Rotate recs so different topics get scheduled on different days
         recs = recs[max_sessions:] + recs[:max_sessions]
 
     db.commit()
 
+    # Batch sync to Google Calendar + fan out in-app notifications.
+    # We post a single consolidated "AI scheduled X sessions" notification
+    # if multiple events were created — less spammy than one row per event.
     for event in events_created:
         db.refresh(event)
         _try_gcal_push(current_user, event, db)
+
+    try:
+        if len(events_created) == 1:
+            create_event_notification(db, current_user, events_created[0], from_ai=True)
+        elif len(events_created) > 1:
+            # Roll-up — use the first event's timing in the body, but point
+            # to None so the UI just opens the calendar screen.
+            from app.models.notification import Notification as _N
+            first = events_created[0]
+            if current_user.notifications_enabled:
+                rollup = _N(
+                    user_id=current_user.id,
+                    kind="ai_schedule",
+                    title=f"AI scheduled {len(events_created)} sessions",
+                    body=(f"I lined up {len(events_created)} focused blocks "
+                          f"across the next {days} days — the first one is "
+                          f"{_fmt_when_local(first.start_time)}."),
+                    event_id=first.id,
+                )
+                db.add(rollup)
+                db.commit()
+    except Exception as exc:  # noqa: BLE001
+        print(f"[CALENDAR] Failed to create AI schedule notification: {exc}")
 
     return {
         "events_created": len(events_created),
@@ -241,8 +279,15 @@ def generate_smart_schedule(
     }
 
 
-# google calendar oauth2
+def _fmt_when_local(dt: datetime) -> str:
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone().strftime("%A at %-I:%M%p").replace("AM", "am").replace("PM", "pm")
 
+
+#  GOOGLE CALENDAR OAUTH2
+
+# Use the same Google OAuth credentials as the main app auth
 from app.config import settings as _app_settings
 GCAL_CLIENT_ID = getattr(_app_settings, "GOOGLE_CLIENT_ID", "") or os.environ.get("GOOGLE_CLIENT_ID", "")
 GCAL_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
@@ -323,11 +368,12 @@ def gcal_sync(
     results = {"pushed": 0, "pulled": 0, "errors": []}
 
     if direction in ("push", "both"):
+        # Push all local events that aren't synced yet (no date filter — push everything)
         local_events = (
             db.query(StudyEvent)
             .filter(
                 StudyEvent.user_id == current_user.id,
-                StudyEvent.gcal_event_id.is_(None),
+                StudyEvent.gcal_event_id.is_(None),  # not yet synced
             )
             .all()
         )
@@ -340,6 +386,7 @@ def gcal_sync(
                 results["errors"].append(f"Push {event.title}: {e}")
 
     if direction in ("pull", "both"):
+        # Pull events from Google Calendar
         try:
             pulled = _pull_events_from_gcal(token, current_user, db)
             results["pulled"] = pulled
@@ -349,7 +396,7 @@ def gcal_sync(
     return results
 
 
-# google calendar helpers
+#  GOOGLE CALENDAR HELPERS
 
 def _get_valid_token(user: User, db: Session) -> Optional[GoogleCalendarToken]:
     token = db.query(GoogleCalendarToken).filter(
@@ -358,6 +405,7 @@ def _get_valid_token(user: User, db: Session) -> Optional[GoogleCalendarToken]:
     if not token:
         return None
 
+    # Refresh if expired
     if token.token_expiry and token.token_expiry < datetime.now(timezone.utc):
         if token.refresh_token:
             try:
@@ -391,6 +439,7 @@ def _push_event_to_gcal(token: GoogleCalendarToken, event: StudyEvent, db: Sessi
 
     cal_id = token.calendar_id or "primary"
 
+    # Ensure timestamps have timezone info (Google requires it)
     start_dt = event.start_time
     end_dt = event.end_time
     if start_dt and start_dt.tzinfo is None:
@@ -400,7 +449,7 @@ def _push_event_to_gcal(token: GoogleCalendarToken, event: StudyEvent, db: Sessi
 
     gcal_body = {
         "summary": event.title,
-        "description": event.description or f"Study session\nType: {event.event_type}\nTopic: {event.topic or 'General'}",
+        "description": event.description or f"CEREBRO study session\nType: {event.event_type}\nTopic: {event.topic or 'General'}",
         "start": {"dateTime": start_dt.isoformat(), "timeZone": "UTC"},
         "end": {"dateTime": end_dt.isoformat(), "timeZone": "UTC"},
         "colorId": _gcal_color_id(event.event_type),
@@ -496,11 +545,13 @@ def _pull_events_from_gcal(token: GoogleCalendarToken, user: User, db: Session) 
     imported = 0
     for ge in gcal_events:
         gcal_id = ge["id"]
+        # Skip if already imported
         existing = db.query(StudyEvent).filter(
             StudyEvent.user_id == user.id,
             StudyEvent.gcal_event_id == gcal_id,
         ).first()
         if existing:
+            # Update existing
             existing.title = ge.get("summary", existing.title)
             existing.description = ge.get("description", existing.description)
             start_str = ge.get("start", {}).get("dateTime") or ge.get("start", {}).get("date")
@@ -511,6 +562,7 @@ def _pull_events_from_gcal(token: GoogleCalendarToken, user: User, db: Session) 
                 existing.end_time = datetime.fromisoformat(end_str.replace("Z", "+00:00"))
             continue
 
+        # Create new local event from Google Calendar
         start_str = ge.get("start", {}).get("dateTime") or ge.get("start", {}).get("date")
         end_str = ge.get("end", {}).get("dateTime") or ge.get("end", {}).get("date")
         if not start_str or not end_str:
@@ -543,6 +595,7 @@ def _pull_events_from_gcal(token: GoogleCalendarToken, user: User, db: Session) 
 
 
 def _gcal_color_id(event_type: str) -> str:
+    # Google Calendar color IDs: 1-11
     return {
         "study": "9",       # blueberry
         "review": "2",      # sage
@@ -554,7 +607,7 @@ def _gcal_color_id(event_type: str) -> str:
     }.get(event_type, "9")
 
 
-# helpers
+#  HELPERS
 
 def _event_to_dict(e: StudyEvent) -> dict:
     return {

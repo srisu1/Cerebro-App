@@ -1,4 +1,4 @@
-// Onboarding carousel — 3 slides with skip/next navigation.
+// Swipeable onboarding slides introducing core features.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -37,7 +37,7 @@ const _slides = [
     svgAsset: 'assets/illustrations/onboarding_3.svg',
     title: 'Meet Your Companion',
     description:
-        'Your personal AI buddy that learns with you, celebrates your wins, and keeps you company through late-night study sessions.',
+        'Your personal study buddy that learns with you, celebrates your wins, and keeps you company through late-night study sessions.',
   ),
 ];
 
@@ -121,6 +121,13 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<Brightness>(
+      valueListenable: CerebroTheme.brightnessNotifier,
+      builder: (context, _, __) => _buildScaffold(context),
+    );
+  }
+
+  Widget _buildScaffold(BuildContext context) {
     return Scaffold(
       backgroundColor: CerebroTheme.olive,
       body: Stack(
@@ -144,7 +151,8 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                           height: double.infinity,
                           constraints: const BoxConstraints(maxWidth: 1400),
                           decoration: BoxDecoration(
-                            color: Colors.white,
+                            // Game-card surface — swaps to BROWN-1 in dark mode.
+                            color: CerebroTheme.cream,
                             borderRadius: BorderRadius.circular(24),
                             border: Border.all(
                                 color: CerebroTheme.text1, width: 3),
@@ -228,7 +236,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         // Gradient background (matches CSS: linear-gradient(160deg, cream, green-pale, pink-light))
         Positioned.fill(
           child: Container(
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment(-0.6, -0.8),
                 end: Alignment(0.6, 0.8),
@@ -271,7 +279,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
           Text(
             slide.title,
             textAlign: TextAlign.center,
-            style: const TextStyle(
+            style: TextStyle(
               fontFamily: 'Bitroad',
               fontSize: 35,
               color: CerebroTheme.text1,
@@ -453,7 +461,7 @@ class _GameBtnState extends State<_GameBtn> {
           border: Border.all(color: CerebroTheme.text1, width: 2.5),
           boxShadow: [
             if (!_p)
-              const BoxShadow(
+              BoxShadow(
                   color: CerebroTheme.text1,
                   offset: Offset(3, 3),
                   blurRadius: 0),

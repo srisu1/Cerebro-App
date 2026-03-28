@@ -1,4 +1,4 @@
-// Animated avatar widget with breathing, blinking, and expression overlays
+// Animated avatar widget — breathing, blinking, mood expressions.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -10,28 +10,17 @@ class AliveAvatar extends StatefulWidget {
   final AvatarConfig config;
   final double size;
   final ExpressionState expression;
-  /// When true, overrides user's chosen clothes with time/schedule-based outfit.
-  /// Defaults to FALSE — avatar wears what the user picked.
-  /// TODO: Re-enable once schedule-based outfit system is built
-  /// (should read from user's personal schedule, not hardcoded hours).
+  /// Override clothes with time-based outfit (currently unused).
   final bool autoOutfit;
   final Color? backgroundColor;
 
-  /// When true, only renders head/bust (no breathing, smaller).
-  /// Used for status bar mini avatar.
+  /// Head/bust only, no breathing. Used for status bar mini avatar.
   final bool mini;
 
-  /// When true, skips body / accessory layers (clothes, glasses, headwear,
-  /// neckwear, extras) and only renders the head stack: base, eyes, nose,
-  /// mouth, hair, facial hair. Used by [MoodSticker] so the personalized
-  /// face elements (eyes / nose / mouth / hair) sit in identical relative
-  /// positions to the full home/profile avatar.
+  /// Head-only mode for mood stickers — skips body/accessory layers.
   final bool headOnly;
 
-  /// Whether the breathing float + blink animations are running. Defaults
-  /// to true; set false for static stickers (mood selector, list rows)
-  /// where the parent has its own animation and we don't want compounded
-  /// motion.
+  /// Whether breathing/blink animations run. False for static stickers.
   final bool? breathing;
 
   const AliveAvatar({

@@ -34,9 +34,7 @@ class AvatarConfig {
   /// Get the full asset path for a layer
   String get basePath => 'assets/avatar/$gender/base/$baseSkin.png';
 
-  /// Head-only base image (no body). Used by [MoodSticker] / [AliveAvatar]
-  /// in head-only mode so the rendering doesn't carry the torso down
-  /// below the face.
+  /// Head-only base image path (no body).
   String get justHeadBasePath {
     final skinNum = baseSkin.replaceAll('Base', '');
     return 'assets/avatar/$gender/justheadbase/justheadbase$skinNum.png';

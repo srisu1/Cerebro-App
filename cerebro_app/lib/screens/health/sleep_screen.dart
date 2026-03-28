@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cerebro_app/config/theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
@@ -9,25 +10,28 @@ import 'dart:math' as math;
 // ============================================================================
 // Color Palette
 // ============================================================================
-const _ombre1 = Color(0xFFFFFBF7);
-const _ombre2 = Color(0xFFFFF8F3);
-const _ombre3 = Color(0xFFFFF3EF);
-const _ombre4 = Color(0xFFFEEDE9);
-const _pawClr = Color(0xFFF8BCD0);
-const _outline = Color(0xFF6E5848);
-const _brown = Color(0xFF4E3828);
-const _brownLt = Color(0xFF7A5840);
-const _cardFill = Color(0xFFFFF8F4);
-const _coralHdr = Color(0xFFF0A898);
-const _coralLt = Color(0xFFF8C0B0);
-const _greenHdr = Color(0xFFA8D5A3);
-const _greenDk = Color(0xFF88B883);
-const _goldHdr = Color(0xFFF0D878);
-const _goldDk = Color(0xFFD0B048);
-const _purpleHdr = Color(0xFFCDA8D8);
-const _purpleLt = Color(0xFFD8C0E8);
-const _skyHdr = Color(0xFF9DD4F0);
 
+bool get _darkMode =>
+    CerebroTheme.brightnessNotifier.value == Brightness.dark;
+
+Color get _ombre1 => _darkMode ? const Color(0xFF191513) : const Color(0xFFFFFBF7);
+Color get _ombre2 => _darkMode ? const Color(0xFF1E1A17) : const Color(0xFFFFF8F3);
+Color get _ombre3 => _darkMode ? const Color(0xFF29221D) : const Color(0xFFFFF3EF);
+Color get _ombre4 => _darkMode ? const Color(0xFF312821) : const Color(0xFFFEEDE9);
+Color get _pawClr => _darkMode ? const Color(0xFF231D18) : const Color(0xFFF8BCD0);
+Color get _outline => _darkMode ? const Color(0xFFAD7F58) : const Color(0xFF6E5848);
+Color get _brown => _darkMode ? const Color(0xFFF2E1CA) : const Color(0xFF4E3828);
+Color get _brownLt => _darkMode ? const Color(0xFFDBB594) : const Color(0xFF7A5840);
+Color get _cardFill => _darkMode ? const Color(0xFF29221D) : const Color(0xFFFFF8F4);
+Color get _coralHdr => const Color(0xFFF0A898);
+Color get _coralLt => const Color(0xFFF8C0B0);
+Color get _greenHdr => const Color(0xFFA8D5A3);
+Color get _greenDk => const Color(0xFF88B883);
+Color get _goldHdr => const Color(0xFFF0D878);
+Color get _goldDk => const Color(0xFFD0B048);
+Color get _purpleHdr => const Color(0xFFCDA8D8);
+Color get _purpleLt => const Color(0xFFD8C0E8);
+Color get _skyHdr => const Color(0xFF9DD4F0);
 // ============================================================================
 // Pawprint Background Painter
 // ============================================================================
@@ -267,7 +271,7 @@ class _SleepScreenState extends ConsumerState<SleepScreen> with TickerProviderSt
                     Row(
                       children: [
                         IconButton(
-                          icon: const Icon(Icons.arrow_back, color: _brown),
+                          icon: Icon(Icons.arrow_back, color: _brown),
                           onPressed: () {
                             ref.read(dashboardProvider.notifier).refresh();
                             Navigator.of(context).pop();
@@ -283,7 +287,7 @@ class _SleepScreenState extends ConsumerState<SleepScreen> with TickerProviderSt
                           ),
                         ),
                         const SizedBox(width: 12),
-                        const Icon(Icons.nightlight_round, color: _coralHdr, size: 28),
+                        Icon(Icons.nightlight_round, color: _coralHdr, size: 28),
                       ],
                     ),
                     const SizedBox(height: 28),
@@ -310,7 +314,7 @@ class _SleepScreenState extends ConsumerState<SleepScreen> with TickerProviderSt
                     ),
                     const SizedBox(height: 12),
                     _historyLoading
-                        ? const SizedBox(
+                        ? SizedBox(
                             height: 200,
                             child: Center(child: CircularProgressIndicator(color: _coralHdr)),
                           )
@@ -426,15 +430,15 @@ class _SleepScreenState extends ConsumerState<SleepScreen> with TickerProviderSt
               hintStyle: GoogleFonts.nunito(color: _brownLt.withOpacity(0.5)),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: _outline, width: 2),
+                borderSide: BorderSide(color: _outline, width: 2),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: _outline, width: 2),
+                borderSide: BorderSide(color: _outline, width: 2),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: _coralHdr, width: 2),
+                borderSide: BorderSide(color: _coralHdr, width: 2),
               ),
               filled: true,
               fillColor: _ombre1,
@@ -535,7 +539,7 @@ class _SleepScreenState extends ConsumerState<SleepScreen> with TickerProviderSt
             ),
             child: Center(
               child: isLoading
-                  ? const SizedBox(
+                  ? SizedBox(
                       width: 20,
                       height: 20,
                       child: CircularProgressIndicator(

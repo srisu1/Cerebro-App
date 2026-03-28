@@ -1,43 +1,47 @@
-// Study calendar with event scheduling
+// Study calendar — monthly grid with event management.
 
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:cerebro_app/config/theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:cerebro_app/providers/auth_provider.dart';
 import 'package:cerebro_app/config/constants.dart';
 
-const _ombre1 = Color(0xFFFFFBF7);
-const _ombre2 = Color(0xFFFFF8F3);
-const _ombre3 = Color(0xFFFFF3EF);
-const _ombre4 = Color(0xFFFEEDE9);
-const _pawClr = Color(0xFFF8BCD0);
 
-const _outline   = Color(0xFF6E5848);
-const _brown     = Color(0xFF4E3828);
-const _brownLt   = Color(0xFF7A5840);
-const _brownSoft = Color(0xFF9A8070);
+bool get _darkMode =>
+    CerebroTheme.brightnessNotifier.value == Brightness.dark;
 
-const _cream    = Color(0xFFFDEFDB);
-const _olive    = Color(0xFF98A869);
-const _oliveDk  = Color(0xFF58772F);
-const _pinkLt   = Color(0xFFFFD5F5);
-const _pink     = Color(0xFFFEA9D3);
-const _pinkDk   = Color(0xFFE890B8);
-const _coral    = Color(0xFFF7AEAE);
-const _gold     = Color(0xFFE4BC83);
-const _orange   = Color(0xFFFFBC5C);
-const _red      = Color(0xFFEF6262);
-const _blueLt   = Color(0xFFDDF6FF);
-const _greenLt  = Color(0xFFC2E8BC);
-const _skyHdr   = Color(0xFF9DD4F0);
-const _purpleHdr = Color(0xFFCDA8D8);
-
-TextStyle _gaegu({double size = 14, FontWeight weight = FontWeight.w600, Color color = _brown, double? h}) =>
-    GoogleFonts.gaegu(fontSize: size, fontWeight: weight, color: color, height: h);
+Color get _ombre1 => _darkMode ? const Color(0xFF191513) : const Color(0xFFFFFBF7);
+Color get _ombre2 => _darkMode ? const Color(0xFF1E1A17) : const Color(0xFFFFF8F3);
+Color get _ombre3 => _darkMode ? const Color(0xFF29221D) : const Color(0xFFFFF3EF);
+Color get _ombre4 => _darkMode ? const Color(0xFF312821) : const Color(0xFFFEEDE9);
+Color get _pawClr => _darkMode ? const Color(0xFF231D18) : const Color(0xFFF8BCD0);
+Color get _outline => _darkMode ? const Color(0xFFAD7F58) : const Color(0xFF6E5848);
+Color get _brown => _darkMode ? const Color(0xFFF2E1CA) : const Color(0xFF4E3828);
+Color get _brownLt => _darkMode ? const Color(0xFFDBB594) : const Color(0xFF7A5840);
+Color get _brownSoft => _darkMode ? const Color(0xFFBD926C) : const Color(0xFF9A8070);
+Color get _cream => _darkMode ? const Color(0xFF1E1A17) : const Color(0xFFFDEFDB);
+Color get _cardFill => _darkMode ? const Color(0xFF29221D) : const Color(0xFFFFF8F4);
+Color get _olive => const Color(0xFF98A869);
+Color get _oliveDk => const Color(0xFF58772F);
+Color get _pinkLt => _darkMode ? const Color(0xFF411C35) : const Color(0xFFFFD5F5);
+Color get _pink => const Color(0xFFFEA9D3);
+Color get _pinkDk => const Color(0xFFE890B8);
+Color get _coral => const Color(0xFFF7AEAE);
+Color get _gold => const Color(0xFFE4BC83);
+Color get _orange => const Color(0xFFFFBC5C);
+Color get _red => const Color(0xFFEF6262);
+Color get _blueLt => _darkMode ? const Color(0xFF102A4C) : const Color(0xFFDDF6FF);
+Color get _greenLt => _darkMode ? const Color(0xFF143125) : const Color(0xFFC2E8BC);
+Color get _skyHdr => const Color(0xFF9DD4F0);
+Color get _purpleHdr => const Color(0xFFCDA8D8);
+// Nullable + in-body fallback — `_brown` is now a mode-aware getter.
+TextStyle _gaegu({double size = 14, FontWeight weight = FontWeight.w600, Color? color, double? h}) =>
+    GoogleFonts.gaegu(fontSize: size, fontWeight: weight, color: color ?? _brown, height: h);
 const _bitroad = 'Bitroad';
 
 enum _EventType { study, exam, quiz, reminder }
@@ -464,7 +468,7 @@ class _StudyCalendarScreenState extends ConsumerState<StudyCalendarScreen>
     return Material(
       type: MaterialType.transparency,
       child: Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft, end: Alignment.bottomRight,
           colors: [_ombre1, _ombre2, _ombre3, _ombre4],
@@ -529,7 +533,7 @@ class _StudyCalendarScreenState extends ConsumerState<StudyCalendarScreen>
     return Container(
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.9),
+        color: _cardFill.withOpacity(0.9),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: _outline.withOpacity(0.22), width: 1.5),
         boxShadow: [BoxShadow(color: _outline.withOpacity(0.14),
@@ -563,7 +567,7 @@ class _StudyCalendarScreenState extends ConsumerState<StudyCalendarScreen>
         child: Container(
           width: 34, height: 34,
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.88),
+            color: _cardFill.withOpacity(0.88),
             borderRadius: BorderRadius.circular(10),
             border: Border.all(color: _outline.withOpacity(0.22), width: 1.5),
             boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
@@ -575,7 +579,7 @@ class _StudyCalendarScreenState extends ConsumerState<StudyCalendarScreen>
       const SizedBox(width: 10),
       Expanded(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('Study Calendar',
+          Text('Study Calendar',
             style: TextStyle(fontFamily: _bitroad, fontSize: 21, color: _brown, height: 1.15)),
           const SizedBox(height: 1),
           Text('Plan your week, keep the streak going~',
@@ -629,7 +633,7 @@ class _StudyCalendarScreenState extends ConsumerState<StudyCalendarScreen>
   Widget _calendarCard() {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.9),
+        color: _cardFill.withOpacity(0.9),
         borderRadius: BorderRadius.circular(22),
         border: Border.all(color: _outline.withOpacity(0.25), width: 1.5),
         boxShadow: [BoxShadow(color: _outline.withOpacity(0.2),
@@ -643,7 +647,7 @@ class _StudyCalendarScreenState extends ConsumerState<StudyCalendarScreen>
             const SizedBox(width: 10),
             Expanded(child: Center(
               child: Text(_monthLabel(_viewMonth),
-                style: const TextStyle(fontFamily: _bitroad, fontSize: 19, color: _brown)),
+                style: TextStyle(fontFamily: _bitroad, fontSize: 19, color: _brown)),
             )),
             const SizedBox(width: 10),
             _MonthNavBtn(icon: Icons.chevron_right_rounded, onTap: _nextMonth),
@@ -750,7 +754,7 @@ class _StudyCalendarScreenState extends ConsumerState<StudyCalendarScreen>
     final dateLabel = '${_selected.day} ${_monthShort(_selected.month)} ${_selected.year}';
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.9),
+        color: _cardFill.withOpacity(0.9),
         borderRadius: BorderRadius.circular(22),
         border: Border.all(color: _outline.withOpacity(0.25), width: 1.5),
         boxShadow: [BoxShadow(color: _outline.withOpacity(0.2),
@@ -772,7 +776,7 @@ class _StudyCalendarScreenState extends ConsumerState<StudyCalendarScreen>
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(dateLabel,
-                style: const TextStyle(fontFamily: _bitroad, fontSize: 16, color: _brown)),
+                style: TextStyle(fontFamily: _bitroad, fontSize: 16, color: _brown)),
               Text('${evts.length} events scheduled',
                 style: _gaegu(size: 11, weight: FontWeight.w700, color: _brownSoft)),
             ]),
@@ -788,7 +792,7 @@ class _StudyCalendarScreenState extends ConsumerState<StudyCalendarScreen>
                 boxShadow: [BoxShadow(color: _outline.withOpacity(0.22),
                     offset: const Offset(2, 2), blurRadius: 0)],
               ),
-              child: const Row(mainAxisSize: MainAxisSize.min, children: [
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
                 Icon(Icons.add_rounded, size: 13, color: _outline),
                 SizedBox(width: 3),
                 Text('Event',
@@ -799,7 +803,7 @@ class _StudyCalendarScreenState extends ConsumerState<StudyCalendarScreen>
         ]),
         const SizedBox(height: 14),
         if (_loadingEvents)
-          const Padding(
+          Padding(
             padding: EdgeInsets.symmetric(vertical: 56),
             child: Center(child: CircularProgressIndicator(
                 color: _olive, strokeWidth: 3)),
@@ -834,7 +838,7 @@ class _StudyCalendarScreenState extends ConsumerState<StudyCalendarScreen>
                 child: Icon(Icons.event_available_rounded, size: 30, color: _pinkDk),
               ),
               const SizedBox(height: 14),
-              const Text('Nothing scheduled',
+              Text('Nothing scheduled',
                 style: TextStyle(fontFamily: _bitroad, fontSize: 20, color: _brown)),
               const SizedBox(height: 4),
               Text('Tap "+ Event" to plan something fun',
@@ -876,7 +880,7 @@ class _StudyCalendarScreenState extends ConsumerState<StudyCalendarScreen>
           Expanded(child: Column(
             crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(e.title,
-                style: const TextStyle(fontFamily: _bitroad, fontSize: 14, color: _brown),
+                style: TextStyle(fontFamily: _bitroad, fontSize: 14, color: _brown),
                 overflow: TextOverflow.ellipsis, maxLines: 1),
               const SizedBox(height: 1),
               Text('${e.subject}  •  ${e.timeLabel}',
@@ -886,12 +890,12 @@ class _StudyCalendarScreenState extends ConsumerState<StudyCalendarScreen>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: _cardFill,
               borderRadius: BorderRadius.circular(999),
               border: Border.all(color: _outline.withOpacity(0.25), width: 1),
             ),
             child: Text(_typeLabel(e.type),
-              style: const TextStyle(fontFamily: _bitroad, fontSize: 10, color: _brown)),
+              style: TextStyle(fontFamily: _bitroad, fontSize: 10, color: _brown)),
           ),
         ]),
       ),
@@ -967,7 +971,7 @@ class _AddEventModalState extends State<_AddEventModal> {
       initialTime: start ? _start : _end,
       builder: (ctx, child) => Theme(
         data: ThemeData.light().copyWith(
-          colorScheme: const ColorScheme.light(primary: _olive, onPrimary: Colors.white, onSurface: _brown),
+          colorScheme: ColorScheme.light(primary: _olive, onPrimary: Colors.white, onSurface: _brown),
         ),
         child: child!,
       ),
@@ -1008,11 +1012,11 @@ class _AddEventModalState extends State<_AddEventModal> {
                     child: Container(
                       width: 34, height: 34,
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: _cardFill,
                         shape: BoxShape.circle,
                         border: Border.all(color: _outline, width: 1.5),
                       ),
-                      child: const Icon(Icons.close_rounded, size: 17, color: _brown),
+                      child: Icon(Icons.close_rounded, size: 17, color: _brown),
                     ),
                   ),
                 ]),
@@ -1035,7 +1039,7 @@ class _AddEventModalState extends State<_AddEventModal> {
                   Expanded(child: Padding(
                     padding: const EdgeInsets.only(top: 2),
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      const Text('Add an Event',
+                      Text('Add an Event',
                         style: TextStyle(fontFamily: _bitroad, fontSize: 24, color: _brown, height: 1.1)),
                       const SizedBox(height: 6),
                       Text('plan your study blocks, exams & reminders.',
@@ -1129,7 +1133,7 @@ class _AddEventModalState extends State<_AddEventModal> {
     required IconData icon,
   }) => Container(
     decoration: BoxDecoration(
-      color: Colors.white,
+      color: _cardFill,
       borderRadius: BorderRadius.circular(18),
       border: Border.all(color: _outline, width: 2),
       boxShadow: const [
@@ -1210,7 +1214,7 @@ class _AddEventModalState extends State<_AddEventModal> {
     child: Container(
       padding: const EdgeInsets.fromLTRB(10, 10, 16, 10),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _cardFill,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: _outline, width: 2),
         boxShadow: const [
@@ -1234,7 +1238,7 @@ class _AddEventModalState extends State<_AddEventModal> {
               style: _gaegu(size: 11, weight: FontWeight.w700, color: _oliveDk)
                   .copyWith(letterSpacing: 0.7)),
             Text(_fmt(t),
-              style: const TextStyle(fontFamily: _bitroad, fontSize: 17, color: _brown)),
+              style: TextStyle(fontFamily: _bitroad, fontSize: 17, color: _brown)),
           ],
         )),
       ]),
@@ -1279,11 +1283,11 @@ class _EventDetailModal extends StatelessWidget {
                     child: Container(
                       width: 34, height: 34,
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: _cardFill,
                         shape: BoxShape.circle,
                         border: Border.all(color: _outline, width: 1.5),
                       ),
-                      child: const Icon(Icons.close_rounded, size: 17, color: _brown),
+                      child: Icon(Icons.close_rounded, size: 17, color: _brown),
                     ),
                   ),
                 ]),
@@ -1307,7 +1311,7 @@ class _EventDetailModal extends StatelessWidget {
                     padding: const EdgeInsets.only(top: 2),
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Text(event.title,
-                        style: const TextStyle(fontFamily: _bitroad, fontSize: 22, color: _brown, height: 1.15),
+                        style: TextStyle(fontFamily: _bitroad, fontSize: 22, color: _brown, height: 1.15),
                         maxLines: 2, overflow: TextOverflow.ellipsis),
                       const SizedBox(height: 6),
                       Text(event.subject,
@@ -1351,7 +1355,7 @@ class _EventDetailModal extends StatelessWidget {
   Widget _detailRow(IconData icon, String label, String value) => Container(
     padding: const EdgeInsets.fromLTRB(10, 10, 16, 10),
     decoration: BoxDecoration(
-      color: Colors.white,
+      color: _cardFill,
       borderRadius: BorderRadius.circular(18),
       border: Border.all(color: _outline, width: 2),
       boxShadow: const [
@@ -1375,7 +1379,7 @@ class _EventDetailModal extends StatelessWidget {
             style: _gaegu(size: 11, weight: FontWeight.w700, color: _oliveDk)
                 .copyWith(letterSpacing: 0.7)),
           Text(value,
-            style: const TextStyle(fontFamily: _bitroad, fontSize: 15, color: _brown)),
+            style: TextStyle(fontFamily: _bitroad, fontSize: 15, color: _brown)),
         ],
       )),
     ]),
@@ -1466,7 +1470,7 @@ class _SyncPill extends StatelessWidget {
                 size: 11, color: _outline),
         const SizedBox(width: 4),
         Text(label,
-          style: const TextStyle(fontFamily: _bitroad, fontSize: 11, color: _brown)),
+          style: TextStyle(fontFamily: _bitroad, fontSize: 11, color: _brown)),
       ]),
     );
   }
@@ -1522,10 +1526,11 @@ class _StatTile extends StatelessWidget {
 class _SoftButton extends StatelessWidget {
   final String label;
   final Color fill;
-  final Color textColor;
+  // Nullable + in-body fallback because `_brown` is now a runtime getter.
+  final Color? textColor;
   final VoidCallback onTap;
-  const _SoftButton({required this.label, required this.fill, required this.onTap,
-      this.textColor = _brown});
+  _SoftButton({required this.label, required this.fill, required this.onTap,
+      this.textColor});
   @override
   Widget build(BuildContext context) => GestureDetector(
     onTap: onTap,
@@ -1767,7 +1772,7 @@ class _SmartScheduleViewState extends ConsumerState<_SmartScheduleView>
   Widget build(BuildContext context) {
     super.build(context);
     if (_loadingCfg) {
-      return const Center(child: CircularProgressIndicator(color: _olive));
+      return Center(child: CircularProgressIndicator(color: _olive));
     }
     return SingleChildScrollView(
       padding: const EdgeInsets.only(bottom: 60),
@@ -1814,15 +1819,15 @@ class _SmartScheduleViewState extends ConsumerState<_SmartScheduleView>
         Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.85),
+            color: _cardFill.withOpacity(0.85),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(color: _outline.withOpacity(0.25))),
-          child: const Icon(Icons.auto_awesome_rounded, size: 22, color: _purpleHdr),
+          child: Icon(Icons.auto_awesome_rounded, size: 22, color: _purpleHdr),
         ),
         const SizedBox(width: 12),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('Smart Scheduler',
-            style: const TextStyle(fontFamily: _bitroad, fontSize: 22, color: _brown)),
+            style: TextStyle(fontFamily: _bitroad, fontSize: 22, color: _brown)),
           const SizedBox(height: 2),
           Text(
             'Plans your week using your peak-focus hours, due flashcards, '
@@ -1847,7 +1852,7 @@ class _SmartScheduleViewState extends ConsumerState<_SmartScheduleView>
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.9),
+        color: _cardFill.withOpacity(0.9),
         borderRadius: BorderRadius.circular(22),
         border: Border.all(color: _outline.withOpacity(0.25), width: 1.5),
         boxShadow: [BoxShadow(color: _outline.withOpacity(0.2),
@@ -1855,10 +1860,10 @@ class _SmartScheduleViewState extends ConsumerState<_SmartScheduleView>
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          const Icon(Icons.tune_rounded, size: 18, color: _oliveDk),
+          Icon(Icons.tune_rounded, size: 18, color: _oliveDk),
           const SizedBox(width: 8),
           Text('What to schedule',
-            style: const TextStyle(fontFamily: _bitroad, fontSize: 18, color: _brown)),
+            style: TextStyle(fontFamily: _bitroad, fontSize: 18, color: _brown)),
         ]),
         const SizedBox(height: 4),
         Text('Toggle activity types and pick how many per week',
@@ -1972,7 +1977,7 @@ class _SmartScheduleViewState extends ConsumerState<_SmartScheduleView>
       child: Container(
         width: 22, height: 22,
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: _cardFill,
           borderRadius: BorderRadius.circular(6),
           border: Border.all(color: _outline.withOpacity(0.25))),
         child: Icon(icon, size: 14, color: _brown),
@@ -1984,7 +1989,7 @@ class _SmartScheduleViewState extends ConsumerState<_SmartScheduleView>
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.9),
+        color: _cardFill.withOpacity(0.9),
         borderRadius: BorderRadius.circular(22),
         border: Border.all(color: _outline.withOpacity(0.25), width: 1.5),
         boxShadow: [BoxShadow(color: _outline.withOpacity(0.2),
@@ -1992,10 +1997,10 @@ class _SmartScheduleViewState extends ConsumerState<_SmartScheduleView>
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          const Icon(Icons.access_time_rounded, size: 18, color: _skyHdr),
+          Icon(Icons.access_time_rounded, size: 18, color: _skyHdr),
           const SizedBox(width: 8),
           Text('When + conflicts',
-            style: const TextStyle(fontFamily: _bitroad, fontSize: 18, color: _brown)),
+            style: TextStyle(fontFamily: _bitroad, fontSize: 18, color: _brown)),
         ]),
         const SizedBox(height: 10),
         Row(children: [
@@ -2046,16 +2051,16 @@ class _SmartScheduleViewState extends ConsumerState<_SmartScheduleView>
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(label, style: _gaegu(
             size: 11, weight: FontWeight.w700, color: _brownSoft)),
-          Text(fmt(hour), style: const TextStyle(
+          Text(fmt(hour), style: TextStyle(
             fontFamily: _bitroad, fontSize: 20, color: _brown)),
         ])),
         Column(children: [
           GestureDetector(
             onTap: () => onChange(hour + 1 > 23 ? 23 : hour + 1),
-            child: const Icon(Icons.keyboard_arrow_up_rounded, size: 20, color: _brown)),
+            child: Icon(Icons.keyboard_arrow_up_rounded, size: 20, color: _brown)),
           GestureDetector(
             onTap: () => onChange(hour - 1 < 0 ? 0 : hour - 1),
-            child: const Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: _brown)),
+            child: Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: _brown)),
         ]),
       ]),
     );
@@ -2141,10 +2146,10 @@ class _SmartScheduleViewState extends ConsumerState<_SmartScheduleView>
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          const Icon(Icons.insights_rounded, size: 17, color: _brownLt),
+          Icon(Icons.insights_rounded, size: 17, color: _brownLt),
           const SizedBox(width: 6),
           Text('$total blocks · ${(mins / 60).toStringAsFixed(1)} hrs',
-            style: const TextStyle(fontFamily: _bitroad, fontSize: 17, color: _brown)),
+            style: TextStyle(fontFamily: _bitroad, fontSize: 17, color: _brown)),
           const Spacer(),
           if (peakLabel.isNotEmpty) Text('Peak: $peakLabel',
             style: _gaegu(size: 12, weight: FontWeight.w700, color: _brownLt)),
@@ -2169,7 +2174,7 @@ class _SmartScheduleViewState extends ConsumerState<_SmartScheduleView>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _cardFill,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: c.withOpacity(0.65))),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -2187,17 +2192,17 @@ class _SmartScheduleViewState extends ConsumerState<_SmartScheduleView>
       return Container(
         padding: const EdgeInsets.all(22),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.9),
+          color: _cardFill.withOpacity(0.9),
           borderRadius: BorderRadius.circular(22),
           border: Border.all(color: _outline.withOpacity(0.25), width: 1.5),
           boxShadow: [BoxShadow(color: _outline.withOpacity(0.2),
               offset: const Offset(4, 4), blurRadius: 0)],
         ),
         child: Column(children: [
-          const Icon(Icons.event_busy_rounded, size: 34, color: _brownSoft),
+          Icon(Icons.event_busy_rounded, size: 34, color: _brownSoft),
           const SizedBox(height: 8),
           Text('No free slots in your window',
-            style: const TextStyle(fontFamily: _bitroad, fontSize: 17, color: _brown)),
+            style: TextStyle(fontFamily: _bitroad, fontSize: 17, color: _brown)),
           const SizedBox(height: 2),
           Text('Try widening Earliest / Latest, or turning off "Avoid weekends".',
             textAlign: TextAlign.center,
@@ -2223,7 +2228,7 @@ class _SmartScheduleViewState extends ConsumerState<_SmartScheduleView>
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(4, 4, 4, 6),
-            child: Text(entry.key, style: const TextStyle(
+            child: Text(entry.key, style: TextStyle(
               fontFamily: _bitroad, fontSize: 16, color: _brown)),
           ),
           ...entry.value.map(_blockCard),

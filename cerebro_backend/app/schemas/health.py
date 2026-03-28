@@ -1,3 +1,7 @@
+"""
+CEREBRO - Health Domain Schemas
+"""
+
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import datetime, date, time
@@ -5,7 +9,6 @@ from uuid import UUID
 from decimal import Decimal
 
 
-# sleep
 class SleepLogCreate(BaseModel):
     date: date
     bedtime: datetime
@@ -30,7 +33,6 @@ class SleepLogResponse(BaseModel):
         from_attributes = True
 
 
-# medication
 class MedicationCreate(BaseModel):
     name: str = Field(..., max_length=100)
     dosage: str = Field(..., max_length=100)
@@ -59,16 +61,6 @@ class MedicationResponse(BaseModel):
         from_attributes = True
 
 
-class MedicationUpdate(BaseModel):
-    name: Optional[str] = Field(None, max_length=100)
-    dosage: Optional[str] = Field(None, max_length=100)
-    frequency: Optional[str] = Field(None, pattern=r"^(daily|weekly|as_needed)$")
-    times_of_day: Optional[List[time]] = None
-    reminder_enabled: Optional[bool] = None
-    is_active: Optional[bool] = None
-
-
-# medication log
 class MedicationLogCreate(BaseModel):
     medication_id: UUID
     scheduled_time: datetime
@@ -90,25 +82,9 @@ class MedicationLogResponse(BaseModel):
         from_attributes = True
 
 
-class AdherenceStatsResponse(BaseModel):
-    medication_id: UUID
-    medication_name: str
-    total_logs: int
-    taken_count: int
-    skipped_count: int
-    delayed_count: int
-    adherence_pct: float
-    current_streak: int
-    side_effects_reported: int
-
-    class Config:
-        from_attributes = True
-
-
-# mood
 class MoodEntryCreate(BaseModel):
     mood_id: Optional[UUID] = None
-    mood_type: Optional[str] = None       # accept mood by name (e.g. "happy")
+    mood_type: Optional[str] = None       # Accept mood by name (e.g. "happy")
     note: Optional[str] = None
     energy_level: Optional[int] = Field(None, ge=1, le=5)
     context_tags: List[str] = []
@@ -141,7 +117,30 @@ class MoodDefinitionResponse(BaseModel):
         from_attributes = True
 
 
-# symptom
+class MedicationUpdate(BaseModel):
+    name: Optional[str] = Field(None, max_length=100)
+    dosage: Optional[str] = Field(None, max_length=100)
+    frequency: Optional[str] = Field(None, pattern=r"^(daily|weekly|as_needed)$")
+    times_of_day: Optional[List[time]] = None
+    reminder_enabled: Optional[bool] = None
+    is_active: Optional[bool] = None
+
+
+class AdherenceStatsResponse(BaseModel):
+    medication_id: UUID
+    medication_name: str
+    total_logs: int
+    taken_count: int
+    skipped_count: int
+    delayed_count: int
+    adherence_pct: float  # 0-100
+    current_streak: int
+    side_effects_reported: int
+
+    class Config:
+        from_attributes = True
+
+
 class SymptomLogCreate(BaseModel):
     symptom_type: str = Field(..., max_length=50)
     intensity: int = Field(..., ge=1, le=10)
@@ -171,12 +170,11 @@ class SymptomPatternsResponse(BaseModel):
     most_common_type: Optional[str]
     most_common_count: int = 0
     avg_intensity: float = 0.0
-    top_triggers: List[dict] = []
-    top_relief: List[dict] = []
-    correlations: List[str] = []
+    top_triggers: List[dict] = []   # [{trigger: str, count: int, pct: float}]
+    top_relief: List[dict] = []     # [{method: str, count: int}]
+    correlations: List[str] = []    # Human-readable insight strings
 
 
-# water
 class WaterLogCreate(BaseModel):
     glasses: int = Field(..., ge=0, le=20)
     goal: Optional[int] = Field(None, ge=1, le=20)
@@ -194,13 +192,11 @@ class WaterLogResponse(BaseModel):
         from_attributes = True
 
 
-# health insights
 class HealthInsight(BaseModel):
     type: str          # correlation, streak, trend, tip, warning
     icon: str          # bulb, fire, chart_up, chart_down, water, moon, pill, heart
     text: str
     priority: int = 0  # higher = show first
-
 
 class WeeklySummary(BaseModel):
     avg_sleep: float = 0.0
@@ -209,7 +205,6 @@ class WeeklySummary(BaseModel):
     water_avg: float = 0.0
     symptom_count: int = 0
     days_tracked: int = 0
-
 
 class HealthInsightsResponse(BaseModel):
     wellness_score: int = 0  # 0-100

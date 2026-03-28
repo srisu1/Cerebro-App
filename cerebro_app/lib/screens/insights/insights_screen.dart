@@ -1,19 +1,8 @@
-//  CEREBRO — Cross-Domain Insights  (v2 — Study-Analytics shell parity)
-//
-//  Rebuilt from scratch to match the rest of the app (Subjects / Study
-//  Analytics shell): mellow palette, pocket cards, Bitroad headings,
-//  paw-print bg, stagger-in animations, pill tabs.
-//
-//  Tabs:
-//   • Pulse    — Wellness ring + trend, headline, weekly stream, domain chips
-//   • Patterns — Correlations table, detected patterns, cross-domain links
-//   • Rhythms  — Weekday bars, hourly heatmap, sleep↔mood scatter
-//   • Plan     — Prioritised recommendations with deep-links to each screen
-//
-//  Backend powering this: GET /api/v1/insights/dashboard
+// Cross-domain insights — Pulse, Patterns, Rhythms, Plan tabs.
 
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:cerebro_app/config/theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -23,45 +12,46 @@ import 'package:cerebro_app/providers/dashboard_provider.dart';
 import 'package:cerebro_app/models/avatar_config.dart';
 import 'package:cerebro_app/widgets/mood_sticker.dart';
 
-const _ombre1 = Color(0xFFFFFBF7);
-const _ombre2 = Color(0xFFFFF8F3);
-const _ombre3 = Color(0xFFFFF3EF);
-const _ombre4 = Color(0xFFFEEDE9);
-const _pawClr = Color(0xFFF8BCD0);
 
-const _outline   = Color(0xFF6E5848);
-const _brown     = Color(0xFF4E3828);
-const _brownLt   = Color(0xFF7A5840);
-const _brownSoft = Color(0xFF9A8070);
+bool get _darkMode =>
+    CerebroTheme.brightnessNotifier.value == Brightness.dark;
 
-const _cardFill = Color(0xFFFFF8F4);
-const _cream    = Color(0xFFFDEFDB);
-
+Color get _ombre1 => _darkMode ? const Color(0xFF191513) : const Color(0xFFFFFBF7);
+Color get _ombre2 => _darkMode ? const Color(0xFF1E1A17) : const Color(0xFFFFF8F3);
+Color get _ombre3 => _darkMode ? const Color(0xFF29221D) : const Color(0xFFFFF3EF);
+Color get _ombre4 => _darkMode ? const Color(0xFF312821) : const Color(0xFFFEEDE9);
+Color get _pawClr => _darkMode ? const Color(0xFF231D18) : const Color(0xFFF8BCD0);
+Color get _outline => _darkMode ? const Color(0xFFAD7F58) : const Color(0xFF6E5848);
+Color get _brown => _darkMode ? const Color(0xFFF2E1CA) : const Color(0xFF4E3828);
+Color get _brownLt => _darkMode ? const Color(0xFFDBB594) : const Color(0xFF7A5840);
+Color get _brownSoft => _darkMode ? const Color(0xFFBD926C) : const Color(0xFF9A8070);
+Color get _cardFill => _darkMode ? const Color(0xFF29221D) : const Color(0xFFFFF8F4);
+Color get _cream => _darkMode ? const Color(0xFF1E1A17) : const Color(0xFFFDEFDB);
 // Mellow palette (primary surfaces)
-const _mTerra  = Color(0xFFD9B5A6);
-const _mSlate  = Color(0xFFB6CBD6);
-const _mSage   = Color(0xFFB5C4A0);
-const _mMint   = Color(0xFFC8DCC2);
-const _mLav    = Color(0xFFC9B8D9);
-const _mButter = Color(0xFFE8D4A0);
-const _mBlush  = Color(0xFFEAD0CE);
-const _mSand   = Color(0xFFE8D9C2);
-
+Color get _mTerra => const Color(0xFFD9B5A6);
+Color get _mSlate => const Color(0xFFB6CBD6);
+Color get _mSage => const Color(0xFFB5C4A0);
+Color get _mMint => const Color(0xFFC8DCC2);
+Color get _mLav => const Color(0xFFC9B8D9);
+Color get _mButter => const Color(0xFFE8D4A0);
+Color get _mBlush => const Color(0xFFEAD0CE);
+Color get _mSand => const Color(0xFFE8D9C2);
 // Accent depths
-const _olive   = Color(0xFF98A869);
-const _coral   = Color(0xFFF7AEAE);
-const _red     = Color(0xFFEF6262);
-const _gold    = Color(0xFFE4BC83);
-
+Color get _olive => const Color(0xFF98A869);
+Color get _coral => const Color(0xFFF7AEAE);
+Color get _red => const Color(0xFFEF6262);
+Color get _gold => const Color(0xFFE4BC83);
 const _bitroad = 'Bitroad';
 
+// Nullable `color` + in-body fallback — `_brown` is a runtime mode-aware
+// getter now, so it can't be a default parameter expression.
 TextStyle _gaegu({double size = 14, FontWeight weight = FontWeight.w600,
-        Color color = _brown, double? h}) =>
-    GoogleFonts.gaegu(fontSize: size, fontWeight: weight, color: color, height: h);
+        Color? color, double? h}) =>
+    GoogleFonts.gaegu(fontSize: size, fontWeight: weight, color: color ?? _brown, height: h);
 
 TextStyle _nunito({double size = 12, FontWeight weight = FontWeight.w600,
-        Color color = _brown, double? h, double? letter}) =>
-    GoogleFonts.nunito(fontSize: size, fontWeight: weight, color: color,
+        Color? color, double? h, double? letter}) =>
+    GoogleFonts.nunito(fontSize: size, fontWeight: weight, color: color ?? _brown,
         height: h, letterSpacing: letter);
 
 double? _asD(dynamic v) {
@@ -176,7 +166,7 @@ class _InsightsScreenState extends ConsumerState<InsightsScreen>
     return Material(
       type: MaterialType.transparency,
       child: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft, end: Alignment.bottomRight,
             colors: [_ombre1, _ombre2, _ombre3, _ombre4],
@@ -225,7 +215,7 @@ class _InsightsScreenState extends ConsumerState<InsightsScreen>
       Expanded(child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Insights',
+          Text('Insights',
             style: TextStyle(fontFamily: _bitroad, fontSize: 26,
                 color: _brown, height: 1.15)),
           const SizedBox(height: 2),
@@ -285,14 +275,14 @@ class _InsightsScreenState extends ConsumerState<InsightsScreen>
             boxShadow: [BoxShadow(color: _outline.withOpacity(0.15),
                 offset: const Offset(2, 2), blurRadius: 0)],
           ),
-          child: const Icon(Icons.auto_awesome_rounded, size: 16, color: _brown),
+          child: Icon(Icons.auto_awesome_rounded, size: 16, color: _brown),
         ),
         const SizedBox(width: 10),
         Expanded(child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('Sample insights',
-              style: const TextStyle(fontFamily: _bitroad, fontSize: 14, color: _brown)),
+              style: TextStyle(fontFamily: _bitroad, fontSize: 14, color: _brown)),
             Text('You haven\'t logged much yet — these charts mix your real data with a demo preview.',
               style: _gaegu(size: 12, color: _brownSoft, h: 1.3)),
           ],
@@ -303,11 +293,25 @@ class _InsightsScreenState extends ConsumerState<InsightsScreen>
 
   //  TAB BAR
   Widget _tabBar() {
+    // Per-tab active hue. In dark mode each pastel flips to its CRUMBS
+    // shade-4 tint so the cream `_brown` text reads clearly on top —
+    // light pastels + light text was the source of the washed-out look.
+    final activeBlush  = _darkMode ? const Color(0xFF411C35) : _mBlush;
+    final activeLav    = _darkMode ? const Color(0xFF2E1F45) : _mLav;
+    final activeSage   = _darkMode ? const Color(0xFF143125) : _mSage;
+    final activeButter = _darkMode ? const Color(0xFF3E2F15) : _mButter;
+    // Inactive pill — warm BROWN-3 in dark mode (one step darker than
+    // the card surface) so the row reads as a set of chips rather than
+    // white slabs painted over black.
+    final inactiveBg = _darkMode
+        ? const Color(0xFF312821)
+        : Colors.white.withOpacity(0.85);
+
     final tabs = <(IconData, String, Color)>[
-      (Icons.favorite_rounded,         'Pulse',    _mBlush),
-      (Icons.compare_arrows_rounded,   'Patterns', _mLav),
-      (Icons.schedule_rounded,         'Rhythms',  _mSage),
-      (Icons.lightbulb_outline_rounded,'Plan',     _mButter),
+      (Icons.favorite_rounded,         'Pulse',    activeBlush),
+      (Icons.compare_arrows_rounded,   'Patterns', activeLav),
+      (Icons.schedule_rounded,         'Rhythms',  activeSage),
+      (Icons.lightbulb_outline_rounded,'Plan',     activeButter),
     ];
     return SizedBox(
       height: 44,
@@ -322,10 +326,10 @@ class _InsightsScreenState extends ConsumerState<InsightsScreen>
                 onTap: () => _tabCtrl.animateTo(i),
                 child: Container(
                   decoration: BoxDecoration(
-                    color: isActive ? tabs[i].$3 : Colors.white.withOpacity(0.85),
+                    color: isActive ? tabs[i].$3 : inactiveBg,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                      color: isActive ? _outline : _outline.withOpacity(0.25),
+                      color: isActive ? _outline : _outline.withOpacity(0.45),
                       width: isActive ? 2 : 1.5,
                     ),
                     boxShadow: isActive
@@ -373,7 +377,7 @@ class _InsightsScreenState extends ConsumerState<InsightsScreen>
     return Padding(
       padding: const EdgeInsets.only(top: 56),
       child: Column(children: [
-        const CircularProgressIndicator(color: _olive, strokeWidth: 3),
+        CircularProgressIndicator(color: _olive, strokeWidth: 3),
         const SizedBox(height: 14),
         Text('Weaving your cross-domain story...',
           style: _gaegu(size: 16, color: _brownSoft, weight: FontWeight.w700)),
@@ -396,10 +400,10 @@ class _InsightsScreenState extends ConsumerState<InsightsScreen>
             boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
                 offset: const Offset(3, 3), blurRadius: 0)],
           ),
-          child: const Icon(Icons.cloud_off_rounded, size: 36, color: _brown),
+          child: Icon(Icons.cloud_off_rounded, size: 36, color: _brown),
         ),
         const SizedBox(height: 14),
-        const Text("Couldn't load insights",
+        Text("Couldn't load insights",
           style: TextStyle(fontFamily: _bitroad, fontSize: 20, color: _brown)),
         const SizedBox(height: 4),
         Padding(
@@ -428,10 +432,10 @@ class _InsightsScreenState extends ConsumerState<InsightsScreen>
             boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
                 offset: const Offset(3, 3), blurRadius: 0)],
           ),
-          child: const Icon(Icons.insights_rounded, size: 36, color: _brownLt),
+          child: Icon(Icons.insights_rounded, size: 36, color: _brownLt),
         ),
         const SizedBox(height: 14),
-        const Text('Nothing to show yet',
+        Text('Nothing to show yet',
           style: TextStyle(fontFamily: _bitroad, fontSize: 20, color: _brown)),
         const SizedBox(height: 4),
         Text('Log a mood, a sleep, or a study session to start building patterns.',
@@ -596,7 +600,7 @@ class _WellnessRingCard extends StatelessWidget {
             ),
             Column(mainAxisSize: MainAxisSize.min, children: [
               Text('$score',
-                style: const TextStyle(fontFamily: _bitroad,
+                style: TextStyle(fontFamily: _bitroad,
                     fontSize: 48, color: _brown, height: 1.0)),
               Text('of 100',
                 style: _nunito(size: 10, weight: FontWeight.w900,
@@ -642,7 +646,7 @@ class _BreakdownPip extends StatelessWidget {
       ),
       child: Column(children: [
         Text('$value',
-          style: const TextStyle(fontFamily: _bitroad, fontSize: 16, color: _brown,
+          style: TextStyle(fontFamily: _bitroad, fontSize: 16, color: _brown,
             height: 1.0)),
         Text('/25',
           style: _nunito(size: 8, color: _brownLt, weight: FontWeight.w700)),
@@ -797,7 +801,7 @@ class _HeadlineCard extends StatelessWidget {
             boxShadow: [BoxShadow(color: _outline.withOpacity(0.15),
                 offset: const Offset(2, 2), blurRadius: 0)],
           ),
-          child: const Icon(Icons.auto_awesome_rounded, size: 18, color: _brown),
+          child: Icon(Icons.auto_awesome_rounded, size: 18, color: _brown),
         ),
         const SizedBox(width: 12),
         Expanded(child: Text(text,
@@ -808,15 +812,7 @@ class _HeadlineCard extends StatelessWidget {
 }
 
 
-/// Weekly strip showing SLEEP HOURS per day for the last 7 days. Deliberately
-/// cross-domain — Study Analytics already shows study minutes by day, so this
-/// card's job is to surface the sleep pattern (and how it compares to the
-/// recommended 7h target).
-///
-/// Each column: sleep hours number above, vertical bar filling toward the
-/// 7h target, day label below. A dashed target line sits across the bars
-/// at 7h so undersleep is visually obvious. Summary strip under the chart
-/// gives the weekly average, best night, and number of nights ≥ 7h.
+// Weekly sleep hours strip — 7-day bars with target line at 7h.
 class _WeeklyStrip extends StatelessWidget {
   final List<Map<String, dynamic>> days;
   const _WeeklyStrip({required this.days});
@@ -999,7 +995,7 @@ class _WeeklyStat extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(value,
-          style: const TextStyle(fontFamily: _bitroad, fontSize: 14,
+          style: TextStyle(fontFamily: _bitroad, fontSize: 14,
               color: _brown, height: 1.0)),
         const SizedBox(height: 2),
         Text(label,
@@ -1245,7 +1241,7 @@ class _DomainChip extends StatelessWidget {
         ]),
         const SizedBox(height: 8),
         Text(value,
-          style: const TextStyle(fontFamily: _bitroad,
+          style: TextStyle(fontFamily: _bitroad,
               fontSize: 22, color: _brown, height: 1.05)),
         const SizedBox(height: 2),
         Text(sub,
@@ -1374,7 +1370,7 @@ class _CorrelationRow extends StatelessWidget {
           ),
           const SizedBox(width: 9),
           Expanded(child: Text(label,
-            style: const TextStyle(fontFamily: _bitroad, fontSize: 16, color: _brown))),
+            style: TextStyle(fontFamily: _bitroad, fontSize: 16, color: _brown))),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
@@ -1409,9 +1405,7 @@ class _CorrelationRow extends StatelessWidget {
 }
 
 
-/// Small all-caps divider label for the tiered correlation list.
-/// Lives between sections ("Top signals" / "Weaker but still worth noting")
-/// so the hierarchy reads at a glance.
+// Section divider label for the correlation list.
 class _MiniHeader extends StatelessWidget {
   final String label;
   final Color tint;
@@ -1435,9 +1429,7 @@ class _MiniHeader extends StatelessWidget {
 }
 
 
-/// Featured card for the single strongest correlation. Bigger type, a
-/// pocket-style decoration, and a "STRONGEST SIGNAL" badge so the user
-/// instantly sees which relationship matters most in their data.
+// Featured card for the strongest correlation.
 class _CorrelationHeadline extends StatelessWidget {
   final Map<String, dynamic> item;
   const _CorrelationHeadline({required this.item});
@@ -1472,7 +1464,7 @@ class _CorrelationHeadline extends StatelessWidget {
               border: Border.all(color: _outline.withOpacity(0.25), width: 0.8),
             ),
             child: Row(children: [
-              const Icon(Icons.auto_awesome_rounded, size: 11, color: _brown),
+              Icon(Icons.auto_awesome_rounded, size: 11, color: _brown),
               const SizedBox(width: 4),
               Text('STRONGEST SIGNAL',
                 style: _nunito(
@@ -1495,7 +1487,7 @@ class _CorrelationHeadline extends StatelessWidget {
         ]),
         const SizedBox(height: 12),
         Text(label,
-          style: const TextStyle(
+          style: TextStyle(
             fontFamily: _bitroad, fontSize: 20, color: _brown, height: 1.1)),
         const SizedBox(height: 10),
         _CorrelationBar(value: corr, color: barColor),
@@ -1511,12 +1503,7 @@ class _CorrelationHeadline extends StatelessWidget {
 }
 
 
-/// Compact card for the "tail" correlations — the ones that passed the
-/// relevance filter (|r| >= 0.3) but aren't headline-worthy. Still shows
-/// the label, coefficient pill, AND the insight explanation so every
-/// surfaced correlation gets a "so what" readable by the user. Only the
-/// big symmetric bar chart is dropped (coefficient pill + tight bar is
-/// enough for lesser signals).
+// Compact row for secondary correlations.
 class _CorrelationCompactRow extends StatelessWidget {
   final Map<String, dynamic> item;
   const _CorrelationCompactRow({required this.item});
@@ -1673,7 +1660,7 @@ class _PatternRow extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(item['title']?.toString() ?? '',
-              style: const TextStyle(fontFamily: _bitroad, fontSize: 15, color: _brown)),
+              style: TextStyle(fontFamily: _bitroad, fontSize: 15, color: _brown)),
             const SizedBox(height: 3),
             Text(item['description']?.toString() ?? '',
               style: _gaegu(size: 12, color: _brownSoft, h: 1.35,
@@ -1783,13 +1770,7 @@ class _RhythmsTab extends StatelessWidget {
 }
 
 
-/// Horizontal bar chart: one row per weekday (Mon…Sun), bar length = avg
-/// mood score (1–5) for that day of the week. Trailing metric: avg sleep
-/// hours on that weekday. The day with the highest mood gets a sage tint
-/// plus a star so "which weekday feels best" is obvious.
-///
-/// Deliberately cross-domain (mood + sleep) so it doesn't duplicate Study
-/// Analytics, which already shows study minutes by weekday.
+// Weekday mood + sleep bar chart (Mon-Sun).
 class _WeekdayGrid extends StatelessWidget {
   final List<Map<String, dynamic>> days;
   const _WeekdayGrid({required this.days});
@@ -2107,13 +2088,7 @@ class _SleepMoodScatter extends StatelessWidget {
 
 //  CROSS-DOMAIN WIDGETS  (used by the Rhythms tab)
 
-/// "What fuels your best days" — splits the last 30 days into top-tier
-/// mood days vs low-tier mood days, then compares avg sleep / study /
-/// habits / focus side by side. This is the single most actionable view
-/// on the screen: it answers "what actually makes a good day good".
-///
-/// Cross-domain: takes the user's mood (outcome) and correlates it
-/// against sleep, study, habits, focus (inputs) simultaneously.
+// "Best days" comparison — good-mood vs bad-mood day averages.
 class _BestDaysFormula extends StatelessWidget {
   final List<Map<String, dynamic>> records;
   const _BestDaysFormula({required this.records});
@@ -2325,10 +2300,7 @@ class _BestDaysBar extends StatelessWidget {
 }
 
 
-/// "Sleep → next-day mood" — dual-axis lag view. Last 14 days (rolling).
-/// Each column pairs night[i-1] sleep (top bar) with day[i] mood (bottom
-/// sticker-dot). Makes the causal link visible: did a bad night of sleep
-/// turn into a bad-mood day?
+// Sleep-to-next-day-mood lag chart (14-day rolling).
 class _SleepLagMoodChart extends StatelessWidget {
   final List<Map<String, dynamic>> records;
   const _SleepLagMoodChart({required this.records});
@@ -2499,10 +2471,7 @@ class _LegendSwatch extends StatelessWidget {
 }
 
 
-/// Bedtime consistency — renders each night's bedtime as a dot on a 19:00-
-/// 03:00 horizontal timeline, overlaid with the median bedtime and the
-/// ±spread band. Reads rhythms.bedtime_median + bedtime_spread_hours,
-/// fields that were already in the /insights payload but unused.
+// Bedtime consistency dot chart with median + spread band.
 class _BedtimeConsistencyCard extends StatelessWidget {
   final List<Map<String, dynamic>> records;
   final double? spread;   // std-dev in hours
@@ -2638,10 +2607,7 @@ class _BedtimeConsistencyCard extends StatelessWidget {
 }
 
 
-/// "Habits → mood lift" — the simplest, highest-signal correlation on the
-/// screen. Groups the last 30 days into full-habit days (80%+ complete)
-/// and skip days (<50% complete), shows the avg mood on each. The delta
-/// tells the user in one number whether habits actually move their mood.
+// Habits-to-mood comparison — full-habit days vs skip days.
 class _HabitMoodLiftCard extends StatelessWidget {
   final List<Map<String, dynamic>> records;
   const _HabitMoodLiftCard({required this.records});
@@ -2745,7 +2711,7 @@ class _HabitMoodTile extends StatelessWidget {
         const SizedBox(height: 6),
         Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
           Text(mood.toStringAsFixed(1),
-            style: const TextStyle(
+            style: TextStyle(
                 fontFamily: _bitroad, fontSize: 28, color: _brown, height: 1)),
           const SizedBox(width: 4),
           Padding(
@@ -2857,7 +2823,7 @@ class _RecCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(title,
-              style: const TextStyle(fontFamily: _bitroad, fontSize: 15, color: _brown)),
+              style: TextStyle(fontFamily: _bitroad, fontSize: 15, color: _brown)),
             const SizedBox(height: 4),
             Text(desc,
               style: _gaegu(size: 12, color: _brown, h: 1.4,
@@ -2874,15 +2840,15 @@ class _RecCard extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(
                     horizontal: 10, vertical: 5),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.7),
+                    color: _cardFill.withOpacity(0.7),
                     borderRadius: BorderRadius.circular(999),
                     border: Border.all(color: _outline.withOpacity(0.3), width: 1.2),
                   ),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    const Icon(Icons.arrow_forward_rounded, size: 14, color: _brown),
+                    Icon(Icons.arrow_forward_rounded, size: 14, color: _brown),
                     const SizedBox(width: 5),
                     Text(_deeplinkLabel(deeplink),
-                      style: const TextStyle(fontFamily: _bitroad,
+                      style: TextStyle(fontFamily: _bitroad,
                           fontSize: 12, color: _brown)),
                   ]),
                 ),
@@ -2927,13 +2893,13 @@ class _BackPill extends StatelessWidget {
     child: Container(
       width: 40, height: 40,
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.88),
+        color: _cardFill.withOpacity(0.88),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: _outline.withOpacity(0.22), width: 1.5),
         boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
             offset: const Offset(3, 3), blurRadius: 0)],
       ),
-      child: const Icon(Icons.arrow_back_rounded, size: 20, color: _brown),
+      child: Icon(Icons.arrow_back_rounded, size: 20, color: _brown),
     ),
   );
 }
@@ -2994,7 +2960,7 @@ class _SectionHeader extends StatelessWidget {
       const SizedBox(width: 10),
       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(title,
-          style: const TextStyle(fontFamily: _bitroad, fontSize: 18, color: _brown)),
+          style: TextStyle(fontFamily: _bitroad, fontSize: 18, color: _brown)),
         if (subtitle != null && subtitle!.isNotEmpty)
           Text(subtitle!,
             style: _gaegu(size: 11, color: _brownSoft, weight: FontWeight.w600)),
@@ -3106,7 +3072,7 @@ class _ConditionBanner extends StatelessWidget {
               boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
                   offset: const Offset(2, 2), blurRadius: 0)],
             ),
-            child: const Icon(Icons.auto_awesome, size: 16, color: _brown),
+            child: Icon(Icons.auto_awesome, size: 16, color: _brown),
           ),
           const SizedBox(width: 10),
           Expanded(child: Column(
@@ -3127,7 +3093,7 @@ class _ConditionBanner extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.55),
+                  color: _cardFill.withOpacity(0.55),
                   borderRadius: BorderRadius.circular(999),
                   border: Border.all(color: _outline.withOpacity(0.28),
                       width: 1),
@@ -3174,7 +3140,7 @@ class _ConditionTipRow extends StatelessWidget {
       margin: const EdgeInsets.only(top: 8),
       padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.6),
+        color: _cardFill.withOpacity(0.6),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: _outline.withOpacity(0.22), width: 1),
       ),

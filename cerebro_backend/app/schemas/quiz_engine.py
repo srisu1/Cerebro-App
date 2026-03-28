@@ -1,3 +1,8 @@
+"""
+CEREBRO - Quiz Engine Schemas
+Pydantic models for study materials, generated quizzes, questions, scheduling.
+"""
+
 from datetime import datetime, date
 from decimal import Decimal
 from typing import Optional, List
@@ -5,7 +10,6 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 
-# study material schemas
 
 class StudyMaterialCreate(BaseModel):
     subject_id: Optional[UUID] = None
@@ -38,7 +42,6 @@ class StudyMaterialResponse(BaseModel):
         from_attributes = True
 
 
-# quiz generation request
 
 class QuizGenerateRequest(BaseModel):
     material_ids: List[UUID] = Field(..., min_length=1)
@@ -46,18 +49,21 @@ class QuizGenerateRequest(BaseModel):
     title: Optional[str] = Field(None, max_length=200)
     question_count: int = Field(default=10, ge=3, le=50)
     question_types: List[str] = Field(default=["mcq", "true_false", "fill_blank"])
-    difficulty: Optional[int] = Field(None, ge=1, le=5)
+    difficulty: Optional[int] = Field(None, ge=1, le=5)  # None = mixed
     time_limit_minutes: Optional[int] = Field(None, ge=1, le=180)
+    # Optional: names of topics to focus the generator on. When present, the AI
+    # is told to draw questions primarily from these topics (subset of what
+    # actually appears on the selected materials).
+    topic_filter: Optional[List[str]] = None
 
 
-# quiz question schemas
 
 class QuizQuestionResponse(BaseModel):
     id: UUID
     question_type: str
     question_text: str
     options: List[str]
-    correct_answer: Optional[str] = None
+    correct_answer: Optional[str] = None  # Hidden during quiz, shown in review
     explanation: Optional[str] = None
     topic: Optional[str]
     difficulty: int
@@ -70,6 +76,7 @@ class QuizQuestionResponse(BaseModel):
 
 
 class QuizQuestionForTaking(BaseModel):
+    """Question view during quiz — hides correct answer and explanation."""
     id: UUID
     question_type: str
     question_text: str
@@ -89,7 +96,6 @@ class AnswerSubmit(BaseModel):
     user_answer: str
 
 
-# generated quiz schemas
 
 class GeneratedQuizResponse(BaseModel):
     id: UUID
@@ -115,10 +121,12 @@ class GeneratedQuizResponse(BaseModel):
 
 
 class GeneratedQuizDetail(GeneratedQuizResponse):
+    """Full quiz detail including all questions."""
     questions: List[QuizQuestionResponse] = []
 
 
 class GeneratedQuizForTaking(BaseModel):
+    """Quiz view during taking — questions hide answers."""
     id: UUID
     title: str
     quiz_type: str
@@ -133,7 +141,6 @@ class GeneratedQuizForTaking(BaseModel):
         from_attributes = True
 
 
-# quiz schedule schemas
 
 class QuizScheduleCreate(BaseModel):
     frequency: str = Field(default="weekly", pattern="^(weekly|biweekly|monthly)$")

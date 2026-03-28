@@ -1,4 +1,4 @@
-// Title/splash screen with time-of-day greeting and animated loader.
+// Title screen with animated loader and time-of-day greeting.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -127,37 +127,31 @@ class _TitleScreenState extends ConsumerState<TitleScreen>
   Future<void> _go() async {
     final pr = await SharedPreferences.getInstance();
     if (!mounted) return;
-    // The onboarding carousel and setup wizard are skipped for now.
-    // We mark both as "complete" so any downstream guards (HomeScreen,
-    // setup-flow redirects, avatar gate) don't bounce the user back in.
-    // Users get straight to login (if logged-out) or home (if logged-in).
-    // To re-enable the wizard, delete this block and restore the gated
-    // routing below.
+    // The onboarding carousel, setup wizard, and avatar-setup gate are
+    // currently turned off. Stamp every wizard completion flag "done" so
+    // downstream guards stay green, then route straight to /home if we're
+    // authenticated, otherwise to /login.
     await pr.setBool(AppConstants.onboardingCompleteKey, true);
     await pr.setBool(AppConstants.setupCompleteKey, true);
     await pr.setBool(AppConstants.avatarCreatedKey, true);
-    final tk = pr.getString(AppConstants.accessTokenKey);
+    if (!mounted) return;
+    final tk    = pr.getString(AppConstants.accessTokenKey);
     final hasTk = tk != null && tk.isNotEmpty;
     if (!mounted) return;
     context.go(hasTk ? '/home' : '/login');
-    return;
-    // Original gated routing — restore by removing the override above:
-    // ignore: dead_code
-    final on = pr.getBool(AppConstants.onboardingCompleteKey) ?? false;
-    final tk2 = pr.getString(AppConstants.accessTokenKey);
-    final hasTk2 = tk2 != null && tk2.isNotEmpty;
-    final su = pr.getBool(AppConstants.setupCompleteKey) ?? false;
-    final av = pr.getBool(AppConstants.avatarCreatedKey) ?? false;
-    if (!mounted) return;
-    if (!on)     { context.go('/onboarding'); return; }
-    if (!hasTk2) { context.go('/login'); return; }
-    if (!su)     { context.go('/setup'); return; }
-    if (!av)     { context.go('/avatar-setup'); return; }
-    context.go('/home');
   }
 
   @override
   Widget build(BuildContext context) {
+    // Rebuild on theme flip so the game-card + inner surfaces swap
+    // from cream → dark brown without needing a remount.
+    return ValueListenableBuilder<Brightness>(
+      valueListenable: CerebroTheme.brightnessNotifier,
+      builder: (context, _, __) => _buildScaffold(context),
+    );
+  }
+
+  Widget _buildScaffold(BuildContext context) {
     return Scaffold(
       backgroundColor: CerebroTheme.olive,
       body: Stack(
@@ -181,7 +175,8 @@ class _TitleScreenState extends ConsumerState<TitleScreen>
                           height: double.infinity,
                           constraints: const BoxConstraints(maxWidth: 1400),
                           decoration: BoxDecoration(
-                            color: Colors.white,
+                            // Game-card surface — swaps to BROWN-1 in dark mode.
+                            color: CerebroTheme.cream,
                             borderRadius: BorderRadius.circular(24),
                             border: Border.all(
                                 color: CerebroTheme.text1, width: 3),
@@ -226,7 +221,7 @@ class _TitleScreenState extends ConsumerState<TitleScreen>
         // Gradient background (matches CSS: linear-gradient(160deg, cream, green-pale, pink-light))
         Positioned.fill(
           child: Container(
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment(-0.6, -0.8),
                 end: Alignment(0.6, 0.8),
@@ -352,7 +347,7 @@ class _TitleScreenState extends ConsumerState<TitleScreen>
                 child: FractionallySizedBox(
                   widthFactor: _barAc.value.clamp(0.0, 1.0),
                   child: Container(
-                    decoration: const BoxDecoration(
+                    decoration: BoxDecoration(
                       borderRadius: BorderRadius.all(Radius.circular(7)),
                       gradient: LinearGradient(
                         colors: [CerebroTheme.olive, CerebroTheme.pinkAccent],
