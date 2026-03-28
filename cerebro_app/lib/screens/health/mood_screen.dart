@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cerebro_app/config/theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
@@ -9,28 +10,31 @@ import 'package:cerebro_app/models/avatar_config.dart';
 import 'dart:math' as math;
 
 // PALETTE COLORS
-const _ombre1 = Color(0xFFFFFBF7);
-const _ombre2 = Color(0xFFFFF8F3);
-const _ombre3 = Color(0xFFFFF3EF);
-const _ombre4 = Color(0xFFFEEDE9);
-const _pawClr = Color(0xFFF8BCD0);
-const _outline = Color(0xFF6E5848);
-const _brown = Color(0xFF4E3828);
-const _brownLt = Color(0xFF7A5840);
-const _cardFill = Color(0xFFFFF8F4);
-const _coralHdr = Color(0xFFF0A898);
-const _coralLt = Color(0xFFF8C0B0);
-const _greenHdr = Color(0xFFA8D5A3);
-const _greenLt = Color(0xFFC2E8BC);
-const _greenDk = Color(0xFF88B883);
-const _goldHdr = Color(0xFFF0D878);
-const _goldLt = Color(0xFFFFF0C0);
-const _goldDk = Color(0xFFD0B048);
-const _purpleHdr = Color(0xFFCDA8D8);
-const _purpleLt = Color(0xFFD8C0E8);
-const _skyHdr = Color(0xFF9DD4F0);
-const _skyLt = Color(0xFFB8E0F8);
 
+bool get _darkMode =>
+    CerebroTheme.brightnessNotifier.value == Brightness.dark;
+
+Color get _ombre1 => _darkMode ? const Color(0xFF191513) : const Color(0xFFFFFBF7);
+Color get _ombre2 => _darkMode ? const Color(0xFF1E1A17) : const Color(0xFFFFF8F3);
+Color get _ombre3 => _darkMode ? const Color(0xFF29221D) : const Color(0xFFFFF3EF);
+Color get _ombre4 => _darkMode ? const Color(0xFF312821) : const Color(0xFFFEEDE9);
+Color get _pawClr => _darkMode ? const Color(0xFF231D18) : const Color(0xFFF8BCD0);
+Color get _outline => _darkMode ? const Color(0xFFAD7F58) : const Color(0xFF6E5848);
+Color get _brown => _darkMode ? const Color(0xFFF2E1CA) : const Color(0xFF4E3828);
+Color get _brownLt => _darkMode ? const Color(0xFFDBB594) : const Color(0xFF7A5840);
+Color get _cardFill => _darkMode ? const Color(0xFF29221D) : const Color(0xFFFFF8F4);
+Color get _coralHdr => const Color(0xFFF0A898);
+Color get _coralLt => const Color(0xFFF8C0B0);
+Color get _greenHdr => const Color(0xFFA8D5A3);
+Color get _greenLt => _darkMode ? const Color(0xFF143125) : const Color(0xFFC2E8BC);
+Color get _greenDk => const Color(0xFF88B883);
+Color get _goldHdr => const Color(0xFFF0D878);
+Color get _goldLt => const Color(0xFFFFF0C0);
+Color get _goldDk => const Color(0xFFD0B048);
+Color get _purpleHdr => const Color(0xFFCDA8D8);
+Color get _purpleLt => const Color(0xFFD8C0E8);
+Color get _skyHdr => const Color(0xFF9DD4F0);
+Color get _skyLt => const Color(0xFFB8E0F8);
 // MOOD EMOJI MAP
 const _moodEmojis = {
   'Happy': '😊',
@@ -43,14 +47,17 @@ const _moodEmojis = {
   'Focused': '🎯',
 };
 
-const _moodColors = {
+// Runtime map — the _xxxHdr entries are mode-aware getters now, so this
+// can't be a const literal. Rebuilt on each getter access (cheap; it's only
+// read from UI event paths).
+Map<String, Color> get _moodColors => {
   'Happy': _goldHdr,
   'Sad': _skyHdr,
   'Anxious': _coralHdr,
   'Calm': _greenHdr,
-  'Energetic': Color(0xFFFFB347),
+  'Energetic': const Color(0xFFFFB347),
   'Tired': _purpleHdr,
-  'Stressed': Color(0xFFE07070),
+  'Stressed': const Color(0xFFE07070),
   'Focused': _skyHdr,
 };
 
@@ -291,7 +298,7 @@ class _MoodScreenState extends ConsumerState<MoodScreen> with SingleTickerProvid
                   child: Row(
                     children: [
                       IconButton(
-                        icon: const Icon(Icons.arrow_back, color: _brown),
+                        icon: Icon(Icons.arrow_back, color: _brown),
                         onPressed: () {
                           ref.read(dashboardProvider.notifier).refresh();
                           Navigator.of(context).pop();
@@ -397,7 +404,7 @@ class _MoodScreenState extends ConsumerState<MoodScreen> with SingleTickerProvid
                         ),
                       );
                     },
-                    loading: () => const Padding(
+                    loading: () => Padding(
                       padding: EdgeInsets.all(16),
                       child: CircularProgressIndicator(color: _coralHdr),
                     ),
@@ -455,7 +462,7 @@ class _HowAreYouCard extends StatelessWidget {
         color: _cardFill,
         border: Border.all(color: _outline, width: 2),
         borderRadius: BorderRadius.circular(22),
-        boxShadow: const [
+        boxShadow: [
           BoxShadow(color: _outline, offset: Offset(0, 4), blurRadius: 0),
         ],
       ),
@@ -592,15 +599,15 @@ class _HowAreYouCard extends StatelessWidget {
               fillColor: _ombre3,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: _outline, width: 1.5),
+                borderSide: BorderSide(color: _outline, width: 1.5),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: _outline, width: 1.5),
+                borderSide: BorderSide(color: _outline, width: 1.5),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: _coralHdr, width: 2),
+                borderSide: BorderSide(color: _coralHdr, width: 2),
               ),
               contentPadding: const EdgeInsets.all(12),
             ),
@@ -898,7 +905,7 @@ class _MoodStatsCard extends StatelessWidget {
         color: _cardFill,
         border: Border.all(color: _outline, width: 2),
         borderRadius: BorderRadius.circular(22),
-        boxShadow: const [
+        boxShadow: [
           BoxShadow(color: _outline, offset: Offset(0, 4), blurRadius: 0),
         ],
       ),
@@ -1001,7 +1008,7 @@ class _LoadingCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(22),
       ),
       padding: const EdgeInsets.all(20),
-      child: const Center(
+      child: Center(
         child: CircularProgressIndicator(color: _coralHdr),
       ),
     );

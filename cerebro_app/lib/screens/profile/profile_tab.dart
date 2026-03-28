@@ -1,4 +1,4 @@
-// Profile tab — stats, settings, achievements, and avatar display
+// Profile tab — avatar hero, stats, XP exchange, achievements, settings.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,40 +10,71 @@ import 'package:cerebro_app/widgets/alive_avatar.dart';
 import 'package:cerebro_app/providers/auth_provider.dart';
 import 'package:cerebro_app/config/router.dart';
 import 'package:cerebro_app/providers/dashboard_provider.dart';
+import 'package:cerebro_app/providers/theme_mode_provider.dart';
 import 'package:cerebro_app/screens/home/home_screen.dart';
 import 'package:cerebro_app/services/api_service.dart';
 
-const _ombre1    = Color(0xFFFFFBF7);
-const _ombre2    = Color(0xFFFFF8F3);
-const _ombre3    = Color(0xFFFFF3EF);
-const _ombre4    = Color(0xFFFEEDE9);
-const _pawClr    = Color(0xFFF8BCD0);
-const _outline   = Color(0xFF6E5848);
-const _brown     = Color(0xFF4E3828);
-const _brownLt   = Color(0xFF7A5840);
-const _brownSoft = Color(0xFF9A8070);
-const _cardFill  = Color(0xFFFFF8F4);
-const _cream     = Color(0xFFFDEFDB);
-const _olive     = Color(0xFF98A869);
-const _oliveDk   = Color(0xFF58772F);
-const _pinkLt    = Color(0xFFFFD5F5);
-const _pink      = Color(0xFFFEA9D3);
-const _pinkDk    = Color(0xFFE890B8);
-const _coral     = Color(0xFFF7AEAE);
-const _gold      = Color(0xFFE4BC83);
-const _goldGlow  = Color(0xFFF8E080);
-const _goldDk    = Color(0xFFD0B048);
-const _orange    = Color(0xFFFFBC5C);
-const _red       = Color(0xFFEF6262);
-const _blueLt    = Color(0xFFDDF6FF);
-const _green     = Color(0xFFA8D5A3);
-const _greenDk   = Color(0xFF88B883);
-const _greenLt   = Color(0xFFC2E8BC);
-const _purpleLt  = Color(0xFFCDA8D8);
+// Every entry is now a mode-aware getter backed by
+// CerebroTheme.brightnessNotifier. Call sites keep using
+// `_cream`, `_outline`, `_brown`, etc. unchanged — when the
+// user flips dark mode, MaterialApp rebuilds, these getters
+// re-evaluate, and the profile screen repaints with the dark
+// palette automatically.
+//
+// Accent hues (pink, sage, olive, coral, gold) stay identical
+// across modes — shade-9 rule from CRUMBS-UI — so cerebro's
+// character (stickers, achievement chips) looks the same in
+// both themes. Surfaces, borders, and body text tiers are the
+// ones that flip.
+bool get _darkMode => CerebroTheme.brightnessNotifier.value == Brightness.dark;
+
+// Ombre gradient tiers (hero background)
+Color get _ombre1    => _darkMode ? const Color(0xFF191513) : const Color(0xFFFFFBF7);
+Color get _ombre2    => _darkMode ? const Color(0xFF1E1A17) : const Color(0xFFFFF8F3);
+Color get _ombre3    => _darkMode ? const Color(0xFF29221D) : const Color(0xFFFFF3EF);
+Color get _ombre4    => _darkMode ? const Color(0xFF312821) : const Color(0xFFFEEDE9);
+
+// Borders, body copy, card surfaces — these MUST flip
+Color get _outline   => _darkMode ? const Color(0xFFAD7F58) : const Color(0xFF6E5848);
+Color get _brown     => _darkMode ? const Color(0xFFF2E1CA) : const Color(0xFF4E3828);
+Color get _brownLt   => _darkMode ? const Color(0xFFDBB594) : const Color(0xFF7A5840);
+Color get _brownSoft => _darkMode ? const Color(0xFFBD926C) : const Color(0xFF9A8070);
+Color get _cardFill  => _darkMode ? const Color(0xFF29221D) : const Color(0xFFFFF8F4);
+Color get _cream     => _darkMode ? const Color(0xFF1E1A17) : const Color(0xFFFDEFDB);
+
+// Soft tinted backgrounds — flip to dark-tinted versions
+Color get _pinkLt    => _darkMode ? const Color(0xFF411C35) : const Color(0xFFFFD5F5);
+Color get _blueLt    => _darkMode ? const Color(0xFF102A4C) : const Color(0xFFDDF6FF);
+Color get _greenLt   => _darkMode ? const Color(0xFF143125) : const Color(0xFFC2E8BC);
 // Soft sage tint — used as the cash-pill / cash-stat background
 // so the sage dollar-bill sticker reads as part of the surface
 // instead of clashing with a warm gold/cream fill.
-const _cashTint  = Color(0xFFDCE8C9);
+Color get _cashTint  => _darkMode ? const Color(0xFF29331B) : const Color(0xFFDCE8C9);
+
+// Accent hues — same in both modes (CRUMBS-UI shade-9 rule)
+Color get _pawClr => _darkMode ? const Color(0xFF231D18) : const Color(0xFFF8BCD0);
+Color get _olive     => const Color(0xFF98A869);
+Color get _oliveDk   => const Color(0xFF58772F);
+Color get _pink      => const Color(0xFFFEA9D3);
+Color get _pinkDk    => const Color(0xFFE890B8);
+Color get _coral     => const Color(0xFFF7AEAE);
+Color get _gold      => const Color(0xFFE4BC83);
+Color get _goldGlow  => const Color(0xFFF8E080);
+Color get _goldDk    => const Color(0xFFD0B048);
+Color get _orange    => const Color(0xFFFFBC5C);
+Color get _red       => const Color(0xFFEF6262);
+Color get _green     => const Color(0xFFA8D5A3);
+Color get _greenDk   => const Color(0xFF88B883);
+Color get _purpleLt  => const Color(0xFFCDA8D8);
+
+// Pill-only background flips — the sticker hues (_gold / _orange) stay
+// identical across modes, but when they serve as a *pill* background with
+// `_brown` (light cream in dark mode) layered on top, the text becomes
+// illegible. These pill-bg getters return a dark CRUMBS shade-4 tint in
+// dark mode so the cream text pops, while keeping the light pastel look
+// in light mode where `_brown` (dark cocoa) already has enough contrast.
+Color get _goldPillBg   => _darkMode ? const Color(0xFF3E2F15) : const Color(0xFFE4BC83);
+Color get _orangePillBg => _darkMode ? const Color(0xFF402A15) : const Color(0xFFFFBC5C);
 
 class ProfileTab extends ConsumerStatefulWidget {
   const ProfileTab({super.key});
@@ -82,8 +113,39 @@ class _ProfileTabState extends ConsumerState<ProfileTab>
         _email = r.data['email'] as String?;
         _university = r.data['university'] as String?;
         _course = r.data['course'] as String?;
+        // Hydrate the notification toggles from persisted prefs so the
+        // Settings card reflects what the backend actually has. Defaults
+        // are TRUE on the server for any row predating the columns, which
+        // matches the current local default — so the UI doesn't flicker.
+        _notificationsOn = (r.data['notifications_enabled'] as bool?) ?? true;
+        _dailyRemindersOn = (r.data['daily_reminders_enabled'] as bool?) ?? true;
       });
     } catch (_) {}
+  }
+
+  // Optimistic toggle — flips locally, rolls back on server error.
+  Future<void> _saveNotifPref({
+    bool? notifications,
+    bool? dailyReminders,
+  }) async {
+    final api = ref.read(apiServiceProvider);
+    final payload = <String, dynamic>{};
+    if (notifications != null) payload['notifications_enabled'] = notifications;
+    if (dailyReminders != null) payload['daily_reminders_enabled'] = dailyReminders;
+    if (payload.isEmpty) return;
+    try {
+      await api.put('/auth/me', data: payload);
+    } catch (e) {
+      // Roll back on failure so the UI stays truthful.
+      if (!mounted) return;
+      setState(() {
+        if (notifications != null) _notificationsOn = !notifications;
+        if (dailyReminders != null) _dailyRemindersOn = !dailyReminders;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text("Couldn't save preference — check your connection."),
+      ));
+    }
   }
 
   Future<void> _loadAchievements() async {
@@ -111,7 +173,7 @@ class _ProfileTabState extends ConsumerState<ProfileTab>
     final ds = ref.watch(dashboardProvider);
     return Stack(children: [
       // Ombré background
-      Positioned.fill(child: Container(decoration: const BoxDecoration(
+      Positioned.fill(child: Container(decoration: BoxDecoration(
         gradient: LinearGradient(begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [_ombre1, _ombre2, _ombre3, _ombre4],
@@ -202,26 +264,26 @@ class _ProfileTabState extends ConsumerState<ProfileTab>
           child: Container(
             width: 34, height: 34,
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: _cardFill,
               borderRadius: BorderRadius.circular(10),
               border: Border.all(color: _outline, width: 2),
               boxShadow: [BoxShadow(color: _outline.withOpacity(0.45),
                 offset: const Offset(2, 2), blurRadius: 0)]),
-            child: const Icon(Icons.chevron_left_rounded, size: 20, color: _outline),
+            child: Icon(Icons.chevron_left_rounded, size: 20, color: _outline),
           ),
         ),
         const SizedBox(width: 10),
-        const Text('Profile', style: TextStyle(
+        Text('Profile', style: TextStyle(
           fontFamily: 'Bitroad', fontSize: 22, color: _brown)),
         const Spacer(),
         _ProfilePill(icon: Icons.star_rounded,
-          label: 'Lv. ${ds.level}', color: _gold),
+          label: 'Lv. ${ds.level}', color: _goldPillBg),
         const SizedBox(width: 7),
         _ProfilePill(iconWidget: const _CashBill(size: 18),
           label: '${ds.cash}', color: _cashTint),
         const SizedBox(width: 7),
         _ProfilePill(icon: Icons.local_fire_department_rounded,
-          label: '${ds.streak}', color: _orange),
+          label: '${ds.streak}', color: _orangePillBg),
       ],
     );
   }
@@ -314,7 +376,7 @@ class _ProfileTabState extends ConsumerState<ProfileTab>
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(ds.displayName, style: const TextStyle(
+        Text(ds.displayName, style: TextStyle(
           fontFamily: 'Bitroad', fontSize: 26, color: _brown, height: 1.1)),
         const SizedBox(height: 2),
         Text(_email ?? '', style: GoogleFonts.gaegu(
@@ -326,11 +388,15 @@ class _ProfileTabState extends ConsumerState<ProfileTab>
               fontWeight: FontWeight.w600, color: _brownLt)),
         ],
         const SizedBox(height: 8),
-        // Level badge
+        // Level badge — gradient flips to a dark amber sweep in dark mode
+        // so the cream `_brown` text stays legible. Light mode keeps the
+        // original glow→deep-gold feel.
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
           decoration: BoxDecoration(
-            gradient: const LinearGradient(colors: [_goldGlow, _goldDk]),
+            gradient: LinearGradient(colors: _darkMode
+                ? [const Color(0xFF3E2F15), const Color(0xFF5C451F)]
+                : [_goldGlow, _goldDk]),
             borderRadius: BorderRadius.circular(999),
             border: Border.all(color: _outline, width: 2),
             boxShadow: [BoxShadow(color: _outline.withOpacity(0.35),
@@ -341,7 +407,11 @@ class _ProfileTabState extends ConsumerState<ProfileTab>
             Container(width: 1.5, height: 12, color: _brown.withOpacity(0.25),
               margin: const EdgeInsets.symmetric(horizontal: 7)),
             Text(_title(ds.level), style: GoogleFonts.gaegu(
-              fontSize: 13, fontWeight: FontWeight.w700, color: _brownSoft)),
+              fontSize: 13, fontWeight: FontWeight.w700,
+              // In dark mode `_brownSoft` (#BD926C) reads as "burnt tan"
+              // which is too close to the amber gradient. Lift to `_brown`
+              // (cream) so the title doesn't blur into the pill.
+              color: _darkMode ? _brown : _brownSoft)),
           ]),
         ),
       ],
@@ -366,7 +436,7 @@ class _ProfileTabState extends ConsumerState<ProfileTab>
       borderRadius: BorderRadius.circular(18),
       border: Border.all(color: _outline, width: 3)),
     child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-      const Icon(Icons.face_rounded, size: 36, color: CerebroTheme.pinkPop),
+      Icon(Icons.face_rounded, size: 36, color: CerebroTheme.pinkPop),
       const SizedBox(height: 4),
       Text('Create avatar!', textAlign: TextAlign.center,
         style: GoogleFonts.gaegu(fontSize: 14, fontWeight: FontWeight.w700, color: _brown)),
@@ -387,7 +457,7 @@ class _ProfileTabState extends ConsumerState<ProfileTab>
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
         Text('Lv. ${ds.level}',
-          style: const TextStyle(fontFamily: 'Bitroad', fontSize: 12, color: _brownLt)),
+          style: TextStyle(fontFamily: 'Bitroad', fontSize: 12, color: _brownLt)),
         const SizedBox(width: 14),
         SizedBox(
           width: MediaQuery.of(context).size.width * 0.22,
@@ -401,7 +471,7 @@ class _ProfileTabState extends ConsumerState<ProfileTab>
               alignment: Alignment.centerLeft,
               widthFactor: progress,
               child: Container(decoration: BoxDecoration(
-                gradient: const LinearGradient(colors: [_olive, _oliveDk]),
+                gradient: LinearGradient(colors: [_olive, _oliveDk]),
                 borderRadius: BorderRadius.circular(999))),
             ),
           ),
@@ -434,16 +504,16 @@ class _ProfileTabState extends ConsumerState<ProfileTab>
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _buildCompactHero(ds),
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             _buildXpDivider(ds),
-            // Was 28 — trimmed to 16 so the stat pills / exchange / tip
-            // don't feel stranded way below the XP bar. User asked for
-            // the post-email content to ride a little higher.
-            const SizedBox(height: 16),
+            // Was 28 — eased to 22. Tighter than the original but still
+            // leaves real breathing room above the stats so nothing looks
+            // stacked on top of the XP bar.
+            const SizedBox(height: 22),
             _buildStatsGrid(ds),
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
             _buildExchangeCard(ds),
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
             _buildTip(ds),
           ],
         )),
@@ -522,7 +592,7 @@ class _ProfileTabState extends ConsumerState<ProfileTab>
         const SizedBox(height: 14),
         Text(ds.displayName,
           textAlign: TextAlign.center,
-          style: const TextStyle(
+          style: TextStyle(
             fontFamily: 'Bitroad', fontSize: 22, color: _brown, height: 1.1)),
         const SizedBox(height: 2),
         Text(_email ?? '',
@@ -537,11 +607,14 @@ class _ProfileTabState extends ConsumerState<ProfileTab>
               fontWeight: FontWeight.w600, color: _brownLt)),
         ],
         const SizedBox(height: 8),
-        // Level badge
+        // Level badge — dark-amber gradient in dark mode (same treatment
+        // as the narrow-layout badge above) so cream text stays legible.
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
           decoration: BoxDecoration(
-            gradient: const LinearGradient(colors: [_goldGlow, _goldDk]),
+            gradient: LinearGradient(colors: _darkMode
+                ? [const Color(0xFF3E2F15), const Color(0xFF5C451F)]
+                : [_goldGlow, _goldDk]),
             borderRadius: BorderRadius.circular(999),
             border: Border.all(color: _outline, width: 2),
             boxShadow: [BoxShadow(color: _outline.withOpacity(0.35),
@@ -552,7 +625,8 @@ class _ProfileTabState extends ConsumerState<ProfileTab>
             Container(width: 1.5, height: 12, color: _brown.withOpacity(0.25),
               margin: const EdgeInsets.symmetric(horizontal: 7)),
             Text(_title(ds.level), style: GoogleFonts.gaegu(
-              fontSize: 13, fontWeight: FontWeight.w700, color: _brownSoft)),
+              fontSize: 13, fontWeight: FontWeight.w700,
+              color: _darkMode ? _brown : _brownSoft)),
           ]),
         ),
       ],
@@ -600,7 +674,7 @@ class _ProfileTabState extends ConsumerState<ProfileTab>
         Expanded(child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(val, style: const TextStyle(
+            Text(val, style: TextStyle(
               fontFamily: 'Bitroad', fontSize: 16, color: _brown, height: 1)),
             Text(label, style: GoogleFonts.nunito(
               fontSize: 9, fontWeight: FontWeight.w700,
@@ -639,7 +713,7 @@ class _ProfileTabState extends ConsumerState<ProfileTab>
         Container(
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.88),
+            color: _cardFill.withOpacity(0.88),
             borderRadius: BorderRadius.circular(18),
             border: Border.all(color: _outline, width: 2),
             boxShadow: [BoxShadow(color: _outline.withOpacity(0.4),
@@ -651,7 +725,7 @@ class _ProfileTabState extends ConsumerState<ProfileTab>
                 if (_exchangeAmount > 1) setState(() => _exchangeAmount--);
               }),
               Expanded(child: Column(children: [
-                Text('$_exchangeAmount', style: const TextStyle(
+                Text('$_exchangeAmount', style: TextStyle(
                   fontFamily: 'Bitroad', fontSize: 24, color: _brown, height: 1)),
                 Text('Cash ($xpCost XP)', style: GoogleFonts.nunito(
                   fontSize: 10, fontWeight: FontWeight.w700, color: _brownSoft)),
@@ -733,7 +807,8 @@ class _ProfileTabState extends ConsumerState<ProfileTab>
     final display = sorted.take(8).toList();
 
     // Achievement circle colors rotating
-    const achColors = [_cream, _coral, _blueLt, _gold, _pinkLt];
+    // Runtime list: _cream/_blueLt/_pinkLt are mode-aware getters now.
+    final achColors = [_cream, _coral, _blueLt, _gold, _pinkLt];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -756,7 +831,7 @@ class _ProfileTabState extends ConsumerState<ProfileTab>
           width: double.infinity,
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.88),
+            color: _cardFill.withOpacity(0.88),
             borderRadius: BorderRadius.circular(18),
             border: Border.all(color: _outline, width: 2),
             boxShadow: [BoxShadow(color: _outline.withOpacity(0.4),
@@ -831,10 +906,10 @@ class _ProfileTabState extends ConsumerState<ProfileTab>
         Container(
           width: 24, height: 24,
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: _cardFill,
             shape: BoxShape.circle,
             border: Border.all(color: _outline.withOpacity(0.3), width: 1.5)),
-          child: const Icon(Icons.lightbulb_rounded, size: 12, color: _pinkDk),
+          child: Icon(Icons.lightbulb_rounded, size: 12, color: _pinkDk),
         ),
         const SizedBox(width: 9),
         Expanded(child: Text(
@@ -854,7 +929,7 @@ class _ProfileTabState extends ConsumerState<ProfileTab>
         const SizedBox(height: 8),
         Container(
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.88),
+            color: _cardFill.withOpacity(0.88),
             borderRadius: BorderRadius.circular(18),
             border: Border.all(color: _outline, width: 2),
             boxShadow: [BoxShadow(color: _outline.withOpacity(0.4),
@@ -894,14 +969,38 @@ class _ProfileTabState extends ConsumerState<ProfileTab>
               onTap: () => _openEditSheet(SettingsSection.conditions)),
 
             _groupLabel('Preferences'),
-            _settingsRow(Icons.wb_sunny_rounded, 'Dark Mode', _cream,
-              trailing: _toggle(false, null)),  // read-only for now
+            // Dark Mode — reads/writes the themeModeProvider. Flipping
+            // this runs through ThemeModeNotifier.setMode() which
+            // persists the choice and updates CerebroTheme's brightness
+            // notifier, so every cream/olive/brown in the app re-renders
+            // into its dark sibling on the next frame.
+            Builder(builder: (_) {
+              final mode = ref.watch(themeModeProvider);
+              final isDark = mode == ThemeMode.dark
+                  || (mode == ThemeMode.system
+                      && MediaQuery.platformBrightnessOf(context) == Brightness.dark);
+              return _settingsRow(
+                isDark ? Icons.dark_mode_rounded : Icons.wb_sunny_rounded,
+                'Dark Mode',
+                _cream,
+                trailing: _toggle(isDark, (v) {
+                  ref.read(themeModeProvider.notifier)
+                    .setMode(v ? ThemeMode.dark : ThemeMode.light);
+                }),
+              );
+            }),
             _settingsDivider(),
             _settingsRow(Icons.notifications_rounded, 'Notifications', _gold,
-              trailing: _toggle(_notificationsOn, (v) => setState(() => _notificationsOn = v))),
+              trailing: _toggle(_notificationsOn, (v) {
+                setState(() => _notificationsOn = v);
+                _saveNotifPref(notifications: v);
+              })),
             _settingsDivider(),
             _settingsRow(Icons.edit_rounded, 'Daily Reminders', _olive.withOpacity(0.35),
-              trailing: _toggle(_dailyRemindersOn, (v) => setState(() => _dailyRemindersOn = v))),
+              trailing: _toggle(_dailyRemindersOn, (v) {
+                setState(() => _dailyRemindersOn = v);
+                _saveNotifPref(dailyReminders: v);
+              })),
 
             _groupLabel('Danger Zone'),
             _settingsRow(Icons.logout_rounded, 'Sign Out', _coral,
@@ -1000,7 +1099,7 @@ class _ProfileTabState extends ConsumerState<ProfileTab>
             width: 14, height: 14,
             margin: const EdgeInsets.all(1),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: _cardFill,
               shape: BoxShape.circle,
               border: Border.all(
                 color: on ? _oliveDk : _outline.withOpacity(0.15), width: 1),
@@ -1017,7 +1116,7 @@ class _ProfileTabState extends ConsumerState<ProfileTab>
     children: [
       Icon(ic, size: 15, color: _oliveDk),
       const SizedBox(width: 7),
-      Text(label, style: const TextStyle(
+      Text(label, style: TextStyle(
         fontFamily: 'Bitroad', fontSize: 15, color: _brown)),
     ],
   );
@@ -1068,16 +1167,16 @@ class _ProfileTabState extends ConsumerState<ProfileTab>
               borderRadius: const BorderRadius.vertical(top: Radius.circular(19))),
             child: Row(children: [
               Expanded(child: Text(title,
-                style: const TextStyle(fontFamily: 'Bitroad',
+                style: TextStyle(fontFamily: 'Bitroad',
                   fontSize: 20, color: _brown))),
               GestureDetector(
                 onTap: () => Navigator.pop(ctx),
                 child: Container(
                   width: 30, height: 30,
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.25),
+                    color: _cardFill.withOpacity(0.25),
                     shape: BoxShape.circle),
-                  child: const Icon(Icons.close_rounded, size: 16, color: _brown),
+                  child: Icon(Icons.close_rounded, size: 16, color: _brown),
                 ),
               ),
             ]),
@@ -1127,7 +1226,7 @@ class _ProfileTabState extends ConsumerState<ProfileTab>
       body: Column(mainAxisSize: MainAxisSize.min, children: [
         Container(width: 52, height: 52,
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
+            gradient: LinearGradient(
               colors: [CerebroTheme.pinkPop, _coral]),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(color: _outline, width: 2)),
@@ -1345,16 +1444,16 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
                 _step == 0 ? 'Change Password'
                   : _step == 1 ? 'Enter Reset Code'
                   : 'Password Changed!',
-                style: const TextStyle(fontFamily: 'Bitroad',
+                style: TextStyle(fontFamily: 'Bitroad',
                   fontSize: 20, color: _brown))),
               GestureDetector(
                 onTap: () => Navigator.pop(context),
                 child: Container(
                   width: 30, height: 30,
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.25),
+                    color: _cardFill.withOpacity(0.25),
                     shape: BoxShape.circle),
-                  child: const Icon(Icons.close_rounded, size: 16, color: _brown),
+                  child: Icon(Icons.close_rounded, size: 16, color: _brown),
                 ),
               ),
             ]),
@@ -1753,8 +1852,8 @@ class _SetupEditSheetState extends State<_SetupEditSheet> {
         constraints: BoxConstraints(
           maxHeight: MediaQuery.of(context).size.height * 0.86,
         ),
-        decoration: const BoxDecoration(
-          color: Colors.white,
+        decoration: BoxDecoration(
+          color: _cardFill,
           borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
           border: Border(
             top:   BorderSide(color: _outline, width: 3),
@@ -1775,10 +1874,10 @@ class _SetupEditSheetState extends State<_SetupEditSheet> {
             padding: const EdgeInsets.fromLTRB(22, 4, 14, 10),
             child: Row(children: [
               Expanded(child: Text(_title,
-                style: const TextStyle(
+                style: TextStyle(
                   fontFamily: 'Bitroad', fontSize: 22, color: _brown))),
               IconButton(
-                icon: const Icon(Icons.close_rounded, color: _brownLt),
+                icon: Icon(Icons.close_rounded, color: _brownLt),
                 onPressed: () => Navigator.pop(context),
               ),
             ]),
@@ -1876,7 +1975,7 @@ class _SetupEditSheetState extends State<_SetupEditSheet> {
     return Column(crossAxisAlignment: CrossAxisAlignment.center, children: [
       const SizedBox(height: 10),
       Text('${_dailyStudyHours.toStringAsFixed(_dailyStudyHours % 1 == 0 ? 0 : 1)} hours / day',
-        style: const TextStyle(fontFamily: 'Bitroad', fontSize: 32, color: _brown)),
+        style: TextStyle(fontFamily: 'Bitroad', fontSize: 32, color: _brown)),
       const SizedBox(height: 8),
       Slider(
         value: _dailyStudyHours,
@@ -1886,7 +1985,7 @@ class _SetupEditSheetState extends State<_SetupEditSheet> {
         onChanged: (v) => setState(() => _dailyStudyHours = v),
       ),
       const SizedBox(height: 8),
-      Text('Drives the AI Coach\'s session suggestions + smart scheduler.',
+      Text('Drives the study coach\'s session suggestions + smart scheduler.',
         textAlign: TextAlign.center,
         style: GoogleFonts.gaegu(fontSize: 14,
           fontWeight: FontWeight.w700, color: _brownLt)),
@@ -2025,7 +2124,7 @@ class _SetupEditSheetState extends State<_SetupEditSheet> {
                   Text(c, style: GoogleFonts.gaegu(
                     fontSize: 14, fontWeight: FontWeight.w700, color: _brown)),
                   const SizedBox(width: 6),
-                  const Icon(Icons.close_rounded, size: 14, color: _brown),
+                  Icon(Icons.close_rounded, size: 14, color: _brown),
                 ]),
               ),
             ),
@@ -2051,13 +2150,13 @@ class _SetupEditSheetState extends State<_SetupEditSheet> {
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: _outline, width: 2)),
+        borderSide: BorderSide(color: _outline, width: 2)),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: _outline, width: 2)),
+        borderSide: BorderSide(color: _outline, width: 2)),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: _pinkDk, width: 2)),
+        borderSide: BorderSide(color: _pinkDk, width: 2)),
     ),
   );
 
@@ -2098,7 +2197,7 @@ class _SetupEditSheetState extends State<_SetupEditSheet> {
               letterSpacing: 0.8, color: _brownLt)),
           const SizedBox(height: 3),
           Text('${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}',
-            style: const TextStyle(
+            style: TextStyle(
               fontFamily: 'Bitroad', fontSize: 22, color: _brown)),
         ]),
       ),

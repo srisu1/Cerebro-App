@@ -17,6 +17,8 @@ XP_PER_HABIT = 10
 XP_PER_LEVEL = 500
 
 
+#  HABITS — CRUD
+
 @router.get("/habits")
 def list_habits(
     current_user: User = Depends(get_current_user),
@@ -156,6 +158,8 @@ def delete_habit(
     return None
 
 
+#  HABIT COMPLETION + STREAKS
+
 @router.post("/habits/{habit_id}/complete")
 def toggle_habit_completion(
     habit_id: UUID,
@@ -182,7 +186,6 @@ def toggle_habit_completion(
     )
 
     if existing:
-        # undo completion
         db.delete(existing)
         habit.streak_days = max(0, habit.streak_days - 1)
         xp_change = -habit.xp_reward
@@ -190,7 +193,6 @@ def toggle_habit_completion(
         current_user.level = max(1, current_user.total_xp // XP_PER_LEVEL + 1)
         done = False
     else:
-        # mark complete
         completion = HabitCompletion(
             habit_id=habit_id,
             user_id=current_user.id,
@@ -198,6 +200,7 @@ def toggle_habit_completion(
         )
         db.add(completion)
 
+        # Update streak
         yesterday = today - timedelta(days=1)
         had_yesterday = (
             db.query(HabitCompletion)
@@ -217,10 +220,12 @@ def toggle_habit_completion(
         if habit.streak_days > habit.best_streak:
             habit.best_streak = habit.streak_days
 
+        # Award XP
         xp_change = habit.xp_reward
         current_user.total_xp += xp_change
         current_user.level = current_user.total_xp // XP_PER_LEVEL + 1
 
+        # Log XP transaction
         xp_tx = XPTransaction(
             user_id=current_user.id,
             amount=xp_change,
@@ -247,6 +252,8 @@ def toggle_habit_completion(
     }
 
 
+#  DAILY STATS & SUMMARY
+
 @router.get("/stats")
 def daily_stats(
     target_date: Optional[str] = Query(None, description="YYYY-MM-DD, defaults to today"),
@@ -261,6 +268,7 @@ def daily_stats(
     else:
         day = date.today()
 
+    # Active habits
     habits = (
         db.query(HabitEntry)
         .filter(HabitEntry.user_id == current_user.id, HabitEntry.is_active == True)
@@ -292,6 +300,7 @@ def daily_stats(
             "streak_days": h.streak_days,
         })
 
+    # XP earned today
     xp_today = (
         db.query(func.coalesce(func.sum(XPTransaction.amount), 0))
         .filter(
@@ -301,6 +310,7 @@ def daily_stats(
         .scalar()
     )
 
+    # Calculate overall user streak (consecutive days with at least 1 habit done)
     user_streak = _calculate_user_streak(current_user.id, db)
 
     return {
@@ -340,12 +350,14 @@ def habit_history(
         .all()
     )
 
+    # Total active habits (for percentage calc)
     total_habits = (
         db.query(HabitEntry)
         .filter(HabitEntry.user_id == current_user.id, HabitEntry.is_active == True)
         .count()
     )
 
+    # Build day-by-day results
     completion_map = {c.date: c.habits_done for c in completions}
     history = []
     for i in range(days):
@@ -360,6 +372,8 @@ def habit_history(
 
     return {"days": days, "history": history}
 
+
+#  SCHEDULE (read-only for now — calendar handles writes)
 
 @router.get("/schedule")
 def get_schedule(
@@ -405,6 +419,35 @@ def get_schedule(
     ]
 
 
+#  SEED DEFAULT HABITS
+
+# Icon + color hint map so wizard habit names (free text) land with a
+# sensible icon when we seed them. Keys match the wizard's daily-goals
+# presets in setup_flow_screen.dart::habitIconMap (Dart side).
+_HABIT_ICON_HINTS = {
+    "Drink Water":       ("water",      "#3B82F6"),
+    "Exercise":          ("fitness",    "#EF4444"),
+    "Read":              ("book",       "#8B5CF6"),
+    "Read 15 min":       ("book",       "#8B5CF6"),
+    "Meditate":          ("self_improve", "#A78BFA"),
+    "No Junk Food":      ("no_food",    "#F97316"),
+    "Walk 10k Steps":    ("walk",       "#10B981"),
+    "No Social Media":   ("phone_off",  "#64748B"),
+    "Study 2+ Hours":    ("school",     "#0EA5E9"),
+    "Sleep Before 12":   ("night",      "#6366F1"),
+    "Stretch":           ("fitness",    "#10B981"),
+}
+
+# Fallback quests used ONLY when a user skipped the wizard entirely — i.e.
+# `initial_habits` is empty. A user should never land on an empty quest
+# list, so we seed four sensible defaults they can edit or replace later.
+_FALLBACK_DEFAULT_HABITS = [
+    {"name": "Drink Water",    "icon": "water",   "color": "#3B82F6"},
+    {"name": "Read 15 min",    "icon": "book",    "color": "#8B5CF6"},
+    {"name": "Walk 10k Steps", "icon": "walk",    "color": "#10B981"},
+    {"name": "Stretch",        "icon": "fitness", "color": "#EF4444"},
+]
+
 @router.post("/habits/seed-defaults")
 def seed_default_habits(
     current_user: User = Depends(get_current_user),
@@ -418,15 +461,22 @@ def seed_default_habits(
     if existing > 0:
         return {"message": "User already has habits", "created": 0}
 
-    defaults = [
-        {"name": "Drink Water", "icon": "water", "color": "#3B82F6"},
-        {"name": "Read 15 min", "icon": "book", "color": "#8B5CF6"},
-        {"name": "Exercise", "icon": "fitness", "color": "#EF4444"},
-        {"name": "Stretch", "icon": "fitness", "color": "#10B981"},
-    ]
+    # `initial_habits` is a Postgres ARRAY(TEXT) on the users table —
+    # may be None or []. When empty, fall back to the 4 defaults so the
+    # user never sees an empty Today's Quests screen.
+    wizard_picks = list(getattr(current_user, "initial_habits", None) or [])
+    if wizard_picks:
+        source = []
+        for name in wizard_picks[:6]:  # wizard caps at 4 but leave headroom
+            icon, color = _HABIT_ICON_HINTS.get(name, ("check", "#10B981"))
+            source.append({"name": name, "icon": icon, "color": color})
+        seed_source = "wizard"
+    else:
+        source = list(_FALLBACK_DEFAULT_HABITS)
+        seed_source = "fallback"
 
     created = []
-    for d in defaults:
+    for d in source:
         habit = HabitEntry(
             user_id=current_user.id,
             name=d["name"],
@@ -438,15 +488,22 @@ def seed_default_habits(
         created.append(d["name"])
 
     db.commit()
-    return {"message": f"Created {len(created)} default habits", "created": len(created), "habits": created}
+    return {
+        "message": f"Created {len(created)} habits",
+        "created": len(created),
+        "habits": created,
+        "source": seed_source,
+    }
 
+
+#  HELPER FUNCTIONS
 
 def _calculate_user_streak(user_id, db: Session) -> int:
     today = date.today()
     streak = 0
     check_date = today
 
-    for _ in range(365):
+    for _ in range(365):  # max 1 year lookback
         count = (
             db.query(HabitCompletion)
             .filter(

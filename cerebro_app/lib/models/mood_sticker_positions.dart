@@ -1,4 +1,5 @@
-// Layer positions for head-only mood stickers (scaled differently from full avatar)
+// Head-only avatar positions for mood stickers.
+// Nose scale = 0.10, Mouth scale = 0.12 — different from full avatar.
 
 import 'package:cerebro_app/models/avatar_positions.dart';
 

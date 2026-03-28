@@ -1,5 +1,4 @@
-/// Shown after a Google OAuth sign-in when the user has no password.
-/// Matches the olive-pink game card aesthetic from login_screen.dart.
+// Set-password screen — shown after Google OAuth when no password exists.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -103,23 +102,23 @@ class _SetPasswordScreenState extends ConsumerState<SetPasswordScreen>
       border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide:
-              const BorderSide(color: CerebroTheme.text1, width: 2.5)),
+              BorderSide(color: CerebroTheme.text1, width: 2.5)),
       enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide:
-              const BorderSide(color: CerebroTheme.text1, width: 2.5)),
+              BorderSide(color: CerebroTheme.text1, width: 2.5)),
       focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide:
-              const BorderSide(color: CerebroTheme.pinkAccent, width: 2.5)),
+              BorderSide(color: CerebroTheme.pinkAccent, width: 2.5)),
       errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide:
-              const BorderSide(color: CerebroTheme.coral, width: 2.5)),
+              BorderSide(color: CerebroTheme.coral, width: 2.5)),
       focusedErrorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide:
-              const BorderSide(color: CerebroTheme.coral, width: 2.5)),
+              BorderSide(color: CerebroTheme.coral, width: 2.5)),
     );
   }
 
@@ -160,7 +159,7 @@ class _SetPasswordScreenState extends ConsumerState<SetPasswordScreen>
                             width: double.infinity,
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 32, vertical: 28),
-                            decoration: const BoxDecoration(
+                            decoration: BoxDecoration(
                               gradient: LinearGradient(
                                 begin: Alignment.topLeft,
                                 end: Alignment.bottomRight,
@@ -182,7 +181,7 @@ class _SetPasswordScreenState extends ConsumerState<SetPasswordScreen>
                                     border: Border.all(
                                         color: CerebroTheme.text1, width: 2.5),
                                   ),
-                                  child: const Icon(Icons.lock_outlined,
+                                  child: Icon(Icons.lock_outlined,
                                       color: CerebroTheme.text1, size: 28),
                                 ),
                                 const SizedBox(height: 16),

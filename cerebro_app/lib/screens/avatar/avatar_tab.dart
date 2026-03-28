@@ -1,4 +1,4 @@
-/// Shows user's avatar with cute stat cards and customize button.
+// Avatar tab — shows user's avatar with stat cards and customize button.
 
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -61,7 +61,7 @@ class _AvatarTabState extends ConsumerState<AvatarTab> {
             const SizedBox(height: 20),
 
             if (_loading)
-              const SizedBox(
+              SizedBox(
                 height: 220,
                 child: Center(
                   child: CircularProgressIndicator(
@@ -195,7 +195,7 @@ class _AvatarTabState extends ConsumerState<AvatarTab> {
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.auto_awesome,
+                  Icon(Icons.auto_awesome,
                       color: CerebroTheme.goldDark),
                   const SizedBox(width: 12),
                   Expanded(

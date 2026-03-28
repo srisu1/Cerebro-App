@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:cerebro_app/config/theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cerebro_app/providers/auth_provider.dart';
@@ -7,25 +8,28 @@ import 'package:cerebro_app/providers/auth_provider.dart';
 // =============================================================================
 // COLOR PALETTE (Pocket Love Aesthetic)
 // =============================================================================
-const _ombre1 = Color(0xFFFFFBF7);
-const _ombre2 = Color(0xFFFFF8F3);
-const _ombre3 = Color(0xFFFFF3EF);
-const _ombre4 = Color(0xFFFEEDE9);
-const _pawClr = Color(0xFFF8BCD0);
-const _outline = Color(0xFF6E5848);
-const _brown = Color(0xFF4E3828);
-const _brownLt = Color(0xFF7A5840);
-const _cardFill = Color(0xFFFFF8F4);
-const _skyHdr = Color(0xFF9DD4F0);
-const _skyLt = Color(0xFFB8E0F8);
-const _greenHdr = Color(0xFFA8D5A3);
-const _greenLt = Color(0xFFC2E8BC);
-const _greenDk = Color(0xFF88B883);
-const _goldHdr = Color(0xFFF0D878);
-const _goldLt = Color(0xFFFFF0C0);
-const _coralHdr = Color(0xFFF0A898);
-const _coralLt = Color(0xFFF8C0B0);
 
+bool get _darkMode =>
+    CerebroTheme.brightnessNotifier.value == Brightness.dark;
+
+Color get _ombre1 => _darkMode ? const Color(0xFF191513) : const Color(0xFFFFFBF7);
+Color get _ombre2 => _darkMode ? const Color(0xFF1E1A17) : const Color(0xFFFFF8F3);
+Color get _ombre3 => _darkMode ? const Color(0xFF29221D) : const Color(0xFFFFF3EF);
+Color get _ombre4 => _darkMode ? const Color(0xFF312821) : const Color(0xFFFEEDE9);
+Color get _pawClr => _darkMode ? const Color(0xFF231D18) : const Color(0xFFF8BCD0);
+Color get _outline => _darkMode ? const Color(0xFFAD7F58) : const Color(0xFF6E5848);
+Color get _brown => _darkMode ? const Color(0xFFF2E1CA) : const Color(0xFF4E3828);
+Color get _brownLt => _darkMode ? const Color(0xFFDBB594) : const Color(0xFF7A5840);
+Color get _cardFill => _darkMode ? const Color(0xFF29221D) : const Color(0xFFFFF8F4);
+Color get _skyHdr => const Color(0xFF9DD4F0);
+Color get _skyLt => const Color(0xFFB8E0F8);
+Color get _greenHdr => const Color(0xFFA8D5A3);
+Color get _greenLt => _darkMode ? const Color(0xFF143125) : const Color(0xFFC2E8BC);
+Color get _greenDk => const Color(0xFF88B883);
+Color get _goldHdr => const Color(0xFFF0D878);
+Color get _goldLt => const Color(0xFFFFF0C0);
+Color get _coralHdr => const Color(0xFFF0A898);
+Color get _coralLt => const Color(0xFFF8C0B0);
 // =============================================================================
 // PAWPRINT BACKGROUND PAINTER
 // =============================================================================
@@ -338,7 +342,7 @@ class _WaterScreenState extends ConsumerState<WaterScreen>
                               border: Border.all(
                                   color: _outline.withOpacity(0.25), width: 2),
                             ),
-                            child: const Icon(Icons.arrow_back_ios_new,
+                            child: Icon(Icons.arrow_back_ios_new,
                                 color: _outline, size: 18),
                           ),
                         ),
@@ -367,7 +371,7 @@ class _WaterScreenState extends ConsumerState<WaterScreen>
                           border: Border.all(
                               color: _outline.withOpacity(0.25), width: 2),
                         ),
-                        child: const Center(
+                        child: Center(
                           child: CircularProgressIndicator(color: _skyHdr),
                         ),
                       ),
@@ -823,11 +827,11 @@ class _WaterScreenState extends ConsumerState<WaterScreen>
                   width: 28,
                   height: 28,
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.5),
+                    color: _cardFill.withOpacity(0.5),
                     shape: BoxShape.circle,
                   ),
                   child:
-                      const Icon(Icons.refresh, color: _brown, size: 16),
+                      Icon(Icons.refresh, color: _brown, size: 16),
                 ),
               ),
             ],

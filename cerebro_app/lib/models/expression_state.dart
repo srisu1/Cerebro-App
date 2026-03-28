@@ -1,6 +1,6 @@
-// Avatar expression states mapped to overlay assets
+// Avatar expression states and context-to-expression mapping.
 
-// All possible expression states the avatar can show.
+/// All possible expression states the avatar can show.
 enum ExpressionState {
   /// User's chosen eyes/mouth/nose from avatar config — no overlay.
   neutral,
@@ -21,8 +21,7 @@ enum ExpressionState {
   surprised, // wide eyes + O mouth — achievement / level up
 }
 
-/// Expressions that have REAL (non-zero) asset files.
-/// blink, focused, playful, sleepy, surprised only have 0-byte placeholders.
+// Expressions with real (non-placeholder) assets.
 const _validExpressions = {
   ExpressionState.angry,
   ExpressionState.anxious,

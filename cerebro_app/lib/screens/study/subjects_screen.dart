@@ -1,6 +1,7 @@
-// Subjects list and management screen
+// Subjects screen — list, add, edit subjects with topic management.
 
 import 'package:flutter/material.dart';
+import 'package:cerebro_app/config/theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:file_picker/file_picker.dart';
@@ -11,34 +12,34 @@ import 'package:cerebro_app/screens/study/quiz_screen.dart';
 import 'package:cerebro_app/screens/study/subject_detail_screen.dart';
 import 'package:cerebro_app/widgets/upload_notes_modal.dart';
 
-const _ombre1  = Color(0xFFFFFBF7);
-const _ombre2  = Color(0xFFFFF8F3);
-const _ombre3  = Color(0xFFFFF3EF);
-const _ombre4  = Color(0xFFFEEDE9);
-const _pawClr  = Color(0xFFF8BCD0);
 
-const _outline   = Color(0xFF6E5848);
-const _brown     = Color(0xFF4E3828);
-const _brownLt   = Color(0xFF7A5840);
-const _brownSoft = Color(0xFF9A8070);
+bool get _darkMode =>
+    CerebroTheme.brightnessNotifier.value == Brightness.dark;
 
-const _cardFill  = Color(0xFFFFF8F4);
-const _panelBg   = Color(0xFFFFF6EE);
-const _cream     = Color(0xFFFDEFDB);
-
-const _olive    = Color(0xFF98A869);
-const _oliveDk  = Color(0xFF58772F);
-const _pinkLt   = Color(0xFFFFD5F5);
-const _pink     = Color(0xFFFEA9D3);
-const _pinkDk   = Color(0xFFE890B8);
-const _coral    = Color(0xFFF7AEAE);
-const _gold     = Color(0xFFE4BC83);
-const _orange   = Color(0xFFFFBC5C);
-const _red      = Color(0xFFEF6262);
-const _blueLt   = Color(0xFFDDF6FF);
-const _purpleHdr = Color(0xFFCDA8D8);
-const _skyHdr    = Color(0xFF9DD4F0);
-
+Color get _ombre1 => _darkMode ? const Color(0xFF191513) : const Color(0xFFFFFBF7);
+Color get _ombre2 => _darkMode ? const Color(0xFF1E1A17) : const Color(0xFFFFF8F3);
+Color get _ombre3 => _darkMode ? const Color(0xFF29221D) : const Color(0xFFFFF3EF);
+Color get _ombre4 => _darkMode ? const Color(0xFF312821) : const Color(0xFFFEEDE9);
+Color get _pawClr => _darkMode ? const Color(0xFF231D18) : const Color(0xFFF8BCD0);
+Color get _outline => _darkMode ? const Color(0xFFAD7F58) : const Color(0xFF6E5848);
+Color get _brown => _darkMode ? const Color(0xFFF2E1CA) : const Color(0xFF4E3828);
+Color get _brownLt => _darkMode ? const Color(0xFFDBB594) : const Color(0xFF7A5840);
+Color get _brownSoft => _darkMode ? const Color(0xFFBD926C) : const Color(0xFF9A8070);
+Color get _cardFill => _darkMode ? const Color(0xFF29221D) : const Color(0xFFFFF8F4);
+Color get _panelBg => _darkMode ? const Color(0xFF1E1A17) : const Color(0xFFFFF6EE);
+Color get _cream => _darkMode ? const Color(0xFF1E1A17) : const Color(0xFFFDEFDB);
+Color get _olive => const Color(0xFF98A869);
+Color get _oliveDk => const Color(0xFF58772F);
+Color get _pinkLt => _darkMode ? const Color(0xFF411C35) : const Color(0xFFFFD5F5);
+Color get _pink => const Color(0xFFFEA9D3);
+Color get _pinkDk => const Color(0xFFE890B8);
+Color get _coral => const Color(0xFFF7AEAE);
+Color get _gold => const Color(0xFFE4BC83);
+Color get _orange => const Color(0xFFFFBC5C);
+Color get _red => const Color(0xFFEF6262);
+Color get _blueLt => _darkMode ? const Color(0xFF102A4C) : const Color(0xFFDDF6FF);
+Color get _purpleHdr => const Color(0xFFCDA8D8);
+Color get _skyHdr => const Color(0xFF9DD4F0);
 // Used as the *primary* accent surface so the screen feels calmer.
 // The bright tones above stay for legacy refs / state highlights.
 const _mTerra   = Color(0xFFD9B5A6); // dusty terracotta  (was _coral)
@@ -50,8 +51,11 @@ const _mButter  = Color(0xFFE8D4A0); // soft butter       (was _orange / _gold)
 const _mBlush   = Color(0xFFEAD0CE); // washed blush      (was _pinkLt)
 const _mSand    = Color(0xFFE8D9C2); // warm sand         (neutral fill)
 
-TextStyle _gaegu({double size = 14, FontWeight weight = FontWeight.w600, Color color = _brown, double? h}) =>
-    GoogleFonts.gaegu(fontSize: size, fontWeight: weight, color: color, height: h);
+// `color` is nullable with an in-body fallback to `_brown` because `_brown`
+// is now a runtime mode-aware getter — Dart won't accept it as a default
+// parameter expression.
+TextStyle _gaegu({double size = 14, FontWeight weight = FontWeight.w600, Color? color, double? h}) =>
+    GoogleFonts.gaegu(fontSize: size, fontWeight: weight, color: color ?? _brown, height: h);
 
 const _bitroad = 'Bitroad';
 
@@ -303,8 +307,7 @@ String _keyFromIcon(IconData ic) {
   return 'book';
 }
 
-const _greenLt = Color(0xFFC2E8BC);
-
+Color get _greenLt => _darkMode ? const Color(0xFF143125) : const Color(0xFFC2E8BC);
 //  SUBJECTS SCREEN
 class SubjectsScreen extends ConsumerStatefulWidget {
   const SubjectsScreen({super.key});
@@ -462,7 +465,7 @@ class _SubjectsScreenState extends ConsumerState<SubjectsScreen>
           padding: const EdgeInsets.all(20),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('Delete ${s.name}?',
-              style: const TextStyle(fontFamily: _bitroad, fontSize: 20, color: _brown)),
+              style: TextStyle(fontFamily: _bitroad, fontSize: 20, color: _brown)),
             const SizedBox(height: 8),
             Text('This removes the subject and unlinks its materials, decks, and quizzes. This cannot be undone.',
               style: _gaegu(size: 13, color: _brownSoft)),
@@ -596,11 +599,11 @@ class _SubjectsScreenState extends ConsumerState<SubjectsScreen>
                       child: Container(
                         width: 34, height: 34,
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: _cardFill,
                           shape: BoxShape.circle,
                           border: Border.all(color: _outline, width: 1.5),
                         ),
-                        child: const Icon(Icons.close_rounded, size: 17, color: _brown),
+                        child: Icon(Icons.close_rounded, size: 17, color: _brown),
                       ),
                     ),
                   ]),
@@ -624,7 +627,7 @@ class _SubjectsScreenState extends ConsumerState<SubjectsScreen>
                       padding: const EdgeInsets.only(top: 2),
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Text(file.name,
-                          style: const TextStyle(fontFamily: _bitroad, fontSize: 22, color: _brown, height: 1.1),
+                          style: TextStyle(fontFamily: _bitroad, fontSize: 22, color: _brown, height: 1.1),
                           maxLines: 2, overflow: TextOverflow.ellipsis),
                         const SizedBox(height: 6),
                         Text('extract the text & save it under a subject.',
@@ -641,7 +644,7 @@ class _SubjectsScreenState extends ConsumerState<SubjectsScreen>
                     hint: 'link to a subject (optional)',
                     icon: Icons.folder_rounded,
                     items: [
-                      const DropdownMenuItem<String?>(
+                      DropdownMenuItem<String?>(
                         value: null,
                         child: Text('no subject (general)',
                           style: TextStyle(fontFamily: 'Gaegu', color: _brownSoft)),
@@ -735,7 +738,7 @@ class _SubjectsScreenState extends ConsumerState<SubjectsScreen>
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: const [_ombre1, _ombre2, _ombre3, _ombre4],
+          colors: [_ombre1, _ombre2, _ombre3, _ombre4],
         ),
       ),
       child: CustomPaint(
@@ -787,7 +790,7 @@ class _SubjectsScreenState extends ConsumerState<SubjectsScreen>
           child: Container(
             width: 40, height: 40,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.88),
+              color: _cardFill.withOpacity(0.88),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: _outline.withOpacity(0.22), width: 1.5),
               boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
@@ -801,7 +804,7 @@ class _SubjectsScreenState extends ConsumerState<SubjectsScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('My Subjects',
+              Text('My Subjects',
                 style: TextStyle(fontFamily: _bitroad, fontSize: 26, color: _brown, height: 1.15)),
               const SizedBox(height: 2),
               Text('Pick a subject to keep your streak alive~',
@@ -837,7 +840,7 @@ class _SubjectsScreenState extends ConsumerState<SubjectsScreen>
           height: 46,
           padding: const EdgeInsets.symmetric(horizontal: 14),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.88),
+            color: _cardFill.withOpacity(0.88),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(color: _outline.withOpacity(0.22), width: 1.5),
             boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
@@ -972,7 +975,7 @@ class _SubjectsScreenState extends ConsumerState<SubjectsScreen>
                 offset: const Offset(3, 3), blurRadius: 0)],
           ),
           child: Text('Page $_page / $totalPages',
-            style: const TextStyle(fontFamily: _bitroad, fontSize: 14, color: _brown, height: 1.1)),
+            style: TextStyle(fontFamily: _bitroad, fontSize: 14, color: _brown, height: 1.1)),
         ),
         const SizedBox(width: 12),
         _paginationButton(
@@ -1043,7 +1046,7 @@ class _SubjectsScreenState extends ConsumerState<SubjectsScreen>
           child: Icon(Icons.auto_stories_rounded, size: 36, color: _brownLt),
         ),
         const SizedBox(height: 14),
-        const Text('No subjects found',
+        Text('No subjects found',
           style: TextStyle(fontFamily: _bitroad, fontSize: 20, color: _brown)),
         const SizedBox(height: 4),
         Text('Try a different filter or add a new subject',
@@ -1056,7 +1059,7 @@ class _SubjectsScreenState extends ConsumerState<SubjectsScreen>
     return Padding(
       padding: const EdgeInsets.only(top: 80),
       child: Column(children: [
-        const CircularProgressIndicator(color: _mTerra, strokeWidth: 3),
+        CircularProgressIndicator(color: _mTerra, strokeWidth: 3),
         const SizedBox(height: 14),
         Text('Loading your subjects...',
           style: _gaegu(size: 14, color: _brownSoft)),
@@ -1080,7 +1083,7 @@ class _SubjectsScreenState extends ConsumerState<SubjectsScreen>
           child: Icon(Icons.error_outline_rounded, size: 36, color: _brown),
         ),
         const SizedBox(height: 14),
-        const Text("Couldn't load subjects",
+        Text("Couldn't load subjects",
           style: TextStyle(fontFamily: _bitroad, fontSize: 20, color: _brown)),
         const SizedBox(height: 4),
         Text(_error ?? '', textAlign: TextAlign.center,
@@ -1139,7 +1142,7 @@ class _SubjectCard extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.88),
+          color: _cardFill.withOpacity(0.88),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: _outline.withOpacity(0.22), width: 1.5),
           boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
@@ -1161,7 +1164,7 @@ class _SubjectCard extends StatelessWidget {
                   Container(
                     width: 40, height: 40,
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.75),
+                      color: _cardFill.withOpacity(0.75),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: _outline.withOpacity(0.3), width: 1.5),
                     ),
@@ -1173,7 +1176,7 @@ class _SubjectCard extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(subject.name,
-                          style: const TextStyle(fontFamily: _bitroad, fontSize: 17, color: _brown),
+                          style: TextStyle(fontFamily: _bitroad, fontSize: 17, color: _brown),
                           overflow: TextOverflow.ellipsis, maxLines: 1),
                         const SizedBox(height: 1),
                         Text(subject.code,
@@ -1191,7 +1194,7 @@ class _SubjectCard extends StatelessWidget {
                         borderRadius: BorderRadius.circular(999),
                         border: Border.all(color: _outline.withOpacity(0.3), width: 1.2),
                       ),
-                      child: const Text('★',
+                      child: Text('★',
                         style: TextStyle(fontFamily: _bitroad, fontSize: 12, color: _brown)),
                     ),
                   // PopupMenuButton swallows tap events on its anchor so
@@ -1200,10 +1203,10 @@ class _SubjectCard extends StatelessWidget {
                   if (onEdit != null || onDelete != null)
                     PopupMenuButton<String>(
                       tooltip: 'Subject actions',
-                      icon: const Icon(Icons.more_vert_rounded, size: 18, color: _brown),
+                      icon: Icon(Icons.more_vert_rounded, size: 18, color: _brown),
                       padding: EdgeInsets.zero,
                       splashRadius: 18,
-                      color: Colors.white,
+                      color: _cardFill,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                         side: BorderSide(color: _outline.withOpacity(0.3), width: 1.2),
@@ -1218,7 +1221,7 @@ class _SubjectCard extends StatelessWidget {
                             value: 'edit',
                             height: 36,
                             child: Row(children: [
-                              const Icon(Icons.edit_rounded, size: 16, color: _brownLt),
+                              Icon(Icons.edit_rounded, size: 16, color: _brownLt),
                               const SizedBox(width: 8),
                               Text('Edit', style: _gaegu(size: 14, color: _brown, weight: FontWeight.w700)),
                             ]),
@@ -1251,7 +1254,7 @@ class _SubjectCard extends StatelessWidget {
                           style: _gaegu(size: 13, weight: FontWeight.w700, color: _brown)),
                         const Spacer(),
                         Text('${(subject.progress * 100).round()}%',
-                          style: const TextStyle(fontFamily: _bitroad, fontSize: 15, color: _brown)),
+                          style: TextStyle(fontFamily: _bitroad, fontSize: 15, color: _brown)),
                       ]),
                       const SizedBox(height: 8),
                       // Progress bar
@@ -1407,11 +1410,11 @@ class _AddSubjectModalState extends ConsumerState<_AddSubjectModal> {
                     child: Container(
                       width: 34, height: 34,
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: _cardFill,
                         shape: BoxShape.circle,
                         border: Border.all(color: _outline, width: 1.5),
                       ),
-                      child: const Icon(Icons.close_rounded, size: 17, color: _brown),
+                      child: Icon(Icons.close_rounded, size: 17, color: _brown),
                     ),
                   ),
                 ]),
@@ -1435,7 +1438,7 @@ class _AddSubjectModalState extends ConsumerState<_AddSubjectModal> {
                     padding: const EdgeInsets.only(top: 2),
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Text(widget.existing == null ? 'Add a Subject' : 'Edit Subject',
-                        style: const TextStyle(fontFamily: _bitroad, fontSize: 24, color: _brown, height: 1.1)),
+                        style: TextStyle(fontFamily: _bitroad, fontSize: 24, color: _brown, height: 1.1)),
                       const SizedBox(height: 6),
                       Text('track what you are studying. keep tabs on progress.',
                         style: _gaegu(size: 14, color: _brownLt)),
@@ -1529,7 +1532,7 @@ Widget _medInput({
   required IconData icon,
 }) => Container(
   decoration: BoxDecoration(
-    color: Colors.white,
+    color: _cardFill,
     borderRadius: BorderRadius.circular(18),
     border: Border.all(color: _outline, width: 2),
     boxShadow: const [
@@ -1576,7 +1579,7 @@ Widget _medDropdown<T>({
   required ValueChanged<T?> onChanged,
 }) => Container(
   decoration: BoxDecoration(
-    color: Colors.white,
+    color: _cardFill,
     borderRadius: BorderRadius.circular(18),
     border: Border.all(color: _outline, width: 2),
     boxShadow: const [
@@ -1599,7 +1602,7 @@ Widget _medDropdown<T>({
       child: DropdownButton<T>(
         value: value,
         isExpanded: true,
-        icon: const Icon(Icons.expand_more_rounded, color: _brownLt),
+        icon: Icon(Icons.expand_more_rounded, color: _brownLt),
         hint: Text(hint, style: _gaegu(size: 16, color: _brownSoft)),
         style: _gaegu(size: 16, weight: FontWeight.w600, color: _brown),
         dropdownColor: Colors.white,
@@ -1693,7 +1696,7 @@ class _SubjectDetailModalState extends ConsumerState<_SubjectDetailModal> {
           padding: const EdgeInsets.all(20),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('Delete "${m.title}"?',
-              style: const TextStyle(fontFamily: _bitroad, fontSize: 18, color: _brown)),
+              style: TextStyle(fontFamily: _bitroad, fontSize: 18, color: _brown)),
             const SizedBox(height: 6),
             Text('This removes the uploaded notes from this subject.',
               style: _gaegu(size: 13, color: _brownSoft)),
@@ -1735,7 +1738,7 @@ class _SubjectDetailModalState extends ConsumerState<_SubjectDetailModal> {
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
               decoration: BoxDecoration(
-                gradient: const LinearGradient(colors: [_mTerra, _mBlush]),
+                gradient: LinearGradient(colors: [_mTerra, _mBlush]),
                 borderRadius: const BorderRadius.only(
                   topLeft: Radius.circular(20), topRight: Radius.circular(20)),
               ),
@@ -1750,7 +1753,7 @@ class _SubjectDetailModalState extends ConsumerState<_SubjectDetailModal> {
                   child: Container(
                     width: 28, height: 28,
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.22),
+                      color: _cardFill.withOpacity(0.22),
                       shape: BoxShape.circle,
                     ),
                     child: const Icon(Icons.close_rounded, color: Colors.white, size: 16),
@@ -1772,7 +1775,7 @@ class _SubjectDetailModalState extends ConsumerState<_SubjectDetailModal> {
                   _MiniPill(icon: Icons.label_rounded, label: t, color: _mBlush.withOpacity(0.55)),
               ]),
             ),
-            const Divider(color: _outline, thickness: 0.4, height: 8),
+            Divider(color: _outline, thickness: 0.4, height: 8),
             Flexible(child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(16, 6, 16, 16),
               child: Text(m.content,
@@ -1794,7 +1797,7 @@ class _SubjectDetailModalState extends ConsumerState<_SubjectDetailModal> {
           padding: const EdgeInsets.all(20),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('Delete ${widget.subject.name}?',
-              style: const TextStyle(fontFamily: _bitroad, fontSize: 20, color: _brown)),
+              style: TextStyle(fontFamily: _bitroad, fontSize: 20, color: _brown)),
             const SizedBox(height: 8),
             Text('This will remove the subject and unlink its materials. This cannot be undone.',
               style: _gaegu(size: 13, color: _brownSoft)),
@@ -1846,7 +1849,7 @@ class _SubjectDetailModalState extends ConsumerState<_SubjectDetailModal> {
       return Container(
         padding: const EdgeInsets.symmetric(vertical: 28),
         alignment: Alignment.center,
-        child: const SizedBox(width: 22, height: 22,
+        child: SizedBox(width: 22, height: 22,
           child: CircularProgressIndicator(color: _mTerra, strokeWidth: 2.5)),
       );
     }
@@ -1859,13 +1862,13 @@ class _SubjectDetailModalState extends ConsumerState<_SubjectDetailModal> {
           border: Border.all(color: _outline.withOpacity(0.2), width: 1),
         ),
         child: Row(children: [
-          const Icon(Icons.error_outline_rounded, color: _brown, size: 18),
+          Icon(Icons.error_outline_rounded, color: _brown, size: 18),
           const SizedBox(width: 8),
           Expanded(child: Text(_loadError!,
             style: _gaegu(size: 12, color: _brownSoft),
             overflow: TextOverflow.ellipsis, maxLines: 2)),
           GestureDetector(onTap: _loadAll,
-            child: const Icon(Icons.refresh_rounded, color: _brown, size: 18)),
+            child: Icon(Icons.refresh_rounded, color: _brown, size: 18)),
         ]),
       );
     }
@@ -1880,7 +1883,7 @@ class _SubjectDetailModalState extends ConsumerState<_SubjectDetailModal> {
           border: Border.all(color: _outline.withOpacity(0.18), width: 1.2),
         ),
         child: Row(children: [
-          const Icon(Icons.auto_stories_outlined, color: _brownLt, size: 20),
+          Icon(Icons.auto_stories_outlined, color: _brownLt, size: 20),
           const SizedBox(width: 10),
           Expanded(child: Text(
             'Nothing here yet. Upload notes, start a study session, or build a flashcard deck and tag this subject.',
@@ -1947,7 +1950,7 @@ class _SubjectDetailModalState extends ConsumerState<_SubjectDetailModal> {
             .copyWith(letterSpacing: 1.2)),
         const Spacer(),
         Text('$count',
-          style: const TextStyle(fontFamily: _bitroad, fontSize: 12, color: _brownSoft)),
+          style: TextStyle(fontFamily: _bitroad, fontSize: 12, color: _brownSoft)),
       ]),
     );
   }
@@ -1982,7 +1985,7 @@ class _SubjectDetailModalState extends ConsumerState<_SubjectDetailModal> {
                   child: Container(
                     width: 30, height: 30,
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.25),
+                      color: _cardFill.withOpacity(0.25),
                       shape: BoxShape.circle,
                     ),
                     child: const Icon(Icons.close_rounded, color: Colors.white, size: 18),
@@ -2002,7 +2005,7 @@ class _SubjectDetailModalState extends ConsumerState<_SubjectDetailModal> {
                   _MiniPill(icon: Icons.label_rounded, label: t, color: _mBlush.withOpacity(0.55)),
               ]),
             ),
-            const Divider(color: _outline, thickness: 0.4, height: 8),
+            Divider(color: _outline, thickness: 0.4, height: 8),
             Flexible(child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(16, 6, 16, 16),
               child: Text(s.notes.isEmpty ? '(no written notes for this session)' : s.notes,
@@ -2064,11 +2067,11 @@ class _SubjectDetailModalState extends ConsumerState<_SubjectDetailModal> {
                     child: Container(
                       width: 34, height: 34,
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: _cardFill,
                         shape: BoxShape.circle,
                         border: Border.all(color: _outline, width: 1.5),
                       ),
-                      child: const Icon(Icons.close_rounded, size: 17, color: _brown),
+                      child: Icon(Icons.close_rounded, size: 17, color: _brown),
                     ),
                   ),
                 ]),
@@ -2091,7 +2094,7 @@ class _SubjectDetailModalState extends ConsumerState<_SubjectDetailModal> {
                   Expanded(child: Padding(
                     padding: const EdgeInsets.only(top: 6),
                     child: Text(subject.name,
-                      style: const TextStyle(fontFamily: _bitroad, fontSize: 24, color: _brown, height: 1.1),
+                      style: TextStyle(fontFamily: _bitroad, fontSize: 24, color: _brown, height: 1.1),
                       maxLines: 2, overflow: TextOverflow.ellipsis),
                   )),
                 ]),
@@ -2116,7 +2119,7 @@ class _SubjectDetailModalState extends ConsumerState<_SubjectDetailModal> {
                 Container(
                   padding: const EdgeInsets.fromLTRB(10, 10, 16, 10),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: _cardFill,
                     borderRadius: BorderRadius.circular(18),
                     border: Border.all(color: _outline, width: 2),
                     boxShadow: const [
@@ -2140,7 +2143,7 @@ class _SubjectDetailModalState extends ConsumerState<_SubjectDetailModal> {
                           style: _gaegu(size: 11, weight: FontWeight.w700, color: _oliveDk)
                               .copyWith(letterSpacing: 0.7)),
                         Text(subject.nextExam,
-                          style: const TextStyle(fontFamily: _bitroad, fontSize: 15, color: _brown)),
+                          style: TextStyle(fontFamily: _bitroad, fontSize: 15, color: _brown)),
                       ],
                     )),
                   ]),
@@ -2302,10 +2305,12 @@ class _StatTile extends StatelessWidget {
 class _SoftButton extends StatelessWidget {
   final String label;
   final Color fill;
-  final Color textColor;
+  // Nullable so we can fall back to `_brown` at usage — `_brown` is now a
+  // mode-aware getter so it can't be a default parameter expression.
+  final Color? textColor;
   final VoidCallback onTap;
-  const _SoftButton({required this.label, required this.fill, required this.onTap,
-    this.textColor = _brown});
+  _SoftButton({required this.label, required this.fill, required this.onTap,
+    this.textColor});
   @override
   Widget build(BuildContext context) => GestureDetector(
     onTap: onTap,
@@ -2321,7 +2326,7 @@ class _SoftButton extends StatelessWidget {
         ],
       ),
       child: Text(label,
-        style: _gaegu(size: 18, weight: FontWeight.w700, color: textColor)),
+        style: _gaegu(size: 18, weight: FontWeight.w700, color: textColor ?? _brown)),
     ),
   );
 }
@@ -2341,7 +2346,7 @@ class _MaterialRow extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.fromLTRB(10, 10, 8, 10),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: _cardFill,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: _outline.withOpacity(0.18), width: 1.2),
           boxShadow: [BoxShadow(color: _outline.withOpacity(0.1),
@@ -2363,7 +2368,7 @@ class _MaterialRow extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(mat.title,
-                style: const TextStyle(fontFamily: _bitroad, fontSize: 14, color: _brown),
+                style: TextStyle(fontFamily: _bitroad, fontSize: 14, color: _brown),
                 maxLines: 1, overflow: TextOverflow.ellipsis),
               const SizedBox(height: 2),
               Text([
@@ -2409,7 +2414,7 @@ class _SessionRow extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.fromLTRB(10, 10, 8, 10),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: _cardFill,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: _outline.withOpacity(0.18), width: 1.2),
           boxShadow: [BoxShadow(color: _outline.withOpacity(0.1),
@@ -2423,7 +2428,7 @@ class _SessionRow extends StatelessWidget {
               borderRadius: BorderRadius.circular(10),
               border: Border.all(color: _outline.withOpacity(0.2), width: 1),
             ),
-            child: const Icon(Icons.edit_note_rounded, size: 18, color: _brown),
+            child: Icon(Icons.edit_note_rounded, size: 18, color: _brown),
           ),
           const SizedBox(width: 10),
           Expanded(child: Column(
@@ -2431,7 +2436,7 @@ class _SessionRow extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(sess.title,
-                style: const TextStyle(fontFamily: _bitroad, fontSize: 14, color: _brown),
+                style: TextStyle(fontFamily: _bitroad, fontSize: 14, color: _brown),
                 maxLines: 1, overflow: TextOverflow.ellipsis),
               const SizedBox(height: 2),
               Text(meta,
@@ -2465,7 +2470,7 @@ class _DeckRow extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.fromLTRB(10, 10, 8, 10),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: _cardFill,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: _outline.withOpacity(0.18), width: 1.2),
           boxShadow: [BoxShadow(color: _outline.withOpacity(0.1),
@@ -2479,7 +2484,7 @@ class _DeckRow extends StatelessWidget {
               borderRadius: BorderRadius.circular(10),
               border: Border.all(color: _outline.withOpacity(0.2), width: 1),
             ),
-            child: const Icon(Icons.style_rounded, size: 18, color: _brown),
+            child: Icon(Icons.style_rounded, size: 18, color: _brown),
           ),
           const SizedBox(width: 10),
           Expanded(child: Column(
@@ -2487,7 +2492,7 @@ class _DeckRow extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(deck.name,
-                style: const TextStyle(fontFamily: _bitroad, fontSize: 14, color: _brown),
+                style: TextStyle(fontFamily: _bitroad, fontSize: 14, color: _brown),
                 maxLines: 1, overflow: TextOverflow.ellipsis),
               const SizedBox(height: 2),
               Text(meta,
@@ -2526,7 +2531,7 @@ class _QuizRow extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.fromLTRB(10, 10, 8, 10),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: _cardFill,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: _outline.withOpacity(0.18), width: 1.2),
           boxShadow: [BoxShadow(color: _outline.withOpacity(0.1),
@@ -2540,7 +2545,7 @@ class _QuizRow extends StatelessWidget {
               borderRadius: BorderRadius.circular(10),
               border: Border.all(color: _outline.withOpacity(0.2), width: 1),
             ),
-            child: const Icon(Icons.quiz_rounded, size: 18, color: _brown),
+            child: Icon(Icons.quiz_rounded, size: 18, color: _brown),
           ),
           const SizedBox(width: 10),
           Expanded(child: Column(
@@ -2548,7 +2553,7 @@ class _QuizRow extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(quiz.title,
-                style: const TextStyle(fontFamily: _bitroad, fontSize: 14, color: _brown),
+                style: TextStyle(fontFamily: _bitroad, fontSize: 14, color: _brown),
                 maxLines: 1, overflow: TextOverflow.ellipsis),
               const SizedBox(height: 2),
               Text(meta.isEmpty ? 'Completed quiz' : meta,
@@ -2565,7 +2570,7 @@ class _QuizRow extends StatelessWidget {
               border: Border.all(color: _outline.withOpacity(0.25), width: 1),
             ),
             child: Text('${pct.toStringAsFixed(0)}%',
-              style: const TextStyle(fontFamily: _bitroad, fontSize: 12, color: _brown)),
+              style: TextStyle(fontFamily: _bitroad, fontSize: 12, color: _brown)),
           ),
           Icon(Icons.chevron_right_rounded, color: _brownLt.withOpacity(0.6), size: 18),
         ]),

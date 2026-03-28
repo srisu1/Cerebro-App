@@ -1,9 +1,10 @@
-// Health tab — mood, water, sleep, meds, symptoms, and wellness score
+// Health tab — wellness score, mood, water, sleep, medications, symptoms.
 
 import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
+import 'package:cerebro_app/config/theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -17,44 +18,49 @@ import 'package:cerebro_app/widgets/mood_sticker.dart';
 import 'package:cerebro_app/screens/home/home_screen.dart';
 import 'package:go_router/go_router.dart';
 
-const _ombre1   = Color(0xFFFFFBF7);
-const _ombre2   = Color(0xFFFFF8F3);
-const _ombre3   = Color(0xFFFFF3EF);
-const _ombre4   = Color(0xFFFEEDE9);
-const _pawClr   = Color(0xFFF8BCD0);
 
-const _outline  = Color(0xFF6E5848);
-const _brown    = Color(0xFF4E3828);
-const _brownLt  = Color(0xFF7A5840);
+bool get _darkMode =>
+    CerebroTheme.brightnessNotifier.value == Brightness.dark;
 
-const _cardFill = Color(0xFFFFF8F4);
-const _coralHdr = Color(0xFFF0A898);
-const _coralLt  = Color(0xFFF0A090);
-const _greenHdr = Color(0xFF7EC878);
-const _greenLt  = Color(0xFFC2E8BC);
-const _greenDk  = Color(0xFF88B883);
-const _goldHdr  = Color(0xFFE8C840);
-const _goldLt   = Color(0xFFFDE890);
-const _goldDk   = Color(0xFFD0B048);
-const _purpleHdr = Color(0xFFCDA8D8);
-const _purpleLt = Color(0xFFCCA8D8);
-const _skyHdr   = Color(0xFF9DD4F0);
-const _skyLt    = Color(0xFF98D4F0);
-const _sageHdr  = Color(0xFF70B880);
-const _sageLt   = Color(0xFF98D0A8);
-const _redLt    = Color(0xFFF09888);
-
+Color get _ombre1 => _darkMode ? const Color(0xFF191513) : const Color(0xFFFFFBF7);
+Color get _ombre2 => _darkMode ? const Color(0xFF1E1A17) : const Color(0xFFFFF8F3);
+Color get _ombre3 => _darkMode ? const Color(0xFF29221D) : const Color(0xFFFFF3EF);
+Color get _ombre4 => _darkMode ? const Color(0xFF312821) : const Color(0xFFFEEDE9);
+Color get _pawClr => _darkMode ? const Color(0xFF231D18) : const Color(0xFFF8BCD0);
+Color get _outline => _darkMode ? const Color(0xFFAD7F58) : const Color(0xFF6E5848);
+Color get _brown => _darkMode ? const Color(0xFFF2E1CA) : const Color(0xFF4E3828);
+Color get _brownLt => _darkMode ? const Color(0xFFDBB594) : const Color(0xFF7A5840);
+Color get _cardFill => _darkMode ? const Color(0xFF29221D) : const Color(0xFFFFF8F4);
+Color get _coralHdr => const Color(0xFFF0A898);
+Color get _coralLt => const Color(0xFFF0A090);
+Color get _greenHdr => const Color(0xFF7EC878);
+Color get _greenLt => _darkMode ? const Color(0xFF143125) : const Color(0xFFC2E8BC);
+Color get _greenDk => const Color(0xFF88B883);
+Color get _goldHdr => const Color(0xFFE8C840);
+Color get _goldLt => const Color(0xFFFDE890);
+Color get _goldDk => const Color(0xFFD0B048);
+Color get _purpleHdr => const Color(0xFFCDA8D8);
+Color get _purpleLt => const Color(0xFFCCA8D8);
+Color get _skyHdr => const Color(0xFF9DD4F0);
+Color get _skyLt => const Color(0xFF98D4F0);
+Color get _sageHdr => const Color(0xFF70B880);
+Color get _sageLt => const Color(0xFF98D0A8);
+Color get _redLt => const Color(0xFFF09888);
+// Accent hues (olive, pink-dk, orange, warm gold) — same in both modes
+// per CRUMBS-UI shade-9 rule so stickers keep their character.
 const _olive    = Color(0xFF98A869);   // --olive
 const _oliveDk  = Color(0xFF58772F);   // --olive-dk
-const _inkSoft  = Color(0xFF9A8070);   // --ink-soft
+Color get _inkSoft => _darkMode ? const Color(0xFFBD926C) : const Color(0xFF9A8070); // ink-soft body text — flip to BROWN 10 in dark
 const _pinkDk   = Color(0xFFE890B8);   // --pink-dk
 const _orange   = Color(0xFFFFBC5C);   // --orange
 const _goldWarm = Color(0xFFE4BC83);   // --gold (warm, matches HTML)
-const _blueLt   = Color(0xFFDDF6FF);   // --blue-lt (Log Sleep popup fill)
-const _blueLtDk = Color(0xFF4A8FAD);   // deeper blue — text + accents on _blueLt
-const _pinkLt   = Color(0xFFFFD5F5);   // --pink-lt
-const _rosePink = Color(0xFFF7AEAE);   // Log Symptom popup fill
-const _rosePinkDk = Color(0xFFA85058); // deeper rose — text + accents on _rosePink
+// Tinted popup fills — flip to CRUMBS-UI shade-4 of the hue in dark
+// so they stay tinted (blue-ish / pink-ish) without glowing bright.
+Color get _blueLt   => _darkMode ? const Color(0xFF102A4C) : const Color(0xFFDDF6FF); // Log Sleep popup fill
+Color get _blueLtDk => _darkMode ? const Color(0xFF7CC8FF) : const Color(0xFF4A8FAD); // text/accent ON _blueLt
+Color get _pinkLt   => _darkMode ? const Color(0xFF411C35) : const Color(0xFFFFD5F5);
+Color get _rosePink => _darkMode ? const Color(0xFF551C22) : const Color(0xFFF7AEAE); // Log Symptom popup fill
+Color get _rosePinkDk => _darkMode ? const Color(0xFFFF8589) : const Color(0xFFA85058); // text/accent ON _rosePink
 
 // Mirrors symptom_screen.dart so the modal "Log a Symptom" dialog
 // shows the same tailored chip row. Keys are lowercased substrings
@@ -439,12 +445,7 @@ class HealthNotifier extends StateNotifier<HealthData> {
     try { await _api.post('/health/water', data: {'glasses': newVal}); } catch (_) {}
   }
 
-  /// Local wellness recompute — gives instant ring feedback before backend
-  /// returns its own canonical score. 4 categories × 25 points each.
-  ///   • water:  glasses / 8 × 25
-  ///   • mood:   any mood logged today  → 25
-  ///   • meds:   taken / total × 25  (or 25 if no meds tracked)
-  ///   • sleep:  last night hours, ramps 0h→0pts, 8h→25pts
+  /// Recompute wellness score locally for instant feedback.
   void _recalcWellnessLocally() {
     final waterPts = ((state.waterGlasses / 8.0) * 25).clamp(0.0, 25.0);
     final moodPts  = state.todaysMood != null ? 25.0 : 0.0;
@@ -649,9 +650,7 @@ class _HealthTabState extends ConsumerState<HealthTab>
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadPersonalization());
   }
 
-  /// Pull the user's medical conditions + medications and derive
-  /// the symptom / trigger suggestion lists. Best-effort — failures
-  /// just leave the lists empty so the modal falls back to defaults.
+  /// Load medical conditions and medication list for suggestion chips.
   Future<void> _loadPersonalization() async {
     try {
       final api = ref.read(apiServiceProvider);
@@ -747,7 +746,7 @@ class _HealthTabState extends ConsumerState<HealthTab>
     return Stack(fit: StackFit.expand, children: [
       // Pawprint ombré background (fills full screen incl. under nav)
       Container(
-        decoration: const BoxDecoration(gradient: LinearGradient(
+        decoration: BoxDecoration(gradient: LinearGradient(
           begin: Alignment.topCenter, end: Alignment.bottomCenter,
           colors: [_ombre1, _ombre2, _ombre3, _ombre4],
           stops: [0.0, 0.3, 0.6, 1.0],
@@ -758,7 +757,7 @@ class _HealthTabState extends ConsumerState<HealthTab>
       SafeArea(
         bottom: false,
         child: h.isLoading
-          ? const Center(child: CircularProgressIndicator(color: _coralHdr))
+          ? Center(child: CircularProgressIndicator(color: _coralHdr))
           : LayoutBuilder(
               builder: (ctx, c) {
                 final isDesktop = c.maxWidth > 900;
@@ -894,7 +893,7 @@ class _HealthTabState extends ConsumerState<HealthTab>
     return Row(mainAxisSize: MainAxisSize.min, children: [
       _backButton(),
       const SizedBox(width: 10),
-      const Text('Health Hub', style: TextStyle(
+      Text('Health Hub', style: TextStyle(
         fontFamily: 'Bitroad', fontSize: 26, color: _brown)),
     ]);
   }
@@ -906,14 +905,14 @@ class _HealthTabState extends ConsumerState<HealthTab>
       child: Container(
         width: 34, height: 34,
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: _cardFill,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(color: _outline.withOpacity(0.35), width: 1.5),
           boxShadow: [BoxShadow(
             color: _outline.withOpacity(0.28),
             offset: const Offset(2, 2), blurRadius: 0)],
         ),
-        child: const Icon(Icons.chevron_left_rounded, size: 20, color: _outline),
+        child: Icon(Icons.chevron_left_rounded, size: 20, color: _outline),
       ),
     );
   }
@@ -948,7 +947,7 @@ class _HealthTabState extends ConsumerState<HealthTab>
     return Row(children: [
       _backButton(),
       const SizedBox(width: 10),
-      const Expanded(child: Text('Health Hub', style: TextStyle(
+      Expanded(child: Text('Health Hub', style: TextStyle(
         fontFamily: 'Bitroad', fontSize: 24, color: _brown))),
       _HealthPill(
         icon: Icons.favorite_rounded,
@@ -1003,7 +1002,7 @@ class _HealthTabState extends ConsumerState<HealthTab>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.65),
+        color: _cardFill.withOpacity(0.65),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: _outline.withOpacity(0.18), width: 1),
       ),
@@ -1111,7 +1110,7 @@ class _HealthTabState extends ConsumerState<HealthTab>
       child: Row(children: [
         Icon(icon, size: 16, color: _oliveDk),
         const SizedBox(width: 7),
-        Text(label, style: const TextStyle(
+        Text(label, style: TextStyle(
           fontFamily: 'Bitroad', fontSize: 16, color: _brown)),
         if (trailing != null) ...[const Spacer(), trailing],
       ]),
@@ -1267,7 +1266,7 @@ class _HealthTabState extends ConsumerState<HealthTab>
         Container(
           width: 28, height: 28,
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: _cardFill,
             shape: BoxShape.circle,
             border: Border.all(color: _outline.withOpacity(0.3), width: 1.5),
           ),
@@ -1330,7 +1329,7 @@ class _HealthTabState extends ConsumerState<HealthTab>
                   Icon(Icons.sentiment_satisfied_rounded,
                     size: 18, color: _oliveDk),
                   const SizedBox(width: 7),
-                  const Text('Mood', style: TextStyle(
+                  Text('Mood', style: TextStyle(
                     fontFamily: 'Bitroad', fontSize: 18, color: _brown)),
                 ]),
                 const SizedBox(height: 3),
@@ -1339,7 +1338,7 @@ class _HealthTabState extends ConsumerState<HealthTab>
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     decoration: BoxDecoration(
                       // Soft white chip pops nicely against the pink mat.
-                      color: Colors.white.withOpacity(0.85),
+                      color: _cardFill.withOpacity(0.85),
                       borderRadius: BorderRadius.circular(999),
                       border: Border.all(color: _outline.withOpacity(0.28), width: 1),
                     ),
@@ -1404,7 +1403,7 @@ class _HealthTabState extends ConsumerState<HealthTab>
           Row(children: [
             Icon(Icons.water_drop_rounded, size: 15, color: _oliveDk),
             const SizedBox(width: 6),
-            const Text('Water', style: TextStyle(
+            Text('Water', style: TextStyle(
               fontFamily: 'Bitroad', fontSize: 14, color: _brown)),
             const Spacer(),
             Text('$filled / 8', style: GoogleFonts.nunito(
@@ -1584,7 +1583,7 @@ class _HealthTabState extends ConsumerState<HealthTab>
           Row(children: [
             Icon(Icons.water_drop_rounded, size: 16, color: _oliveDk),
             const SizedBox(width: 7),
-            const Text('Water', style: TextStyle(
+            Text('Water', style: TextStyle(
               fontFamily: 'Bitroad', fontSize: 15, color: _brown)),
             const Spacer(),
             Text('$filled / 8', style: GoogleFonts.nunito(
@@ -1679,7 +1678,7 @@ class _HealthTabState extends ConsumerState<HealthTab>
             child: Row(children: [
               Text(
                 hasAnySleep ? '${h.avgSleepHours.toStringAsFixed(1)}h' : '— h',
-                style: const TextStyle(
+                style: TextStyle(
                   fontFamily: 'Bitroad', fontSize: 20, color: _brown)),
               const SizedBox(width: 6),
               Text('avg', style: GoogleFonts.nunito(
@@ -2038,8 +2037,7 @@ class _HealthTabState extends ConsumerState<HealthTab>
     return tips;
   }
 
-  //  AI HEALTH INSIGHTS CARD — with See-more toggle
-  //  Matches .insights-wrap
+  //  Health insights card — with See-more toggle
   Widget _buildInsightsCard(HealthData h) {
     // Blend server insights with local fallback tips so the card is NEVER
     // empty — the backend's insight generator only kicks in once you have
@@ -2064,13 +2062,14 @@ class _HealthTabState extends ConsumerState<HealthTab>
 
     return Container(
       decoration: BoxDecoration(
-        // Soft pink-tinted cream so insights stand out from the cream cards
-        // around them without being another stark white box.
-        color: const Color(0xFFFFF1F4),
+        // Soft pink-tinted cream in light mode, muted wine-rose in dark mode
+        // — stands out from the cream cards around it without ever becoming
+        // a stark white box.
+        color: _darkMode ? const Color(0xFF2F1D28) : const Color(0xFFFFF1F4),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: _pinkDk.withOpacity(0.28), width: 1.5),
+        border: Border.all(color: _pinkDk.withOpacity(_darkMode ? 0.55 : 0.28), width: 1.5),
         boxShadow: [BoxShadow(
-          color: _outline.withOpacity(0.18),
+          color: _outline.withOpacity(_darkMode ? 0.35 : 0.18),
           offset: const Offset(3, 3), blurRadius: 0)],
       ),
       child: Column(
@@ -2081,7 +2080,7 @@ class _HealthTabState extends ConsumerState<HealthTab>
             child: Row(children: [
               Icon(Icons.auto_awesome_rounded, size: 16, color: _pinkDk),
               const SizedBox(width: 7),
-              const Text('Health Insights', style: TextStyle(
+              Text('Health Insights', style: TextStyle(
                 fontFamily: 'Bitroad', fontSize: 18, color: _brown)),
               const Spacer(),
               // Arrow now navigates to the cross-domain Insights screen so
@@ -2125,7 +2124,7 @@ class _HealthTabState extends ConsumerState<HealthTab>
                           padding: const EdgeInsets.symmetric(
                             horizontal: 10, vertical: 5),
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.5),
+                            color: _cardFill.withOpacity(0.5),
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(
                               color: _outline.withOpacity(0.15), width: 1.5),
@@ -2285,7 +2284,7 @@ class _HealthTabState extends ConsumerState<HealthTab>
         Container(
           width: 24, height: 24,
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: _cardFill,
             shape: BoxShape.circle,
             border: Border.all(color: _outline.withOpacity(0.3), width: 1.5),
           ),
@@ -2477,13 +2476,7 @@ class _HealthTabState extends ConsumerState<HealthTab>
     );
   }
 
-  /// Builds the Log Sleep popup content — sticker-stamp card
-  /// using the theme blue palette (`_blueLt` #DDF6FF from the
-  /// app theme, paired with `_blueLtDk` for text contrast).
-  /// Mirrors the structure of `_buildAddMedDialog` so the two
-  /// popups feel like siblings in the same gamified system,
-  /// just in different color families so Sleep vs. Medications
-  /// vs. Symptoms are visually distinguishable at a glance.
+  /// Log Sleep popup content — blue palette sticker card.
   Widget _buildSleepDialog({
     required BuildContext ctx,
     required DateTime selectedDate,
@@ -2534,7 +2527,7 @@ class _HealthTabState extends ConsumerState<HealthTab>
               child: Container(
                 width: 34, height: 34,
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: _cardFill,
                   shape: BoxShape.circle,
                   border: Border.all(color: _brown, width: 2),
                   boxShadow: [
@@ -2563,7 +2556,7 @@ class _HealthTabState extends ConsumerState<HealthTab>
               ),
               // Brown icon on pale blue — keeps strong contrast since
               // _blueLt is too pale to carry white glyphs.
-              child: const Icon(Icons.nightlight_round,
+              child: Icon(Icons.nightlight_round,
                 color: _brown, size: 28),
             ),
             const SizedBox(width: 14),
@@ -2665,7 +2658,7 @@ class _HealthTabState extends ConsumerState<HealthTab>
           Container(
             padding: const EdgeInsets.symmetric(vertical: 14),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: _cardFill,
               borderRadius: BorderRadius.circular(18),
               border: Border.all(color: _brown, width: 2),
               boxShadow: [
@@ -2761,11 +2754,7 @@ class _HealthTabState extends ConsumerState<HealthTab>
     );
   }
 
-  /// Tappable sticker-stamp tile that displays an icon + a label
-  /// (used for date / bedtime / wake time pickers in the sleep
-  /// popup). Same look as `_medSheetField` but with text instead
-  /// of an editable field. [iconColor] defaults to sage `_oliveDk`
-  /// but each popup can pass its own accent.
+  /// Tappable icon+label tile for date/time pickers in popups.
   Widget _stickerInfoTile({
     required IconData icon,
     required String text,
@@ -2773,7 +2762,7 @@ class _HealthTabState extends ConsumerState<HealthTab>
   }) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _cardFill,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: _brown, width: 2),
         boxShadow: [
@@ -2946,7 +2935,7 @@ class _HealthTabState extends ConsumerState<HealthTab>
                 child: Container(
                   width: 34, height: 34,
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: _cardFill,
                     shape: BoxShape.circle,
                     border: Border.all(color: _brown, width: 2),
                     boxShadow: [
@@ -3138,28 +3127,7 @@ class _HealthTabState extends ConsumerState<HealthTab>
   //  is the accent so the popup lives in the same palette
   //  family as the wellness ring + olive bottom nav.
 
-  /// Icon-prefixed input field — ONE clean white sticker box
-  /// with a thick dark outline + hard stamp shadow. The icon
-  /// floats inside the field next to the text, with NO tinted
-  /// background, NO divider, NO inner chip. Single uninterrupted
-  /// white surface.
-  ///
-  /// [iconColor] lets each popup (Add Med = sage, Log Sleep =
-  /// blue, Log Symptom = rose) tint the leading icon to match
-  /// its own palette without re-implementing this whole widget.
-  ///
-  /// To kill the "double box" look — where Material's default
-  /// InputDecoration was drawing its own subtle container/outline
-  /// *inside* our sticker box — we:
-  ///   • explicitly clear every border state (border, enabled,
-  ///     focused, disabled, error, focusedError) to InputBorder.none
-  ///   • force filled:false / fillColor:transparent so no tinted
-  ///     rounded background is painted behind the text
-  ///   • wrap the TextField in a Theme that overrides
-  ///     inputDecorationTheme so ancestor defaults can't sneak a
-  ///     border back in
-  ///   • use isCollapsed:true + custom padding so Material's
-  ///     built-in minimum vertical chrome doesn't leak through
+  /// Icon-prefixed input field with sticker-stamp styling.
   Widget _medSheetField({
     required IconData icon,
     required TextEditingController controller,
@@ -3168,7 +3136,7 @@ class _HealthTabState extends ConsumerState<HealthTab>
   }) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _cardFill,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: _brown, width: 2),
         boxShadow: [
@@ -3431,12 +3399,7 @@ class _HealthTabState extends ConsumerState<HealthTab>
     );
   }
 
-  /// Builds the Log Symptom popup content — sticker-stamp card
-  /// using the theme rose-pink palette (`_rosePink` #F7AEAE from
-  /// the palette, paired with `_rosePinkDk` for text contrast).
-  /// The rose ties back to the pink pawprint motif already used
-  /// elsewhere in the app, and distinguishes Symptoms from
-  /// Medications (sage) + Sleep (pale blue) at a glance.
+  /// Log Symptom popup content — rose-pink palette sticker card.
   Widget _buildSymptomDialog({
     required BuildContext ctx,
     required String type,
@@ -3487,7 +3450,7 @@ class _HealthTabState extends ConsumerState<HealthTab>
               child: Container(
                 width: 34, height: 34,
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: _cardFill,
                   shape: BoxShape.circle,
                   border: Border.all(color: _brown, width: 2),
                   boxShadow: [
@@ -3516,7 +3479,7 @@ class _HealthTabState extends ConsumerState<HealthTab>
               ),
               // Brown icon reads cleanly on the soft rose — white
               // would wash out against the pastel background.
-              child: const Icon(Icons.healing_rounded,
+              child: Icon(Icons.healing_rounded,
                 color: _brown, size: 28),
             ),
             const SizedBox(width: 14),
@@ -3548,7 +3511,7 @@ class _HealthTabState extends ConsumerState<HealthTab>
               child: Padding(
                 padding: const EdgeInsets.only(left: 2, bottom: 8),
                 child: Row(children: [
-                  const Icon(Icons.auto_awesome_rounded,
+                  Icon(Icons.auto_awesome_rounded,
                     size: 16, color: _purpleHdr),
                   const SizedBox(width: 6),
                   Text('suggested for you',
@@ -3654,7 +3617,7 @@ class _HealthTabState extends ConsumerState<HealthTab>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: _cardFill,
               borderRadius: BorderRadius.circular(18),
               border: Border.all(color: _brown, width: 2),
               boxShadow: [
@@ -3746,21 +3709,18 @@ class _HealthTabState extends ConsumerState<HealthTab>
     );
   }
 
-  /// Sticker-stamp pick chip used by the Log Symptom popup for
-  /// both type chips and trigger chips. Selected = colored fill
-  /// + hard stamp shadow; unselected = white with the same
-  /// outline. Pass [selectedColor] to theme the chip (Symptom
-  /// uses rose, future popups could use other palette accents).
-  /// Selected text color auto-picks brown for pastel fills or
-  /// white for saturated fills — callers can force it via
-  /// [selectedTextColor].
+  /// Selectable chip with sticker-stamp styling for popup forms.
   Widget _stickerPickChip({
     required String label,
     required bool selected,
     required VoidCallback onTap,
-    Color selectedColor = _rosePink,
-    Color selectedTextColor = _brown,
+    // Nullable + in-body fallback because mode-aware palette getters
+    // (`_rosePink`, `_brown`) are not compile-time constants.
+    Color? selectedColor,
+    Color? selectedTextColor,
   }) {
+    selectedColor ??= _rosePink;
+    selectedTextColor ??= _brown;
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
@@ -3768,7 +3728,7 @@ class _HealthTabState extends ConsumerState<HealthTab>
         padding: const EdgeInsets.symmetric(
           horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: selected ? selectedColor : Colors.white,
+          color: selected ? selectedColor : _cardFill,
           borderRadius: BorderRadius.circular(999),
           border: Border.all(color: _brown, width: 2),
           boxShadow: [
@@ -3960,7 +3920,7 @@ class _HealthTabState extends ConsumerState<HealthTab>
         future: ref.read(apiServiceProvider).get('/health/symptoms', queryParams: {'limit': '20'}),
         builder: (ctx, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
-            return const Center(child: Padding(
+            return Center(child: Padding(
               padding: EdgeInsets.all(20),
               child: CircularProgressIndicator(color: _coralHdr),
             ));
@@ -4013,7 +3973,7 @@ class _HealthTabState extends ConsumerState<HealthTab>
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: _cardFill,
           borderRadius: BorderRadius.circular(18),
           boxShadow: [
             BoxShadow(color: color.withOpacity(0.12), blurRadius: 10, offset: const Offset(0, 3)),
@@ -4079,7 +4039,7 @@ class _HealthTabState extends ConsumerState<HealthTab>
         Container(
           width: 64, height: 64,
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: _cardFill,
             shape: BoxShape.circle,
             boxShadow: [BoxShadow(color: _outline.withOpacity(0.06), blurRadius: 12, offset: const Offset(0, 4))],
           ),
@@ -4145,7 +4105,7 @@ class _HealthTabState extends ConsumerState<HealthTab>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _cardFill,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(color: _outline.withOpacity(0.06), blurRadius: 8, offset: const Offset(0, 2)),
@@ -4171,7 +4131,7 @@ class _HealthTabState extends ConsumerState<HealthTab>
   Widget _sheetInput(TextEditingController ctrl, String hint, {int maxLines = 1}) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _cardFill,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(color: _outline.withOpacity(0.06), blurRadius: 8, offset: const Offset(0, 2)),
@@ -4593,7 +4553,7 @@ class _WaterGlassState extends State<_WaterGlass> with SingleTickerProviderState
               Container(
                 width: cupW, height: cupH,
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: _cardFill,
                   borderRadius: const BorderRadius.only(
                     topLeft: Radius.circular(3),
                     topRight: Radius.circular(3),
@@ -4706,7 +4666,7 @@ class _HealthMedRowState extends State<_HealthMedRow> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.70),
+          color: _cardFill.withOpacity(0.70),
           borderRadius: BorderRadius.circular(11),
           border: Border.all(color: _outline.withOpacity(0.20), width: 1.5),
           boxShadow: [
@@ -4834,83 +4794,90 @@ class _InsightRow extends StatelessWidget {
   // Map iconKey → (rowBg, tileBg, tileBorder, iconColor, icon)
   ({Color rowBg, Color tileBg, Color tileBorder, Color iconColor, IconData icon})
       _variant() {
-    // Canonical HTML palettes:
-    //   ii-sleep → pink-lt + pink-dk svg
-    //   ii-water → blue-lt + ink-mid svg
-    //   ii-mood  → gold warm + bdr-dk svg
-    //   ii-tip   → olive + olive-dk svg
+    // Dark-mode insight tints — CRUMBS shade 4 of each hue so tinted pills
+    // read warmly against the dark card bg instead of muddy gray.
+    final pinkTint  = _darkMode ? const Color(0xFF411C35) : const Color(0xFFFFD5F5);
+    final blueTint  = _darkMode ? const Color(0xFF102A4C) : const Color(0xFFDDF6FF);
+    final creamTint = _darkMode ? const Color(0xFF3B2A1B) : const Color(0xFFFDEFDB);
+    final oliveTint = _darkMode ? const Color(0xFF2C3A1D) : const Color(0xFF98A869);
+    final pinkIcon  = _darkMode ? const Color(0xFFF986C9) : _pinkDk;
+    final waterIcon = _darkMode ? const Color(0xFF7CC8FF) : _inkSoft;
+    final oliveIcon = _darkMode ? const Color(0xFFB3C47F) : _oliveDk;
+    final warmIcon  = _darkMode ? const Color(0xFFFFCA4E) : _outline;
+    final border    = _outline.withOpacity(_darkMode ? 0.28 : 0.12);
+
     final k = iconKey.toLowerCase();
     if (k == 'moon' || k == 'sleep') {
       return (
-        rowBg: const Color(0xFFFFD5F5).withOpacity(0.45),
-        tileBg: const Color(0xFFFFD5F5).withOpacity(0.45),
-        tileBorder: _outline.withOpacity(0.12),
-        iconColor: _pinkDk,
+        rowBg: pinkTint.withOpacity(_darkMode ? 1.0 : 0.45),
+        tileBg: pinkTint.withOpacity(_darkMode ? 1.0 : 0.45),
+        tileBorder: border,
+        iconColor: pinkIcon,
         icon: Icons.nightlight_round,
       );
     } else if (k == 'water' || k == 'drop') {
       return (
-        rowBg: const Color(0xFFDDF6FF).withOpacity(0.55),
-        tileBg: const Color(0xFFDDF6FF).withOpacity(0.60),
-        tileBorder: _outline.withOpacity(0.12),
-        iconColor: _inkSoft,
+        rowBg: blueTint.withOpacity(_darkMode ? 1.0 : 0.55),
+        tileBg: blueTint.withOpacity(_darkMode ? 1.0 : 0.60),
+        tileBorder: border,
+        iconColor: waterIcon,
         icon: Icons.water_drop_rounded,
       );
     } else if (k == 'heart' || k == 'mood') {
       return (
-        rowBg: const Color(0xFFFDEFDB).withOpacity(0.60),
-        tileBg: _goldWarm.withOpacity(0.30),
-        tileBorder: _outline.withOpacity(0.12),
-        iconColor: _outline,
+        rowBg: creamTint.withOpacity(_darkMode ? 1.0 : 0.60),
+        tileBg: _darkMode ? const Color(0xFF4A3620) : _goldWarm.withOpacity(0.30),
+        tileBorder: border,
+        iconColor: warmIcon,
         icon: Icons.favorite_rounded,
       );
     } else if (k == 'bulb' || k == 'tip') {
       return (
-        rowBg: _olive.withOpacity(0.22),
-        tileBg: _olive.withOpacity(0.22),
-        tileBorder: _outline.withOpacity(0.12),
-        iconColor: _oliveDk,
+        rowBg: oliveTint.withOpacity(_darkMode ? 1.0 : 0.22),
+        tileBg: oliveTint.withOpacity(_darkMode ? 1.0 : 0.22),
+        tileBorder: border,
+        iconColor: oliveIcon,
         icon: Icons.lightbulb_rounded,
       );
     } else if (k == 'fire') {
       return (
-        rowBg: const Color(0xFFFDEFDB).withOpacity(0.60),
-        tileBg: _goldWarm.withOpacity(0.30),
-        tileBorder: _outline.withOpacity(0.12),
-        iconColor: _outline,
+        rowBg: creamTint.withOpacity(_darkMode ? 1.0 : 0.60),
+        tileBg: _darkMode ? const Color(0xFF4A3620) : _goldWarm.withOpacity(0.30),
+        tileBorder: border,
+        iconColor: warmIcon,
         icon: Icons.local_fire_department_rounded,
       );
     } else if (k == 'chart_up') {
       return (
-        rowBg: _olive.withOpacity(0.22),
-        tileBg: _olive.withOpacity(0.22),
-        tileBorder: _outline.withOpacity(0.12),
-        iconColor: _oliveDk,
+        rowBg: oliveTint.withOpacity(_darkMode ? 1.0 : 0.22),
+        tileBg: oliveTint.withOpacity(_darkMode ? 1.0 : 0.22),
+        tileBorder: border,
+        iconColor: oliveIcon,
         icon: Icons.trending_up_rounded,
       );
     } else if (k == 'chart_down') {
       return (
-        rowBg: const Color(0xFFFDEFDB).withOpacity(0.60),
-        tileBg: _goldWarm.withOpacity(0.30),
-        tileBorder: _outline.withOpacity(0.12),
-        iconColor: _outline,
+        rowBg: creamTint.withOpacity(_darkMode ? 1.0 : 0.60),
+        tileBg: _darkMode ? const Color(0xFF4A3620) : _goldWarm.withOpacity(0.30),
+        tileBorder: border,
+        iconColor: warmIcon,
         icon: Icons.trending_down_rounded,
       );
     } else if (k == 'pill') {
       return (
-        rowBg: _olive.withOpacity(0.22),
-        tileBg: _olive.withOpacity(0.22),
-        tileBorder: _outline.withOpacity(0.12),
-        iconColor: _oliveDk,
+        rowBg: oliveTint.withOpacity(_darkMode ? 1.0 : 0.22),
+        tileBg: oliveTint.withOpacity(_darkMode ? 1.0 : 0.22),
+        tileBorder: border,
+        iconColor: oliveIcon,
         icon: Icons.medication_rounded,
       );
     }
     // default → tip
     return (
-      rowBg: _olive.withOpacity(0.22),
-      tileBg: _olive.withOpacity(0.22),
-      tileBorder: _outline.withOpacity(0.12),
-      iconColor: _oliveDk,
+      rowBg: oliveTint.withOpacity(_darkMode ? 1.0 : 0.22),
+      tileBg: oliveTint.withOpacity(_darkMode ? 1.0 : 0.22),
+      tileBorder: border,
+      iconColor: oliveIcon,
       icon: Icons.auto_awesome_rounded,
     );
   }

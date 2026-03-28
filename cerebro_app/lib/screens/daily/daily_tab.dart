@@ -1,9 +1,10 @@
-// Daily habits tab — quests, routines, and daily score
+// Daily tab — quests, morning/evening routines, daily score.
 
 import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:cerebro_app/config/theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -12,30 +13,29 @@ import 'package:cerebro_app/config/constants.dart';
 import 'package:cerebro_app/providers/dashboard_provider.dart';
 import 'package:cerebro_app/screens/home/home_screen.dart';
 
-const _ombre1 = Color(0xFFFFFBF7);
-const _ombre2 = Color(0xFFFFF8F3);
-const _ombre3 = Color(0xFFFFF3EF);
-const _ombre4 = Color(0xFFFEEDE9);
-const _pawClr = Color(0xFFF8BCD0);
 
-const _outline   = Color(0xFF6E5848);
-const _brown     = Color(0xFF4E3828);
-const _brownLt   = Color(0xFF7A5840);
-const _brownSoft = Color(0xFF9A8070);
+bool get _darkMode =>
+    CerebroTheme.brightnessNotifier.value == Brightness.dark;
 
-const _cardFill  = Color(0xFFFFF8F4);
-const _cream     = Color(0xFFFDEFDB);
-const _olive     = Color(0xFF98A869);
-const _oliveDk   = Color(0xFF58772F);
-
-const _coral     = Color(0xFFF7AEAE);
-const _orange    = Color(0xFFFFBC5C);
-const _red       = Color(0xFFEF6262);
-const _gold      = Color(0xFFE4BC83);
-
-const _lavender  = Color(0xFFDDBDE8);
-const _goldGlow  = Color(0xFFF8E080);
-
+Color get _ombre1 => _darkMode ? const Color(0xFF191513) : const Color(0xFFFFFBF7);
+Color get _ombre2 => _darkMode ? const Color(0xFF1E1A17) : const Color(0xFFFFF8F3);
+Color get _ombre3 => _darkMode ? const Color(0xFF29221D) : const Color(0xFFFFF3EF);
+Color get _ombre4 => _darkMode ? const Color(0xFF312821) : const Color(0xFFFEEDE9);
+Color get _pawClr => _darkMode ? const Color(0xFF231D18) : const Color(0xFFF8BCD0);
+Color get _outline => _darkMode ? const Color(0xFFAD7F58) : const Color(0xFF6E5848);
+Color get _brown => _darkMode ? const Color(0xFFF2E1CA) : const Color(0xFF4E3828);
+Color get _brownLt => _darkMode ? const Color(0xFFDBB594) : const Color(0xFF7A5840);
+Color get _brownSoft => _darkMode ? const Color(0xFFBD926C) : const Color(0xFF9A8070);
+Color get _cardFill => _darkMode ? const Color(0xFF29221D) : const Color(0xFFFFF8F4);
+Color get _cream => _darkMode ? const Color(0xFF1E1A17) : const Color(0xFFFDEFDB);
+Color get _olive => const Color(0xFF98A869);
+Color get _oliveDk => const Color(0xFF58772F);
+Color get _coral => const Color(0xFFF7AEAE);
+Color get _orange => const Color(0xFFFFBC5C);
+Color get _red => const Color(0xFFEF6262);
+Color get _gold => const Color(0xFFE4BC83);
+Color get _lavender => const Color(0xFFDDBDE8);
+Color get _goldGlow => const Color(0xFFF8E080);
 // Quest icon preset mapping (mirrors dashboardProvider's habitIconMap keys).
 const Map<String, IconData> _questIcons = {
   'water':        Icons.water_drop_rounded,
@@ -342,7 +342,7 @@ class _DailyTabState extends ConsumerState<DailyTab>
   @override
   Widget build(BuildContext context) {
     if (!_loaded) {
-      return const Scaffold(
+      return Scaffold(
         backgroundColor: _ombre1,
         body: Center(child: CircularProgressIndicator()),
       );
@@ -356,7 +356,7 @@ class _DailyTabState extends ConsumerState<DailyTab>
       // Ombré background
       Positioned.fill(
         child: Container(
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
@@ -474,7 +474,7 @@ class _DailyTabState extends ConsumerState<DailyTab>
             width: 34,
             height: 34,
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: _cardFill,
               borderRadius: BorderRadius.circular(10),
               border:
                   Border.all(color: _outline.withOpacity(0.35), width: 1.5),
@@ -486,7 +486,7 @@ class _DailyTabState extends ConsumerState<DailyTab>
                 ),
               ],
             ),
-            child: const Icon(Icons.chevron_left_rounded,
+            child: Icon(Icons.chevron_left_rounded,
                 size: 20, color: _outline),
           ),
         ),
@@ -496,7 +496,7 @@ class _DailyTabState extends ConsumerState<DailyTab>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'My Day',
                 style: TextStyle(
                   fontFamily: 'Bitroad',
@@ -544,7 +544,7 @@ class _DailyTabState extends ConsumerState<DailyTab>
       const SizedBox(width: 8),
       Text(
         title,
-        style: const TextStyle(
+        style: TextStyle(
           fontFamily: 'Bitroad',
           fontSize: 16,
           color: _brown,
@@ -925,7 +925,7 @@ class _DailyTabState extends ConsumerState<DailyTab>
               ),
               Text(
                 '$val / $max',
-                style: const TextStyle(
+                style: TextStyle(
                   fontFamily: 'Bitroad',
                   fontSize: 12,
                   color: _brown,
@@ -1070,7 +1070,7 @@ class _DailyTabState extends ConsumerState<DailyTab>
                     child: Container(
                       constraints: const BoxConstraints(maxWidth: 340),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: _cardFill,
                       borderRadius: BorderRadius.circular(18),
                       border: Border.all(color: _outline, width: 2),
                       boxShadow: [
@@ -1087,7 +1087,7 @@ class _DailyTabState extends ConsumerState<DailyTab>
                         children: [
                           Text(
                             title,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontFamily: 'Bitroad',
                               fontSize: 20,
                               color: _brown,
@@ -1414,7 +1414,7 @@ class _QuestEditorDialogState extends State<_QuestEditorDialog> {
           child: Container(
             constraints: const BoxConstraints(maxWidth: 380),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: _cardFill,
               borderRadius: BorderRadius.circular(20),
               border: Border.all(color: _outline, width: 2),
               boxShadow: [
@@ -1435,7 +1435,7 @@ class _QuestEditorDialogState extends State<_QuestEditorDialog> {
                   const SizedBox(width: 8),
                   Text(
                     widget.title,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontFamily: 'Bitroad',
                       fontSize: 20,
                       color: _brown,
@@ -1634,7 +1634,7 @@ class _RoutineTextDialog extends StatelessWidget {
           child: Container(
             constraints: const BoxConstraints(maxWidth: 360),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: _cardFill,
               borderRadius: BorderRadius.circular(20),
               border: Border.all(color: _outline, width: 2),
               boxShadow: [
@@ -1654,7 +1654,7 @@ class _RoutineTextDialog extends StatelessWidget {
                   const SizedBox(width: 8),
                   Text(
                     title,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontFamily: 'Bitroad',
                       fontSize: 19,
                       color: _brown,
@@ -1785,7 +1785,7 @@ class _ScoreRing extends StatelessWidget {
       child: Stack(alignment: Alignment.center, children: [
         Container(
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: _cardFill,
             shape: BoxShape.circle,
             border: Border.all(color: _outline, width: 2.5),
             boxShadow: [
@@ -1812,7 +1812,7 @@ class _ScoreRing extends StatelessWidget {
         Column(mainAxisSize: MainAxisSize.min, children: [
           Text(
             '$score',
-            style: const TextStyle(
+            style: TextStyle(
               fontFamily: 'Bitroad',
               fontSize: 28,
               color: _brown,

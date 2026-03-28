@@ -1,10 +1,11 @@
 //  CEREBRO — Flashcard Screen
 //  3 Tabs: Review · All Cards · Generate
-//  Flip animation · SM-2 spaced repetition · AI generation
+//  Flip animation · SM-2 spaced repetition · auto-generation
 //  + Deck management (create/switch/edit/delete decks)
 //  Cozy Pocket Love aesthetic
 
 import 'package:flutter/material.dart';
+import 'package:cerebro_app/config/theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:file_picker/file_picker.dart';
@@ -12,29 +13,33 @@ import 'package:dio/dio.dart';
 import 'package:cerebro_app/providers/auth_provider.dart';
 import 'package:cerebro_app/widgets/upload_notes_modal.dart';
 
-const _ombre1   = Color(0xFFFFFBF7);
-const _ombre2   = Color(0xFFFFF8F3);
-const _ombre3   = Color(0xFFFFF3EF);
-const _ombre4   = Color(0xFFFEEDE9);
-const _cardFill = Color(0xFFFFF8F4);
-const _outline  = Color(0xFF6E5848);
-const _brown    = Color(0xFF4E3828);
-const _brownLt  = Color(0xFF7A5840);
-const _coralHdr = Color(0xFFE8B8A8); // softer terracotta
-const _coralLt  = Color(0xFFF2CFC2);
-const _greenHdr = Color(0xFFB5C4A0); // muted sage
-const _greenLt  = Color(0xFFCCD8B8);
-const _greenDk  = Color(0xFF98A869);
-const _goldHdr  = Color(0xFFE8D4A0); // muted butter
-const _goldLt   = Color(0xFFF4E6BE);
-const _purpleHdr = Color(0xFFC9B8D9); // muted lav
-const _purpleLt = Color(0xFFDCCEE6);
-const _skyHdr   = Color(0xFFB6CBD6); // muted slate
-const _skyLt    = Color(0xFFCCDCE4);
-const _sageHdr  = Color(0xFFB5C4A0);
-const _pawClr   = Color(0xFFEAD0CE); // muted blush
-const _pinkHdr  = Color(0xFFEAD0CE);
 
+bool get _darkMode =>
+    CerebroTheme.brightnessNotifier.value == Brightness.dark;
+
+Color get _ombre1 => _darkMode ? const Color(0xFF191513) : const Color(0xFFFFFBF7);
+Color get _ombre2 => _darkMode ? const Color(0xFF1E1A17) : const Color(0xFFFFF8F3);
+Color get _ombre3 => _darkMode ? const Color(0xFF29221D) : const Color(0xFFFFF3EF);
+Color get _ombre4 => _darkMode ? const Color(0xFF312821) : const Color(0xFFFEEDE9);
+Color get _cardFill => _darkMode ? const Color(0xFF29221D) : const Color(0xFFFFF8F4);
+Color get _outline => _darkMode ? const Color(0xFFAD7F58) : const Color(0xFF6E5848);
+Color get _brown => _darkMode ? const Color(0xFFF2E1CA) : const Color(0xFF4E3828);
+Color get _brownLt => _darkMode ? const Color(0xFFDBB594) : const Color(0xFF7A5840);
+const _coralHdr = Color(0xFFE8B8A8); // softer terracotta
+Color get _coralLt => const Color(0xFFF2CFC2);
+const _greenHdr = Color(0xFFB5C4A0); // muted sage
+Color get _greenLt => const Color(0xFFCCD8B8);
+Color get _greenDk => const Color(0xFF98A869);
+const _goldHdr  = Color(0xFFE8D4A0); // muted butter
+Color get _goldLt => const Color(0xFFF4E6BE);
+const _purpleHdr = Color(0xFFC9B8D9); // muted lav
+Color get _purpleLt => const Color(0xFFDCCEE6);
+const _skyHdr   = Color(0xFFB6CBD6); // muted slate
+Color get _skyLt => const Color(0xFFCCDCE4);
+Color get _sageHdr => const Color(0xFFB5C4A0);
+// _pawClr — mode-aware: pink in light, barely-lifted BROWN-2 in dark
+Color get _pawClr => _darkMode ? const Color(0xFF231D18) : const Color(0xFFEAD0CE); // muted blush
+Color get _pinkHdr => const Color(0xFFEAD0CE);
 const _presetColors = [
   '#B5C4A0', '#E8B8A8', '#B6CBD6', '#C9B8D9',
   '#E8D4A0', '#EAD0CE', '#B5C4A0', '#CCD8B8',
@@ -206,7 +211,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
       body: Stack(children: [
         // Base gradient
         Positioned.fill(child: Container(
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topCenter, end: Alignment.bottomCenter,
               colors: [_ombre1, _ombre2, _ombre3, _ombre4],
@@ -234,7 +239,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
                   _tabBar(),
                   Expanded(
                     child: _loading
-                      ? const Center(child: CircularProgressIndicator(color: _outline))
+                      ? Center(child: CircularProgressIndicator(color: _outline))
                       : TabBarView(
                           controller: _tabCtrl,
                           children: [_reviewTab(), _allCardsTab(), _generateTab()],
@@ -258,7 +263,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
         Expanded(child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Flashcards',
+            Text('Flashcards',
               style: TextStyle(fontFamily: 'Bitroad', fontSize: 26,
                   color: _brown, height: 1.15)),
             const SizedBox(height: 2),
@@ -279,13 +284,13 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
     child: Container(
       width: 40, height: 40,
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.88),
+        color: _cardFill.withOpacity(0.88),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: _outline.withOpacity(0.4), width: 1.5),
         boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
           offset: const Offset(3, 3), blurRadius: 0)],
       ),
-      child: const Icon(Icons.arrow_back_rounded, color: _brown, size: 20),
+      child: Icon(Icons.arrow_back_rounded, color: _brown, size: 20),
     ),
   );
 
@@ -328,7 +333,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
                     offset: const Offset(3, 3), blurRadius: 0)],
                 ),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  const Icon(Icons.settings_rounded, size: 16, color: _brown),
+                  Icon(Icons.settings_rounded, size: 16, color: _brown),
                   const SizedBox(width: 4),
                   Text('Decks', style: GoogleFonts.gaegu(
                     fontSize: 16, fontWeight: FontWeight.w700, color: _brown)),
@@ -351,7 +356,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
                     offset: const Offset(3, 3), blurRadius: 0)],
                 ),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  const Icon(Icons.upload_file_rounded, size: 16, color: _brown),
+                  Icon(Icons.upload_file_rounded, size: 16, color: _brown),
                   const SizedBox(width: 4),
                   Text('Upload', style: GoogleFonts.gaegu(
                     fontSize: 16, fontWeight: FontWeight.w700, color: _brown)),
@@ -428,7 +433,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
     showModalBottomSheet(
       context: context,
       backgroundColor: _cardFill,
-      shape: const RoundedRectangleBorder(
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         side: BorderSide(color: _outline, width: 3),
       ),
@@ -469,7 +474,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
                       border: Border.all(color: _outline, width: 2),
                     ),
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      const Icon(Icons.add_rounded, size: 18, color: _brown),
+                      Icon(Icons.add_rounded, size: 18, color: _brown),
                       const SizedBox(width: 4),
                       Text('New Deck', style: GoogleFonts.gaegu(
                         fontSize: 16, fontWeight: FontWeight.w700, color: _brown)),
@@ -534,11 +539,11 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
             fontSize: 11, fontWeight: FontWeight.w600, color: _greenDk)),
         ]),
         trailing: PopupMenuButton<String>(
-          icon: const Icon(Icons.more_vert_rounded, color: _brownLt),
+          icon: Icon(Icons.more_vert_rounded, color: _brownLt),
           color: _cardFill,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
-            side: const BorderSide(color: _outline, width: 2),
+            side: BorderSide(color: _outline, width: 2),
           ),
           onSelected: (action) {
             Navigator.pop(sheetCtx);
@@ -547,7 +552,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
           },
           itemBuilder: (ctx) => [
             PopupMenuItem(value: 'edit', child: Row(children: [
-              const Icon(Icons.edit_rounded, size: 18, color: _brownLt),
+              Icon(Icons.edit_rounded, size: 18, color: _brownLt),
               const SizedBox(width: 8),
               Text('Edit', style: GoogleFonts.nunito(fontSize: 14, color: _brown)),
             ])),
@@ -584,7 +589,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
       backgroundColor: _cardFill,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
-        side: const BorderSide(color: _outline, width: 3),
+        side: BorderSide(color: _outline, width: 3),
       ),
       title: Text('New Deck', style: GoogleFonts.gaegu(
         fontSize: 24, fontWeight: FontWeight.w700, color: _brown)),
@@ -604,15 +609,15 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
             labelStyle: GoogleFonts.nunito(fontSize: 13, color: _brownLt),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: _outline, width: 1.5),
+              borderSide: BorderSide(color: _outline, width: 1.5),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: _outline, width: 1.5),
+              borderSide: BorderSide(color: _outline, width: 1.5),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: _outline, width: 2.2),
+              borderSide: BorderSide(color: _outline, width: 2.2),
             ),
             contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           ),
@@ -655,7 +660,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
                 ),
               ),
               child: isSelected
-                ? const Icon(Icons.check_rounded, size: 18, color: _brown)
+                ? Icon(Icons.check_rounded, size: 18, color: _brown)
                 : null,
             ),
           );
@@ -704,7 +709,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
       backgroundColor: _cardFill,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
-        side: const BorderSide(color: _outline, width: 3),
+        side: BorderSide(color: _outline, width: 3),
       ),
       title: Text('Edit Deck', style: GoogleFonts.gaegu(
         fontSize: 24, fontWeight: FontWeight.w700, color: _brown)),
@@ -721,15 +726,15 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
             labelStyle: GoogleFonts.nunito(fontSize: 13, color: _brownLt),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: _outline, width: 1.5),
+              borderSide: BorderSide(color: _outline, width: 1.5),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: _outline, width: 1.5),
+              borderSide: BorderSide(color: _outline, width: 1.5),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: _outline, width: 2.2),
+              borderSide: BorderSide(color: _outline, width: 2.2),
             ),
             contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           ),
@@ -771,7 +776,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
                 ),
               ),
               child: isSelected
-                ? const Icon(Icons.check_rounded, size: 18, color: _brown)
+                ? Icon(Icons.check_rounded, size: 18, color: _brown)
                 : null,
             ),
           );
@@ -814,7 +819,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
       backgroundColor: _cardFill,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
-        side: const BorderSide(color: _outline, width: 3),
+        side: BorderSide(color: _outline, width: 3),
       ),
       title: Text('Delete "${deck['name']}"?', style: GoogleFonts.gaegu(
         fontSize: 22, fontWeight: FontWeight.w700, color: _brown)),
@@ -913,7 +918,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
         LinearProgressIndicator(
           value: (_reviewIdx + 1) / cards.length,
           backgroundColor: _outline.withOpacity(0.15),
-          valueColor: const AlwaysStoppedAnimation(_purpleHdr),
+          valueColor: AlwaysStoppedAnimation(_purpleHdr),
           borderRadius: BorderRadius.circular(8),
           minHeight: 6,
         ),
@@ -1226,7 +1231,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
               style: GoogleFonts.nunito(fontSize: 13, color: _brown),
               decoration: InputDecoration(
                 isDense: true,
-                prefixIcon: const Icon(Icons.search_rounded, size: 18, color: _brownLt),
+                prefixIcon: Icon(Icons.search_rounded, size: 18, color: _brownLt),
                 hintText: 'Search cards…',
                 hintStyle: GoogleFonts.nunito(fontSize: 13, color: _brownLt),
                 border: InputBorder.none,
@@ -1234,7 +1239,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
                 focusedBorder: InputBorder.none,
                 contentPadding: const EdgeInsets.symmetric(vertical: 10),
                 suffixIcon: _cardsSearch.isEmpty ? null : IconButton(
-                  icon: const Icon(Icons.close_rounded, size: 18, color: _brownLt),
+                  icon: Icon(Icons.close_rounded, size: 18, color: _brownLt),
                   onPressed: () {
                     _cardsSearchCtrl.clear();
                     setState(() { _cardsSearch = ''; _cardsPage = 1; });
@@ -1245,11 +1250,11 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
             ),
           )),
           const SizedBox(width: 8),
-          // AI-first CTA — wider + primary color, nudges users toward the
+          // Primary CTA — wider + primary color, nudges users toward the
           // generate flow instead of manual entry. Manual still available
           // to the right but visually demoted.
-          _miniPill('+ AI', _purpleHdr, () => _tabCtrl.animateTo(2),
-            tip: 'Generate with AI'),
+          _miniPill('+ Generate', _purpleHdr, () => _tabCtrl.animateTo(2),
+            tip: 'Auto-generate'),
           const SizedBox(width: 6),
           _miniPill('+ Card', _greenHdr, _showCreateDialog,
             tip: 'Create manually'),
@@ -1335,7 +1340,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
     ]);
   }
 
-  // Little pill used for '+ AI' / '+ Card' toolbar CTAs.
+  // Little pill used for '+ Generate' / '+ Card' toolbar CTAs.
   Widget _miniPill(String label, Color fill, VoidCallback onTap, {String? tip}) {
     final child = GestureDetector(
       onTap: onTap,
@@ -1447,7 +1452,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
     ),
   );
 
-  // Primary empty state — zero cards anywhere. Push users toward AI.
+  // Primary empty state — zero cards anywhere. Push users toward generate tab.
   Widget _emptyAllCards() {
     return Center(child: Padding(
       padding: const EdgeInsets.all(24),
@@ -1457,12 +1462,12 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
         Text('No cards yet',
           style: GoogleFonts.gaegu(fontSize: 24, fontWeight: FontWeight.w700, color: _brown)),
         const SizedBox(height: 4),
-        Text('Upload notes and let AI generate smart cards — or create a few manually to get started.',
+        Text('Upload notes and auto-generate smart cards — or create a few manually to get started.',
           style: GoogleFonts.nunito(fontSize: 13, fontWeight: FontWeight.w600, color: _brownLt),
           textAlign: TextAlign.center),
         const SizedBox(height: 16),
         Row(mainAxisSize: MainAxisSize.min, children: [
-          _miniPill('Generate with AI', _purpleHdr, () => _tabCtrl.animateTo(2)),
+          _miniPill('Auto-generate', _purpleHdr, () => _tabCtrl.animateTo(2)),
           const SizedBox(width: 10),
           _miniPill('Create manually', _greenHdr, _showCreateDialog),
         ]),
@@ -1527,7 +1532,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
           offset: const Offset(3, 3), blurRadius: 0)],
       ),
       child: InkWell(
-        // Tap-to-edit — matches the "let users edit AI-generated cards"
+        // Tap-to-edit — matches the "let users edit auto-generated cards"
         // best practice. Detail-only modal removed; edit dialog includes
         // the stats the old modal exposed plus full editability.
         onTap: () => _showEditCardDialog(card),
@@ -1578,7 +1583,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
             )),
             // Edit hint + delete
             Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-              const Icon(Icons.edit_rounded, color: _brownLt, size: 16),
+              Icon(Icons.edit_rounded, color: _brownLt, size: 16),
               const SizedBox(height: 10),
               GestureDetector(
                 onTap: () => _deleteCard(card),
@@ -1619,9 +1624,9 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
 
   // Editable dialog — replaces the old view-only detail modal.
   //
-  // Lets users edit AI-generated cards (fix a wrong answer, tweak a
+  // Lets users edit auto-generated cards (fix a wrong answer, tweak a
   // question, move to a different deck/subject, retag). This is the
-  // "AI + CRUD, not pure CRUD" philosophy: AI can seed, humans can
+  // "auto-gen + CRUD, not pure CRUD" philosophy: auto-gen can seed, humans can
   // refine, SRS state stays untouched so the review signal is honest.
   void _showEditCardDialog(Map<String, dynamic> card) {
     final frontCtrl = TextEditingController(text: card['front_text']?.toString() ?? '');
@@ -1648,7 +1653,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
         backgroundColor: _cardFill,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(18),
-          side: const BorderSide(color: _outline, width: 3),
+          side: BorderSide(color: _outline, width: 3),
         ),
         title: Row(children: [
           Text('Edit Flashcard', style: GoogleFonts.gaegu(
@@ -1826,20 +1831,20 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
     labelStyle: GoogleFonts.nunito(fontSize: 13, color: _brownLt),
     border: OutlineInputBorder(
       borderRadius: BorderRadius.circular(12),
-      borderSide: const BorderSide(color: _outline, width: 1.5)),
+      borderSide: BorderSide(color: _outline, width: 1.5)),
     enabledBorder: OutlineInputBorder(
       borderRadius: BorderRadius.circular(12),
-      borderSide: const BorderSide(color: _outline, width: 1.5)),
+      borderSide: BorderSide(color: _outline, width: 1.5)),
     focusedBorder: OutlineInputBorder(
       borderRadius: BorderRadius.circular(12),
-      borderSide: const BorderSide(color: _purpleHdr, width: 2)),
+      borderSide: BorderSide(color: _purpleHdr, width: 2)),
     contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
   );
 
   Future<void> _deleteCard(Map<String, dynamic> card) async {
     final confirm = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
       backgroundColor: _cardFill,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18), side: const BorderSide(color: _outline, width: 3)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18), side: BorderSide(color: _outline, width: 3)),
       title: Text('Delete card?', style: GoogleFonts.gaegu(fontSize: 22, fontWeight: FontWeight.w700, color: _brown)),
       content: Text('This cannot be undone.', style: GoogleFonts.nunito(fontSize: 14, color: _brownLt)),
       actions: [
@@ -1865,7 +1870,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
     _backCtrl.clear();
     showDialog(context: context, builder: (ctx) => StatefulBuilder(builder: (ctx, setD) => AlertDialog(
       backgroundColor: _cardFill,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18), side: const BorderSide(color: _outline, width: 3)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18), side: BorderSide(color: _outline, width: 3)),
       title: Text('New Flashcard', style: GoogleFonts.gaegu(fontSize: 24, fontWeight: FontWeight.w700, color: _brown)),
       content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
         _inputField(_frontCtrl, 'Front (Question)', maxLines: 3),
@@ -1912,7 +1917,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
   }
 
 
-  //  TAB 3: GENERATE (AI from study materials)
+  //  TAB 3: GENERATE (from study materials)
 
   Widget _generateTab() {
     return SingleChildScrollView(
@@ -1923,16 +1928,16 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
           width: double.infinity,
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            gradient: const LinearGradient(colors: [_purpleHdr, _purpleLt]),
+            gradient: LinearGradient(colors: [_purpleHdr, _purpleLt]),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: _outline, width: 2),
             boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
               offset: const Offset(3, 3), blurRadius: 0)],
           ),
           child: Column(children: [
-            const Icon(Icons.auto_awesome_rounded, size: 32, color: _brown),
+            Icon(Icons.auto_awesome_rounded, size: 32, color: _brown),
             const SizedBox(height: 4),
-            Text('AI Flashcard Generator', style: GoogleFonts.gaegu(
+            Text('Smart Flashcard Generator', style: GoogleFonts.gaegu(
               fontSize: 22, fontWeight: FontWeight.w700, color: _brown)),
             Text(
               _selectedDeckId != null
@@ -2106,7 +2111,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
           )),
           // Trailing delete affordance — isolated from the tile's tap zone
           // via its own GestureDetector so tapping the trash icon never
-          // accidentally toggles the "include in AI generation" checkbox.
+          // accidentally toggles the "include in auto-generation" checkbox.
           GestureDetector(
             onTap: () => _confirmDeleteMaterial(m),
             behavior: HitTestBehavior.opaque,
@@ -2129,7 +2134,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
         backgroundColor: _cardFill,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(18),
-          side: const BorderSide(color: _outline, width: 3),
+          side: BorderSide(color: _outline, width: 3),
         ),
         title: Text('Delete material?', style: GoogleFonts.gaegu(
           fontSize: 22, fontWeight: FontWeight.w700, color: _brown)),
@@ -2286,7 +2291,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   gradient: LinearGradient(colors: [_purpleLt, _purpleHdr]),
                   borderRadius: BorderRadius.only(
                     topLeft: Radius.circular(20), topRight: Radius.circular(20))),
@@ -2319,7 +2324,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
                       enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
                         borderSide: BorderSide(color: _outline.withOpacity(0.12))),
                       focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
-                        borderSide: const BorderSide(color: _purpleHdr, width: 1.5)),
+                        borderSide: BorderSide(color: _purpleHdr, width: 1.5)),
                     ),
                   ),
                   const SizedBox(height: 10),
@@ -2365,7 +2370,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
                       enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
                         borderSide: BorderSide(color: _outline.withOpacity(0.12))),
                       focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
-                        borderSide: const BorderSide(color: _purpleHdr, width: 1.5)),
+                        borderSide: BorderSide(color: _purpleHdr, width: 1.5)),
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -2374,7 +2379,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       decoration: BoxDecoration(
-                        gradient: const LinearGradient(colors: [_purpleLt, _purpleHdr]),
+                        gradient: LinearGradient(colors: [_purpleLt, _purpleHdr]),
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(color: _outline.withOpacity(0.35), width: 1.5),
                         boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
@@ -2443,7 +2448,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: _purpleHdr, width: 2),
+          borderSide: BorderSide(color: _purpleHdr, width: 2),
         ),
       ),
     );

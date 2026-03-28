@@ -4,28 +4,34 @@
 
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:cerebro_app/config/theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cerebro_app/providers/auth_provider.dart';
 
-const _ombre1   = Color(0xFFFFFBF7);
-const _cardFill = Color(0xFFFFF8F4);
-const _outline  = Color(0xFF6E5848);
-const _brown    = Color(0xFF4E3828);
-const _brownLt  = Color(0xFF7A5840);
+
+bool get _darkMode =>
+    CerebroTheme.brightnessNotifier.value == Brightness.dark;
+
+Color get _ombre1 => _darkMode ? const Color(0xFF191513) : const Color(0xFFFFFBF7);
+Color get _cardFill => _darkMode ? const Color(0xFF29221D) : const Color(0xFFFFF8F4);
+Color get _outline => _darkMode ? const Color(0xFFAD7F58) : const Color(0xFF6E5848);
+Color get _brown => _darkMode ? const Color(0xFFF2E1CA) : const Color(0xFF4E3828);
+Color get _brownLt => _darkMode ? const Color(0xFFDBB594) : const Color(0xFF7A5840);
 const _coralHdr = Color(0xFFE8B8A8); // softer terracotta
-const _coralLt  = Color(0xFFF2CFC2);
-const _coralDk  = Color(0xFFC8997F);
+Color get _coralLt => const Color(0xFFF2CFC2);
+Color get _coralDk => const Color(0xFFC8997F);
 const _greenHdr = Color(0xFFB5C4A0); // muted sage
-const _greenLt  = Color(0xFFCCD8B8);
-const _greenDk  = Color(0xFF98A869);
+Color get _greenLt => const Color(0xFFCCD8B8);
+Color get _greenDk => const Color(0xFF98A869);
 const _goldHdr  = Color(0xFFE8D4A0); // muted butter
-const _goldLt   = Color(0xFFF4E6BE);
+Color get _goldLt => const Color(0xFFF4E6BE);
 const _purpleHdr = Color(0xFFC9B8D9); // muted lav
-const _purpleLt = Color(0xFFDCCEE6);
+Color get _purpleLt => const Color(0xFFDCCEE6);
 const _skyHdr   = Color(0xFFB6CBD6); // muted slate
-const _skyLt    = Color(0xFFCCDCE4);
-const _pawClr   = Color(0xFFEAD0CE); // muted blush
+Color get _skyLt => const Color(0xFFCCDCE4);
+// _pawClr — mode-aware: pink in light, barely-lifted BROWN-2 in dark
+Color get _pawClr => _darkMode ? const Color(0xFF231D18) : const Color(0xFFEAD0CE); // muted blush
 
 enum _Phase { preQuiz, taking, results }
 
@@ -140,10 +146,10 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
             border: Border.all(color: _outline.withOpacity(0.4), width: 2),
             boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
               offset: const Offset(3, 3), blurRadius: 0)]),
-          child: const Icon(Icons.quiz_rounded, size: 38, color: _brown),
+          child: Icon(Icons.quiz_rounded, size: 38, color: _brown),
         ),
         const SizedBox(height: 20),
-        Text(_quiz['title'] ?? 'Quiz', style: const TextStyle(
+        Text(_quiz['title'] ?? 'Quiz', style: TextStyle(
           fontFamily: 'Bitroad', fontSize: 26, color: _brown, height: 1.15),
           textAlign: TextAlign.center),
         const SizedBox(height: 4),
@@ -156,7 +162,7 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
         Row(mainAxisAlignment: MainAxisAlignment.center, children: [
           _infoPill(Icons.help_outline_rounded, '$totalQ questions', _skyHdr),
           const SizedBox(width: 8),
-          _infoPill(Icons.auto_awesome, _quiz['source'] == 'ai' ? 'AI Generated' : 'Auto Generated',
+          _infoPill(Icons.auto_awesome, _quiz['source'] == 'ai' ? 'Auto-generated' : 'Auto Generated',
             _quiz['source'] == 'ai' ? _purpleHdr : _skyHdr),
         ]),
         if (_quiz['time_limit_minutes'] != null) ...[
@@ -190,7 +196,7 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
               boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
                 offset: const Offset(3, 3), blurRadius: 0)]),
             child: Center(child: _loading
-              ? const CircularProgressIndicator(color: _brown, strokeWidth: 2)
+              ? CircularProgressIndicator(color: _brown, strokeWidth: 2)
               : Text('Start Quiz', style: GoogleFonts.gaegu(
                   fontSize: 26, fontWeight: FontWeight.w700, color: _brown))),
           ),
@@ -261,12 +267,12 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
             child: Container(
               width: 40, height: 40,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.88),
+                color: _cardFill.withOpacity(0.88),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: _outline.withOpacity(0.4), width: 1.5),
                 boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
                   offset: const Offset(3, 3), blurRadius: 0)]),
-              child: const Icon(Icons.close_rounded, color: _brown, size: 20),
+              child: Icon(Icons.close_rounded, color: _brown, size: 20),
             ),
           ),
           const SizedBox(width: 12),
@@ -434,9 +440,9 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
                 fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
                 color: _brown, height: 1.2))),
               if (_answered && isCorrect)
-                const Icon(Icons.check_circle_rounded, size: 22, color: _brown),
+                Icon(Icons.check_circle_rounded, size: 22, color: _brown),
               if (_answered && isWrong)
-                const Icon(Icons.cancel_rounded, size: 22, color: _brown),
+                Icon(Icons.cancel_rounded, size: 22, color: _brown),
             ]),
           ),
         );
@@ -487,9 +493,7 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
   // Cache of generated options per question so shuffling is stable across rebuilds.
   final Map<String, List<String>> _fillOptionsCache = {};
 
-  /// Return MCQ-style options for a fill-blank question.
-  /// If the backend supplies `options`, use those; otherwise synthesize
-  /// distractors from the question text so the user can still tap an answer.
+  // MCQ options for fill-blank: use backend options or synthesize distractors.
   List<String> _fillBlankOptions(Map<String, dynamic> q) {
     final qid = (q['id'] ?? q['question_text'] ?? '').toString();
     final cached = _fillOptionsCache[qid];
@@ -694,7 +698,7 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
             boxShadow: [BoxShadow(color: _outline.withOpacity(0.18),
               offset: const Offset(3, 3), blurRadius: 0)]),
           child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Text(grade, style: const TextStyle(
+            Text(grade, style: TextStyle(
               fontFamily: 'Bitroad', fontSize: 34, color: _brown, height: 1.0)),
             const SizedBox(height: 2),
             Text('${pct.toStringAsFixed(0)}%', style: GoogleFonts.gaegu(
@@ -702,7 +706,7 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
           ])),
         ),
         const SizedBox(height: 16),
-        Text(_quiz['title'] ?? 'Quiz Complete!', style: const TextStyle(
+        Text(_quiz['title'] ?? 'Quiz Complete!', style: TextStyle(
           fontFamily: 'Bitroad', fontSize: 24, color: _brown, height: 1.15),
           textAlign: TextAlign.center),
         const SizedBox(height: 4),
@@ -721,7 +725,7 @@ class _TakeQuizScreenState extends ConsumerState<TakeQuizScreen>
         const SizedBox(height: 20),
         // Review answers
         Align(alignment: Alignment.centerLeft, child: Text('Review Answers',
-          style: const TextStyle(
+          style: TextStyle(
             fontFamily: 'Bitroad', fontSize: 20, color: _brown, height: 1.15))),
         const SizedBox(height: 10),
         ..._answeredQuestions.asMap().entries.map((e) {

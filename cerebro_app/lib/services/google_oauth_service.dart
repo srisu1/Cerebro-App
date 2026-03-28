@@ -1,5 +1,4 @@
-/// Uses browser-based OAuth flow with a local redirect server.
-/// This approach works reliably for Desktop-type OAuth clients.
+// Google OAuth service — browser-based flow with local redirect server.
 
 import 'dart:async';
 import 'dart:convert';
@@ -15,12 +14,7 @@ class GoogleOAuthService {
   static const String _tokenEndpoint =
       'https://oauth2.googleapis.com/token';
 
-  /// Runs the full OAuth flow:
-  /// 1. Starts a local HTTP server to catch the redirect
-  /// 2. Opens Google's consent screen in the browser
-  /// 3. Catches the auth code from the redirect
-  /// 4. Exchanges the auth code for an ID token
-  /// Returns the ID token string, or null if cancelled/failed.
+  // Run OAuth flow: local server -> browser consent -> exchange code for ID token.
   static Future<String?> signIn() async {
     HttpServer? server;
     try {
